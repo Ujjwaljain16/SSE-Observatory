@@ -31,3 +31,5 @@ dist-ssr
 *.sln
 *.sw?
 .vercel
+*.tsbuildinfo
+vite.config.js
