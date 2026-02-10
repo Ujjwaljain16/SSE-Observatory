@@ -52,24 +52,33 @@ This tool does one thing exceptionally well: it shows you exactly what's coming 
 
 ## ✨ Features
 
-<div align="center">
-
+### 🔌 Core Capabilities
 | Feature | Description |
 |---------|-------------|
-| 🔌 **One-Click Connect** | Paste a URL, click connect. That's it. |
-| 🔐 **Bearer Auth Support** | Token-based authentication just works. |
-| 🎨 **Live Event Stream** | Watch events flow in real-time with color-coded types. |
-| 🔍 **Smart Filtering** | Filter by ANY JSON field, including nested paths. |
-| 💾 **Profile Saving** | Save your frequent connections for quick access. |
-| 🌓 **Dark/Light Mode** | Easy on the eyes, day or night. |
-| 📋 **One-Click Copy** | Copy any event data instantly. |
-| ⏱️ **Connection Timer** | Know exactly how long you've been connected. |
-| 📊 **Event Statistics** | Track event counts and filter matches. |
-| 🔄 **Auto-Reconnect** | Handles connection drops gracefully. |
-| 📤 **Export Events** | Download captured events as JSON or CSV. |
-| 🔎 **Event Search** | Search across all event data in real-time. |
+| **One-Click Connect** | Paste a URL, click connect. That's it. |
+| **Bearer Auth Support** | Token-based authentication just works. |
+| **Live Event Stream** | Watch events flow in real-time with premium color-coded types. |
+| **Profile Saving** | Save your frequent connections for quick access. |
+| **Dark/Light Mode** | Easy on the eyes, day or night. |
+| **Auto-Reconnect** | Smart reconnection logic handles network drops gracefully. |
 
-</div>
+### 🔍 Power-User Filtering (New in v2.0)
+| Feature | Description |
+|---------|-------------|
+| **Smart Filtering** | Filter by ANY JSON field, including nested paths (e.g., `data.user.id`). |
+| **Regex Support** | Use standard regex patterns for complex text matching. |
+| **Numeric Logic** | Filter values with operators: `>`, `<`, `>=`, `<=`, `==`, `!=` (e.g., `latency > 500`). |
+| **Query Language** | Write SQL-like queries: `type == "error" AND data.severity == "high"`. |
+| **Global Search** | Instant text search across all event types and payloads. |
+
+### ⏳ Time-Travel Debugging (New in v2.0)
+| Feature | Description |
+|---------|-------------|
+| **Event Timeline** | Visual scrubber showing event density over time. |
+| **Time Travel** | Pause the stream and replay history to spot transient bugs. |
+| **Playback Controls** | Step forward/backward frame-by-frame or replay at 1x/2x/4x speed. |
+| **Ring Buffer** | Efficiently manages up to 1,000 events without browser lag. |
+| **Live vs. Replay** | Seamlessly toggle between live real-time view and historical inspection. |
 
 ---
 
@@ -84,8 +93,8 @@ This tool does one thing exceptionally well: it shows you exactly what's coming 
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/sse-monitor.git
-cd sse-monitor
+git clone https://github.com/yourusername/sse-observatory.git
+cd sse-observatory
 
 # Install dependencies
 npm install
@@ -101,7 +110,7 @@ The app opens automatically at `http://localhost:3000`
 Create a `.env` file to customize the port:
 
 ```env
-VITE_PORT=5003
+VITE_PORT=3001
 ```
 
 ---
@@ -121,30 +130,24 @@ VITE_PORT=5003
 
 3. **Click Connect** and watch the events flow!
 
-### Filtering Events
+### Advanced Filtering
 
-The real power is in filtering. Add filters for any JSON field:
+The filtering system is designed for power users:
 
-```
-type                    → Filter by event type
-data.userId             → Filter by nested user ID
-payload.status          → Filter by payload status
-meta.environment        → Filter by environment tag
-```
+- **Regex**: Toggle `.*` mode to use regex patterns (e.g., `^user_\d+`).
+- **Logic**: Use numeric comparisons like `data.score > 100`.
+- **Query Mode**: Use the query bar for complex logic:
+  ```sql
+  type == "update" AND (data.status == "failed" OR data.latency > 1000)
+  ```
 
-**How it works:**
-- Add a filter field → See all unique values found
-- Click values to toggle them → Only matching events show
-- Multiple filters combine with AND logic
+### Time-Travel Debugging
 
-### Saving Profiles
-
-For endpoints you use frequently:
-1. Enter the URL and token
-2. Type a profile name
-3. Click 💾 Save
-
-Profiles persist in your browser—switch between them with one click.
+1. **Pause** the stream to stop the live feed (events continue buffering in background).
+2. **Scrub** the timeline at the bottom to jump to past events.
+3. **Step** through events one by one to analyze state changes.
+4. **Replay** the session at 1x, 2x, or 4x speed to visualize the flow of events as they happened.
+5. Click **GO LIVE** to return to the real-time stream.
 
 ---
 
@@ -162,36 +165,21 @@ Profiles persist in your browser—switch between them with one click.
 │   │             │◀────│  API        │◀────│  /api/sse       │   │
 │   └─────────────┘     └─────────────┘     └────────┬────────┘   │
 │                                                      │           │
-└──────────────────────────────────────────────────────┼───────────┘
-                                                       │
-                                                       ▼
-                                            ┌─────────────────┐
-                                            │  Your SSE       │
-                                            │  Endpoint       │
-                                            │  (any domain)   │
-                                            └─────────────────┘
+│                                                      │           │
+│  ┌──────────────┐                          ┌─────────▼────────┐  │
+│  │ Time-Travel  │                          │   Your SSE       │  │
+│  │ Ring Buffer  │                          │   Endpoint       │  │
+│  └──────────────┘                          │   (Any Origin)   │  │
+│                                            └──────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ### Why a Proxy?
 
-Browsers block cross-origin SSE connections (CORS). Instead of asking you to configure your server, SSE Monitor includes a built-in proxy that:
-
-1. Receives your target URL
-2. Makes the request server-side (no CORS!)
-3. Pipes the SSE stream back to your browser
-4. Injects your Bearer token if provided
-
-**Zero configuration on your SSE server required.**
-
-### Tech Stack Choices
-
-| Choice | Why |
-|--------|-----|
-| **React 18** | Hooks + concurrent rendering = smooth event streaming |
-| **TypeScript** | Type safety prevents runtime surprises |
-| **Vite** | Instant HMR, built-in dev server for proxy logic |
-| **Tailwind CSS** | Rapid UI iteration, tiny production bundle |
-| **EventSource API** | Native browser SSE handling, battle-tested |
+Browsers block cross-origin SSE connections (CORS) by default. SSE-Observatory includes a built-in lightweight proxy (via Vite) that:
+1. Proxies requests server-side to bypass CORS.
+2. Injects headers (like Auth tokens) securely.
+3. Streams responses back to the client instantly.
 
 ---
 
@@ -220,20 +208,20 @@ npm run lint
 
 ```
 src/
-├── App.tsx              # Main app orchestrator
+├── App.tsx              # Main application orchestrator
 ├── components/          # UI components
-│   ├── Header.tsx       # App header + theme toggle
-│   ├── ProfileTabs.tsx  # Saved connection profiles
-│   ├── ConnectionPanel.tsx  # URL/token inputs
-│   ├── CustomFilters.tsx    # Dynamic filtering UI
-│   ├── EventsList.tsx       # Event stream display
+│   ├── EventTimeline.tsx # Canvas-based timeline visualization
+│   ├── PlaybackControls.tsx # Time-travel controls
+│   ├── CustomFilters.tsx # Advanced filtering UI
+│   ├── QueryInput.tsx    # SQL-like query parser UI
 │   └── ...
-├── hooks/              # Custom React hooks
-│   ├── useTheme.ts     # Dark/light mode
-│   ├── useProfiles.ts  # Profile CRUD
-│   └── useCustomFilters.ts  # Filter logic
-├── types/              # TypeScript interfaces
-└── utils/              # Helper functions
+├── hooks/               # Custom React hooks
+│   ├── useEventStream.ts # SSE connection & Ring Buffer logic
+│   ├── usePlayback.ts    # Replay & Time-travel state machine
+│   ├── useQueryParser.ts # AST parser for query language
+│   └── ...
+├── types/               # TypeScript interfaces
+└── utils/               # Helper functions
 ```
 
 ---
@@ -241,19 +229,6 @@ src/
 ## 🤝 Contributing
 
 Contributions make open source amazing! Here's how to help:
-
-### Bug Reports
-
-Found a bug? [Open an issue](../../issues/new) with:
-- Steps to reproduce
-- Expected vs actual behavior
-- Browser/OS information
-
-### Feature Requests
-
-Have an idea? [Start a discussion](../../discussions) first—let's design it together!
-
-### Pull Requests
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
@@ -266,14 +241,6 @@ Have an idea? [Start a discussion](../../discussions) first—let's design it to
 ## 📜 License
 
 This project is open source and available under the [MIT License](LICENSE).
-
----
-
-## 💭 Final Thoughts
-
-This tool exists because debugging real-time systems shouldn't require a PhD. Whether you're building the next big fintech platform or just trying to figure out why your chat messages are duplicating, I hope this helps.
-
-**Happy debugging!** 🎯
 
 ---
 
