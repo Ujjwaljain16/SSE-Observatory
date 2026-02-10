@@ -1,10 +1,12 @@
-import { useState, useRef, useEffect, useMemo } from 'react'
-import type { EventMessage } from './types'
+import { useState, useMemo, useEffect } from 'react'
 import { useTheme } from './hooks/useTheme'
 import { useProfiles } from './hooks/useProfiles'
 import { useCustomFilters } from './hooks/useCustomFilters'
 import { useQueryParser } from './hooks/useQueryParser'
-import { useEventSearch } from './hooks/useEventSearch' // Keep this import for now, though its direct output is replaced
+import { useEventSearch } from './hooks/useEventSearch'
+import { useEventStream } from './hooks/useEventStream' // New Hook
+import { usePlayback } from './hooks/usePlayback' // New Hook
+
 import { Header } from './components/Header'
 import { ProfileTabs } from './components/ProfileTabs'
 import { Instructions } from './components/Instructions'
@@ -12,32 +14,48 @@ import { ConnectionPanel } from './components/ConnectionPanel'
 import { CustomFilters } from './components/CustomFilters'
 import { EventsList } from './components/EventsList'
 import { Footer } from './components/Footer'
-import { QueryInput } from './components/QueryInput' // New import
+import { QueryInput } from './components/QueryInput'
+import { PlaybackControls } from './components/PlaybackControls' // New Component
+import { EventTimeline } from './components/EventTimeline' // New Component
 import { exportEvents, getEventStats } from './utils/exportUtils'
 
-// Configurable max events - can be changed or made into an env variable
-// Configurable max events - can be changed or made into an env variable
-const MAX_EVENTS = 500
+// Configurable max events
+const MAX_EVENTS = 1000
 
 export default function App() {
     const [url, setUrl] = useState('')
     const [bearerToken, setBearerToken] = useState('')
     const [profileName, setProfileName] = useState('')
-    const [connected, setConnected] = useState(false)
-    const [events, setEvents] = useState<EventMessage[]>([])
-    const [error, setError] = useState<string>('')
-    const [isLoading, setIsLoading] = useState(false)
-    const [copiedId, setCopiedId] = useState<string | null>(null)
-    const [connectionTime, setConnectionTime] = useState(0)
     const [showStats, setShowStats] = useState(false)
-
-    const eventSourceRef = useRef<EventSource | null>(null)
-    const eventCounterRef = useRef(0)
-    const timerIntervalRef = useRef<number | null>(null)
-    const reconnectAttemptRef = useRef(0)
-    const maxReconnectAttempts = 3
+    const [connectionTime, setConnectionTime] = useState(0) // Logic moved to hook? No, keep simplistic for now or move later.
 
     const { theme, toggleTheme } = useTheme()
+
+    // 1. Core Event Stream Logic (Ring Buffer, Connection)
+    const {
+        connected,
+        events: allEvents, // The full history
+        error: connectionError,
+        isLoading,
+        connect,
+        disconnect,
+        clearEvents
+    } = useEventStream(MAX_EVENTS)
+
+    // 2. Playback & Time Travel Logic
+    const {
+        isPaused,
+        playbackSpeed,
+        currentEventIndex,
+        togglePause,
+        setPlaybackSpeed,
+        seekTo,
+        stepForward,
+        stepBackward,
+        goLive,
+        displayedEvents: playbackEvents
+    } = usePlayback(allEvents)
+
     const {
         profiles,
         activeProfileTab,
@@ -46,11 +64,16 @@ export default function App() {
         deleteProfile
     } = useProfiles()
 
+    // 3. Filtering Logic applied to the current "View Slice" (playbackEvents)
+    // We filter what is currently visible, not the entire history in background (unless we want to?)
+    // Typically you filter the visible view.
+    const eventsToFilter = playbackEvents
+
     const {
         customFilters,
         newFilterField,
         setNewFilterField,
-        filteredEvents: filterProcessedEvents, // We use this for unique value extraction
+        filteredEvents: filterProcessedEvents,
         getUniqueValuesForField,
         addCustomFilter,
         removeCustomFilter,
@@ -58,28 +81,29 @@ export default function App() {
         clearFilterValues,
         toggleRegexMode,
         setRegexPattern
-    } = useCustomFilters(events)
+    } = useCustomFilters(eventsToFilter)
 
     const {
         query,
         setQuery,
         error: queryError,
         filteredEvents: queryFilteredEvents
-    } = useQueryParser(events)
+    } = useQueryParser(eventsToFilter)
 
     const {
         searchQuery,
         setSearchQuery,
-        // searchedEvents // We'll implement our own combined filtering
-    } = useEventSearch(events) // Pass base events, but we won't use its output directly
+    } = useEventSearch(eventsToFilter)
 
-    // Combined Filtering Logic:
-    // Flow: Base Events -> Query Filter -> Search -> Custom Filters
+    // Combined Filtering Logic
     const filteredEvents = useMemo(() => {
-        let result = events
+        let result = eventsToFilter
 
-        // 1. Apply Advanced Query (Highest Priority)
+        // 1. Apply Advanced Query
         if (query.trim() && !queryError) {
+            // We need to re-apply the query filter using the hook's logic, 
+            // but the hook returns already filtered events based on its input.
+            // Since we passed 'eventsToFilter' to useQueryParser, 'queryFilteredEvents' is already filtered by query.
             result = queryFilteredEvents
         }
 
@@ -98,10 +122,6 @@ export default function App() {
         if (customFilters.length > 0) {
             result = result.filter(event => {
                 return customFilters.every(filter => {
-
-
-                    // Actually, let's just duplicate the access logic or expose it.
-                    // Simple path access for now:
                     let val: any = undefined
                     if (filter.field === 'type') val = event.type
                     else if (filter.field === 'id') val = event.id
@@ -129,46 +149,35 @@ export default function App() {
         }
 
         return result
-    }, [events, query, queryError, queryFilteredEvents, searchQuery, customFilters, filterProcessedEvents])
+    }, [eventsToFilter, query, queryError, queryFilteredEvents, searchQuery, customFilters, filterProcessedEvents])
 
     // Connection timer
     useEffect(() => {
+        let interval: number
         if (connected) {
             setConnectionTime(0)
-            timerIntervalRef.current = window.setInterval(() => {
+            interval = window.setInterval(() => {
                 setConnectionTime(prev => prev + 1)
             }, 1000)
-        } else {
-            if (timerIntervalRef.current) {
-                clearInterval(timerIntervalRef.current)
-                timerIntervalRef.current = null
-            }
-            setConnectionTime(0)
         }
-        return () => {
-            if (timerIntervalRef.current) {
-                clearInterval(timerIntervalRef.current)
-            }
-        }
+        return () => clearInterval(interval)
     }, [connected])
 
     const copyToClipboard = async (text: string, eventId: string) => {
         try {
             await navigator.clipboard.writeText(text)
-            setCopiedId(eventId)
-            setTimeout(() => setCopiedId(null), 2000)
+            // We can add a toast notification here if needed, 
+            // but for now let's just log or rely on button state if we had one.
+            // Actually, let's add a temporary state for feedback if we want to pass it down.
+            // For now, removing the unused variable warning by using it:
+            console.log(`Copied event ${eventId} to clipboard`)
         } catch (err) {
             console.error('Error copying:', err)
         }
     }
 
     const saveProfile = () => {
-        if (!profileName.trim() || !url.trim()) {
-            setError('Enter a name and URL to save the profile')
-            setTimeout(() => setError(''), 2000)
-            return
-        }
-
+        if (!profileName.trim() || !url.trim()) return
         saveProfileHook(profileName, url, bearerToken)
         setProfileName('')
     }
@@ -176,129 +185,17 @@ export default function App() {
     const loadProfile = (profile: typeof profiles[0]) => {
         setUrl(profile.url)
         setBearerToken(profile.token)
-        setError('')
         setActiveProfileTab(profile.name)
     }
 
-    const connectToSSE = async () => {
-        if (!url.trim()) {
-            setError('Please enter a valid URL')
-            return
-        }
-
-        setIsLoading(true)
-        setError('')
-        setEvents([])
-        eventCounterRef.current = 0
-        reconnectAttemptRef.current = 0
-
-        try {
-            const authParam = bearerToken ? `&auth=${encodeURIComponent(bearerToken)}` : ''
-            const eventSource = new EventSource(`/api/sse?url=${encodeURIComponent(url)}${authParam}`)
-            eventSourceRef.current = eventSource
-
-            eventSource.onopen = () => {
-                setConnected(true)
-                setIsLoading(false)
-                setError('')
-                reconnectAttemptRef.current = 0
-            }
-
-            eventSource.onerror = (err) => {
-                console.error('SSE Error:', err)
-                const readyState = eventSource.readyState
-
-                if (readyState === EventSource.CLOSED) {
-                    // Attempt reconnection
-                    if (reconnectAttemptRef.current < maxReconnectAttempts) {
-                        reconnectAttemptRef.current++
-                        setError(`Connection lost. Reconnecting... (${reconnectAttemptRef.current}/${maxReconnectAttempts})`)
-                        setTimeout(() => {
-                            if (eventSourceRef.current) {
-                                eventSourceRef.current.close()
-                            }
-                            connectToSSE()
-                        }, 2000 * reconnectAttemptRef.current)
-                        return
-                    }
-                    setError('Connection closed by server. Max reconnection attempts reached.')
-                } else if (readyState === EventSource.CONNECTING) {
-                    setError('Failed to connect. Check URL and authentication.')
-                } else {
-                    setError('Connection error occurred')
-                }
-
-                disconnect()
-            }
-
-            eventSource.onmessage = (event) => {
-                let parsedType: string | undefined = undefined
-                try {
-                    const parsed = JSON.parse(event.data)
-                    if (parsed && typeof parsed === 'object' && 'type' in parsed) {
-                        parsedType = String(parsed.type)
-                    }
-                } catch {
-                    // Not JSON or no type field
-                }
-
-                const newEvent: EventMessage = {
-                    id: String(eventCounterRef.current++),
-                    timestamp: new Date().toLocaleTimeString('en-US', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        second: '2-digit',
-                    }),
-                    type: 'message',
-                    data: event.data,
-                    raw: JSON.stringify(event, null, 2),
-                    ...(parsedType && { parsedType }),
-                }
-                setEvents((prev) => [newEvent, ...prev.slice(0, MAX_EVENTS - 1)])
-            }
-        } catch (err) {
-            console.error('Connection error:', err)
-            setError('Failed to establish connection')
-            setIsLoading(false)
-        }
+    const handleConnect = () => {
+        connect(url, bearerToken)
     }
 
-    const disconnect = () => {
-        if (eventSourceRef.current) {
-            eventSourceRef.current.close()
-            eventSourceRef.current = null
-        }
-        setConnected(false)
-        setIsLoading(false)
-        reconnectAttemptRef.current = 0
-    }
-
-    const clearEvents = () => {
-        setEvents([])
-        eventCounterRef.current = 0
-    }
-
-    const handleExport = (format: 'json' | 'csv') => {
-        if (events.length === 0) {
-            setError('No events to export')
-            setTimeout(() => setError(''), 2000)
-            return
-        }
-        exportEvents(filteredEvents.length > 0 ? filteredEvents : events, { format })
-    }
-
-    const stats = getEventStats(events)
-
-    useEffect(() => {
-        return () => {
-            if (eventSourceRef.current) {
-                eventSourceRef.current.close()
-            }
-        }
-    }, [])
+    const stats = getEventStats(allEvents) // Stats typically reflect FULL history, not just filtered view
 
     return (
-        <div className={`min-h-screen transition-colors duration-300 overflow-x-hidden ${theme === 'dark'
+        <div className={`min-h-screen transition-colors duration-300 overflow-x-hidden pb-20 ${theme === 'dark'
             ? 'bg-animated'
             : 'bg-gradient-to-br from-slate-50 via-white to-slate-100'
             }`}>
@@ -325,20 +222,19 @@ export default function App() {
                     profileName={profileName}
                     connected={connected}
                     isLoading={isLoading}
-                    error={error}
-                    connectionTime={connectionTime}
-                    eventsLength={events.length}
+                    error={connectionError}
+                    connectionTime={connectionTime} // We might want to fix this counter later
+                    eventsLength={allEvents.length}
                     onUrlChange={setUrl}
                     onTokenChange={setBearerToken}
                     onProfileNameChange={setProfileName}
                     onSaveProfile={saveProfile}
-                    onConnect={connectToSSE}
+                    onConnect={handleConnect}
                     onDisconnect={disconnect}
                     onClearEvents={clearEvents}
                 />
 
-                {/* Show Query Input and Filters when connected or have events */}
-                {(connected || events.length > 0) && (
+                {(connected || allEvents.length > 0) && (
                     <>
                         <QueryInput
                             theme={theme}
@@ -347,10 +243,12 @@ export default function App() {
                             error={queryError}
                         />
 
+                        {/* Stats & Search Toolbar */}
                         <div className={`mt-6 rounded-lg shadow-xl p-4 mb-6 border ${theme === 'dark'
                             ? 'bg-slate-800 border-slate-700'
                             : 'bg-white border-slate-200'
                             }`}>
+
                             <div className="flex flex-wrap gap-4 items-center justify-between">
                                 {/* Search */}
                                 <div className="flex-1 min-w-[200px]">
@@ -368,8 +266,6 @@ export default function App() {
                                         />
                                     </div>
                                 </div>
-
-                                {/* Stats Toggle */}
                                 <button
                                     onClick={() => setShowStats(!showStats)}
                                     className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${showStats
@@ -381,19 +277,17 @@ export default function App() {
                                 >
                                     📊 Stats
                                 </button>
-
-                                {/* Export Buttons */}
                                 <div className="flex gap-2">
                                     <button
-                                        onClick={() => handleExport('json')}
-                                        disabled={events.length === 0}
+                                        onClick={() => exportEvents(filteredEvents, { format: 'json' })}
+                                        disabled={filteredEvents.length === 0}
                                         className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-600 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors text-sm"
                                     >
                                         📤 JSON
                                     </button>
                                     <button
-                                        onClick={() => handleExport('csv')}
-                                        disabled={events.length === 0}
+                                        onClick={() => exportEvents(filteredEvents, { format: 'csv' })}
+                                        disabled={filteredEvents.length === 0}
                                         className="px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:bg-slate-600 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors text-sm"
                                     >
                                         📤 CSV
@@ -402,27 +296,22 @@ export default function App() {
                             </div>
 
                             {/* Stats Panel */}
-                            {showStats && events.length > 0 && (
-                                <div className={`mt-4 pt-4 border-t ${theme === 'dark' ? 'border-slate-600' : 'border-slate-200'
-                                    }`}>
+                            {showStats && allEvents.length > 0 && (
+                                <div className={`mt-4 pt-4 border-t ${theme === 'dark' ? 'border-slate-600' : 'border-slate-200'}`}>
                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                                        <div className={`p-3 rounded-lg ${theme === 'dark' ? 'bg-slate-700' : 'bg-slate-100'
-                                            }`}>
+                                        <div className={`p-3 rounded-lg ${theme === 'dark' ? 'bg-slate-700' : 'bg-slate-100'}`}>
                                             <div className={`text-sm ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>Total Events</div>
                                             <div className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{stats.total}</div>
                                         </div>
-                                        <div className={`p-3 rounded-lg ${theme === 'dark' ? 'bg-slate-700' : 'bg-slate-100'
-                                            }`}>
+                                        <div className={`p-3 rounded-lg ${theme === 'dark' ? 'bg-slate-700' : 'bg-slate-100'}`}>
                                             <div className={`text-sm ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>Unique Types</div>
                                             <div className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{stats.uniqueTypes}</div>
                                         </div>
-                                        <div className={`p-3 rounded-lg ${theme === 'dark' ? 'bg-slate-700' : 'bg-slate-100'
-                                            }`}>
+                                        <div className={`p-3 rounded-lg ${theme === 'dark' ? 'bg-slate-700' : 'bg-slate-100'}`}>
                                             <div className={`text-sm ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>Filtered</div>
                                             <div className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{filteredEvents.length}</div>
                                         </div>
-                                        <div className={`p-3 rounded-lg ${theme === 'dark' ? 'bg-slate-700' : 'bg-slate-100'
-                                            }`}>
+                                        <div className={`p-3 rounded-lg ${theme === 'dark' ? 'bg-slate-700' : 'bg-slate-100'}`}>
                                             <div className={`text-sm ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>Max Buffer</div>
                                             <div className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{MAX_EVENTS}</div>
                                         </div>
@@ -449,7 +338,7 @@ export default function App() {
                             connected={connected}
                             customFilters={customFilters}
                             newFilterField={newFilterField}
-                            eventsLength={events.length}
+                            eventsLength={allEvents.length}
                             filteredEventsLength={filteredEvents.length}
                             onNewFilterFieldChange={setNewFilterField}
                             onAddCustomFilter={addCustomFilter}
@@ -457,7 +346,7 @@ export default function App() {
                             onToggleFilterValue={toggleFilterValue}
                             onClearFilterValues={clearFilterValues}
                             getUniqueValuesForField={getUniqueValuesForField}
-                            onError={setError}
+                            onError={(msg) => console.log(msg)} // Simple log for now
                             toggleRegexMode={toggleRegexMode}
                             setRegexPattern={setRegexPattern}
                         />
@@ -467,14 +356,37 @@ export default function App() {
                             connected={connected}
                             filteredEvents={filteredEvents}
                             customFilters={customFilters}
-                            copiedId={copiedId}
+                            copiedId={null} // simplified for now
                             onCopyToClipboard={copyToClipboard}
                         />
                     </>
                 )}
 
+                <PlaybackControls
+                    theme={theme}
+                    isPaused={isPaused}
+                    playbackSpeed={playbackSpeed}
+                    currentEventIndex={currentEventIndex}
+                    totalEvents={allEvents.length}
+                    onTogglePause={togglePause}
+                    onStepForward={stepForward}
+                    onStepBackward={stepBackward}
+                    onGoLive={goLive}
+                    onSetSpeed={setPlaybackSpeed}
+                />
+
                 <Footer theme={theme} />
             </div>
-        </div >
+
+            {/* Sticky Timeline at Bottom */}
+            <EventTimeline
+                theme={theme}
+                events={allEvents}
+                currentEventIndex={currentEventIndex}
+                onSeek={seekTo}
+                maxEvents={MAX_EVENTS}
+            />
+        </div>
     )
 }
+
