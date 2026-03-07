@@ -110,11 +110,14 @@ async function openConnection(key: string, url: string, token?: string, useProxy
             broadcast(conn, { type: 'event', payload })
         }
 
-        es.onerror = () => {
-            if (es.readyState === EventSource.CLOSED) {
+        // Catch custom 'error' events sent by our proxy (not just network errors)
+        es.addEventListener('error', (evt: any) => {
+            if (evt.data) {
+                broadcast(conn, { type: 'error', message: evt.data })
+            } else if (es.readyState === EventSource.CLOSED) {
                 broadcast(conn, { type: 'error', message: 'Stream closed' })
             }
-        }
+        })
 
         es.addEventListener('end', () => {
             broadcast(conn, { type: 'disconnected' })
