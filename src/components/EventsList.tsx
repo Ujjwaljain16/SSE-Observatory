@@ -1,5 +1,8 @@
+import { useState, useRef, useEffect } from 'react'
 import type { Theme, EventMessage, CustomFilter } from '../types'
-import { Inbox, Radio, Clock, Hash, Copy, Check, MessageSquare } from 'lucide-react'
+import type { TraceEntry } from '../hooks/useCorrelationTracker'
+import { Inbox, Radio, Clock, Hash, Copy, Check, MessageSquare, SplitSquareHorizontal, GitBranch } from 'lucide-react'
+import { JsonDiffView } from './JsonDiffView'
 
 interface EventsListProps {
     theme: Theme
@@ -7,7 +10,11 @@ interface EventsListProps {
     filteredEvents: EventMessage[]
     customFilters: CustomFilter[]
     copiedId: string | null
+    isLive: boolean
     onCopyToClipboard: (text: string, eventId: string) => void
+    // Correlation tracing (optional — panel absent until events arrive with IDs)
+    getTraceForEvent?: (event: EventMessage) => TraceEntry | null
+    onViewTrace?: (traceId: string) => void
 }
 
 // Modern color palette for event types
@@ -53,9 +60,21 @@ export const EventsList = ({
     filteredEvents,
     customFilters,
     copiedId,
-    onCopyToClipboard
+    isLive,
+    onCopyToClipboard,
+    getTraceForEvent,
+    onViewTrace,
 }: EventsListProps) => {
     const isDark = theme === 'dark'
+    const [diffEventId, setDiffEventId] = useState<string | null>(null)
+    const scrollContainerRef = useRef<HTMLDivElement>(null)
+
+    // Auto-scroll to top when going back to live
+    useEffect(() => {
+        if (isLive && scrollContainerRef.current) {
+            scrollContainerRef.current.scrollTo({ top: 0, behavior: 'smooth' })
+        }
+    }, [isLive])
 
     return (
         <div className={`
@@ -126,14 +145,21 @@ export const EventsList = ({
                     </p>
                 </div>
             ) : (
-                <div className="max-h-[600px] overflow-y-auto p-4 space-y-3">
+                <div
+                    ref={scrollContainerRef}
+                    className="max-h-[600px] overflow-y-auto p-4 space-y-3"
+                >
                     {filteredEvents.map((event, index) => {
                         const typeTheme = getTypeTheme(event.parsedType || event.type)
-                        const isNewest = index === 0
+                        const isNewest = isLive && index === 0
+                        const prevEvent = index + 1 < filteredEvents.length ? filteredEvents[index + 1] : null
+                        const isDiffActive = diffEventId === event.id
+                        const trace = getTraceForEvent ? getTraceForEvent(event) : null
 
                         return (
                             <div
                                 key={event.id}
+                                data-testid="event-row"
                                 className={`
                                     group relative rounded-xl p-4 border transition-all duration-300
                                     hover:scale-[1.01] cursor-default
@@ -158,6 +184,41 @@ export const EventsList = ({
                                             <Hash className="w-3 h-3 opacity-50" />
                                             {event.id}
                                         </span>
+
+                                        {/* Stream Lane Badge — only shown in multi-stream mode */}
+                                        {event.streamId && event.streamColor && (
+                                            <span
+                                                className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-md"
+                                                style={{
+                                                    backgroundColor: `${event.streamColor}22`,
+                                                    color: event.streamColor,
+                                                    border: `1px solid ${event.streamColor}44`,
+                                                }}
+                                            >
+                                                <span
+                                                    className="w-1.5 h-1.5 rounded-full inline-block"
+                                                    style={{ backgroundColor: event.streamColor }}
+                                                />
+                                                {event.streamId.split('-').slice(0, 2).join('-')}
+                                            </span>
+                                        )}
+
+                                        {/* Trace Badge — shown when event belongs to a correlation trace */}
+                                        {trace && onViewTrace && (
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); onViewTrace(trace.id) }}
+                                                title={`View trace: ${trace.id} (${trace.events.length} events)`}
+                                                className="inline-flex items-center gap-1 text-xs font-mono px-2 py-0.5 rounded-md cursor-pointer transition-all hover:scale-105"
+                                                style={{
+                                                    backgroundColor: 'rgba(99,102,241,0.15)',
+                                                    color: '#a5b4fc',
+                                                    border: '1px solid rgba(99,102,241,0.3)',
+                                                }}
+                                            >
+                                                <GitBranch className="w-3 h-3" />
+                                                {trace.id.slice(0, 8)}…
+                                            </button>
+                                        )}
 
                                         {/* Timestamp */}
                                         <span className={`
@@ -198,23 +259,46 @@ export const EventsList = ({
                                         )}
                                     </div>
 
-                                    {/* Copy Button */}
-                                    <button
-                                        onClick={() => onCopyToClipboard(event.data, event.id)}
-                                        className={`
-                                            px-3 py-1.5 text-xs rounded-lg font-semibold transition-all duration-300
-                                            flex items-center gap-1.5 hover:scale-105
-                                            ${copiedId === event.id
-                                                ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg shadow-emerald-500/30'
-                                                : isDark
-                                                    ? 'bg-slate-700/70 hover:bg-slate-600 text-slate-300 border border-slate-600/50'
-                                                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                                            }
-                                        `}
-                                    >
-                                        {copiedId === event.id ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                                        {copiedId === event.id ? 'Copied!' : 'Copy'}
-                                    </button>
+                                    <div className="flex gap-2">
+                                        {/* Compare Button */}
+                                        {prevEvent && (
+                                            <button
+                                                onClick={() => setDiffEventId(isDiffActive ? null : event.id)}
+                                                className={`
+                                                    px-3 py-1.5 text-xs rounded-lg font-semibold transition-all duration-300
+                                                    flex items-center gap-1.5 hover:scale-105
+                                                    ${isDiffActive
+                                                        ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30'
+                                                        : isDark
+                                                            ? 'bg-slate-700/70 hover:bg-slate-600 text-slate-300 border border-slate-600/50'
+                                                            : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                                                    }
+                                                `}
+                                                title="Compare with previous event in list"
+                                            >
+                                                <SplitSquareHorizontal className="w-3 h-3" />
+                                                {isDiffActive ? 'Hide Diff' : 'Compare'}
+                                            </button>
+                                        )}
+
+                                        {/* Copy Button */}
+                                        <button
+                                            onClick={() => onCopyToClipboard(event.data, event.id)}
+                                            className={`
+                                                px-3 py-1.5 text-xs rounded-lg font-semibold transition-all duration-300
+                                                flex items-center gap-1.5 hover:scale-105
+                                                ${copiedId === event.id
+                                                    ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg shadow-emerald-500/30'
+                                                    : isDark
+                                                        ? 'bg-slate-700/70 hover:bg-slate-600 text-slate-300 border border-slate-600/50'
+                                                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                                                }
+                                            `}
+                                        >
+                                            {copiedId === event.id ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                                            {copiedId === event.id ? 'Copied!' : 'Copy'}
+                                        </button>
+                                    </div>
                                 </div>
 
                                 {/* Event Data */}
@@ -227,17 +311,31 @@ export const EventsList = ({
                                 `}>
                                     <pre className={`whitespace-pre-wrap break-words text-xs leading-relaxed ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
                                         {(() => {
+                                            // Coerce to string — event.data must always be a string,
+                                            // but guard defensively against any pipeline bug
+                                            const raw = typeof event.data === 'string'
+                                                ? event.data
+                                                : JSON.stringify(event.data)
                                             try {
-                                                const parsed = JSON.parse(event.data)
-                                                return JSON.stringify(parsed, null, 2)
+                                                return JSON.stringify(JSON.parse(raw), null, 2)
                                             } catch {
-                                                return event.data.length > 500
-                                                    ? event.data.substring(0, 500) + '...'
-                                                    : event.data
+                                                return raw.length > 500
+                                                    ? raw.substring(0, 500) + '...'
+                                                    : raw
                                             }
                                         })()}
                                     </pre>
                                 </div>
+
+                                {isDiffActive && prevEvent && (
+                                    <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700/50 animate-slide-up">
+                                        <JsonDiffView
+                                            theme={theme}
+                                            oldData={(() => { try { return JSON.parse(prevEvent.data) } catch { return prevEvent.data } })()}
+                                            newData={(() => { try { return JSON.parse(event.data) } catch { return event.data } })()}
+                                        />
+                                    </div>
+                                )}
                             </div>
                         )
                     })}
