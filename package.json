@@ -18,7 +18,7 @@
     "dev:all": "concurrently \"npm run dev\" \"npm run chaos\"",
     "chaos": "node test-servers/test-chaos-server.js",
     "simple": "node test-servers/simple-server.js",
-    "build": "tsc -b && vite build && vitepress build docs && mkdir -p dist/docs && cp -r docs/.vitepress/dist/* dist/docs/",
+    "build": "tsc -b && vite build && vitepress build docs && mkdir -p dist/docs && cp -r docs/.vitepress/dist/* dist/docs/ && cp public/logo.png dist/docs/logo.png",
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
     "docs:preview": "vitepress preview docs",
