@@ -45,7 +45,7 @@ export const Header = ({ theme, onToggleTheme }: HeaderProps) => {
             <div className="flex items-center gap-3">
                 {/* Docs Link */}
                 <a
-                    href="https://github.com/Ujjwaljain16/SSE-Observatory/tree/main/docs"
+                    href="/docs/"
                     target="_blank"
                     rel="noopener noreferrer"
                     className={`

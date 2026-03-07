@@ -81,6 +81,7 @@ export const ConnectionPanel = ({
                         value={url}
                         onChange={(e) => onUrlChange(e.target.value)}
                         placeholder="https://api.example.com/sse"
+                        data-testid="url-input"
                         disabled={connected || isLoading}
                         className={`
                             w-full pl-12 pr-4 py-3 rounded-xl border-2 font-medium text-sm
@@ -108,6 +109,7 @@ export const ConnectionPanel = ({
                         value={bearerToken}
                         onChange={(e) => onTokenChange(e.target.value)}
                         placeholder="Bearer token (optional)"
+                        data-testid="token-input"
                         disabled={connected || isLoading}
                         className={`
                             w-full pl-12 pr-4 py-3 rounded-xl border-2 font-medium text-sm
@@ -124,6 +126,7 @@ export const ConnectionPanel = ({
                 <div className="flex gap-2 w-full lg:w-auto">
                     <button
                         onClick={connected ? onDisconnect : onConnect}
+                        data-testid="connect-button"
                         disabled={isLoading || (!connected && !url.trim())}
                         className={`
                             flex-1 lg:flex-none lg:w-32 px-4 py-3 rounded-xl font-bold text-sm transition-all duration-300
@@ -221,7 +224,10 @@ export const ConnectionPanel = ({
                     {!error && (
                         <div className="flex items-center gap-2">
                             <div className={`w-2.5 h-2.5 rounded-full ${connected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse' : isLoading ? 'bg-amber-400 animate-pulse' : 'bg-slate-400'}`} />
-                            <span className={`text-sm font-semibold ${connected ? 'text-emerald-600 dark:text-emerald-400' : isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                            <span
+                                data-testid="connection-status"
+                                className={`text-sm font-semibold ${connected ? 'text-emerald-600 dark:text-emerald-400' : isDark ? 'text-slate-400' : 'text-slate-500'}`}
+                            >
                                 {connected ? (
                                     <span>Connected to <span className="text-slate-700 dark:text-slate-300 font-mono ml-1">{(() => { try { return new URL(url).hostname } catch { return 'Endpoint' } })()}</span></span>
                                 ) : isLoading ? 'Connecting...' : 'Disconnected'}

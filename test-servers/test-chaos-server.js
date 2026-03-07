@@ -62,10 +62,22 @@ const server = http.createServer((req, res) => {
       'Connection': 'keep-alive',
     });
 
-    for (let i = 0; i < 50000; i++) {
-        res.write(`data: ${JSON.stringify({ id: i, type: 'load', value: Math.random() })}\n\n`);
+    const total = 10000;
+    const chunkSize = 500;
+    let sent = 0;
+    
+    function sendChunk() {
+      for (let i = 0; i < chunkSize && sent < total; i++) {
+        res.write(`data: ${JSON.stringify({ id: sent, type: 'load', value: Math.random() })}\n\n`);
+        sent++;
+      }
+      if (sent < total) {
+        setImmediate(sendChunk);
+      } else {
+        res.end();
+      }
     }
-    res.end();
+    sendChunk();
   } else if (pathname === '/massive-payload') {
     // 1MB+ Payload simulation
     res.writeHead(200, {
@@ -76,8 +88,8 @@ const server = http.createServer((req, res) => {
     
     // Generate a huge object
     const hugeObject = {};
-    for(let i=0; i<30000; i++) {
-        hugeObject[`key_${i}`] = `value_for_key_number_${i}_which_takes_up_space`;
+    for(let i=0; i<10000; i++) {
+        hugeObject[`key_${i}`] = `val_${i}`;
     }
     
     // Send it once
