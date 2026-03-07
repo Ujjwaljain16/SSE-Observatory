@@ -1,4 +1,5 @@
 import { EventMessage } from '../types'
+import { getFieldValue } from './eventUtils'
 
 type Operator = '==' | '!=' | '>' | '<' | '>=' | '<=' | 'contains' | 'matches'
 type LogicalOperator = 'AND' | 'OR'
@@ -21,7 +22,8 @@ export class QueryParser {
 
     private tokenize(query: string): string[] {
         // Regex to match tokens: strings, numbers, operators, parentheses, keywords
-        const regex = /\s*(=>|<=|==|!=|[><()]|AND|OR|contains|matches|"[^"]*"|'[^']*'|[\w\.]+)\s*/g
+        // NOTE: `=>` is intentionally excluded — it is not a valid DSL operator
+        const regex = /\s*(<=|==|!=|[><()]|AND|OR|contains|matches|"[^"]*"|'[^']*'|[\w.]+)\s*/g
         return query.match(regex)?.map(t => t.trim()).filter(t => t) || []
     }
 
@@ -104,9 +106,17 @@ export class QueryParser {
             }
         }
 
+        // For `matches`, compile the RegExp once here in the closure — not per event
+        const matchesRegex = node.operator === 'matches'
+            ? (() => {
+                try { return new RegExp(node.right, 'i') }
+                catch { return null }
+            })()
+            : null
+
         return (event) => {
             const fieldPath = node.left as string
-            const fieldValue = this.getFieldValue(event, fieldPath)
+            const fieldValue = getFieldValue(event, fieldPath)
             const targetValue = node.right
 
             switch (node.operator) {
@@ -117,13 +127,9 @@ export class QueryParser {
                 case '>=': return Number(fieldValue) >= Number(targetValue)
                 case '<=': return Number(fieldValue) <= Number(targetValue)
                 case 'contains': return String(fieldValue).toLowerCase().includes(String(targetValue).toLowerCase())
-                case 'matches': return new RegExp(targetValue, 'i').test(String(fieldValue))
+                case 'matches': return matchesRegex !== null && matchesRegex.test(String(fieldValue))
                 default: return false
             }
         }
-    }
-
-    private getFieldValue(event: any, path: string): any {
-        return path.split('.').reduce((obj, key) => obj?.[key], event)
     }
 }
