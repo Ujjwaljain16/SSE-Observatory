@@ -1,126 +1,184 @@
 import { defineConfig, loadEnv, Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
-import http from 'http'
-import https from 'https'
-import url from 'url'
+import * as http from 'http'
+import * as https from 'https'
+import * as url from 'url'
+
+// Max body size accepted on POST /api/mock/session (10 MB)
+const MAX_MOCK_BODY_BYTES = 10 * 1024 * 1024
+
+let mockSession: any = null
 
 function sseProxyPlugin(): Plugin {
   return {
     name: 'sse-proxy',
     configureServer(server) {
-      return () => {
-        server.middlewares.use((req: any, res: any, next: any) => {
-          if (!req.url?.startsWith('/api/sse')) {
-            return next()
-          }
+      server.middlewares.use((req: any, res: any, next: any) => {
+        const parsedUrl = url.parse(req.url || '', true)
+        const pathName = parsedUrl.pathname
 
-          // Habilitar CORS
+        // 1. OPTIONS / CORS
+        if (pathName?.startsWith('/api')) {
           res.setHeader('Access-Control-Allow-Origin', '*')
           res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
           res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
-
           if (req.method === 'OPTIONS') {
             res.writeHead(200)
             res.end()
             return
           }
+        }
 
-          const queryParams = new url.URLSearchParams(url.parse(req.url, true).search)
-          const targetUrl = queryParams.get('url')
-          const authHeader = queryParams.get('auth')
+        // 2. Mock Session Upload
+        if (pathName === '/api/mock/session' && req.method === 'POST') {
+          let body = ''
+          let bodyBytes = 0
+          req.on('data', (chunk: Buffer) => {
+            bodyBytes += chunk.length
+            if (bodyBytes > MAX_MOCK_BODY_BYTES) {
+              res.writeHead(413, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({ error: 'Payload too large (max 10 MB)' }))
+              req.destroy()
+              return
+            }
+            body += chunk.toString()
+          })
+          req.on('end', () => {
+            if (res.writableEnded) return
+            try {
+              mockSession = JSON.parse(body)
+              res.writeHead(200, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({ success: true, events: mockSession.events?.length || 0 }))
+            } catch (e) {
+              res.writeHead(400, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({ error: 'Invalid JSON' }))
+            }
+          })
+          return
+        }
 
-          if (!targetUrl) {
-            res.writeHead(400, { 'Content-Type': 'application/json' })
-            res.end(JSON.stringify({ error: 'Missing url parameter' }))
+        // 3. Mock Stream Replay
+        if (pathName?.startsWith('/api/mock/stream') && req.method === 'GET') {
+          if (!mockSession) {
+            res.writeHead(404, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ error: 'No mock session loaded' }))
             return
           }
+          const speedMultiplier = parseFloat(parsedUrl.query.speed as string || '1') || 1
+          const loop = parsedUrl.query.loop === 'true'
 
+          res.writeHead(200, {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+          })
+
+          let isDestroyed = false
+          req.on('close', () => { isDestroyed = true })
+
+          const play = async () => {
+            do {
+              for (const event of (mockSession.events || [])) {
+                if (isDestroyed) return
+                const delay = (event.deltaMs || 0) / speedMultiplier
+                if (delay > 0) await new Promise(r => setTimeout(r, delay))
+                if (isDestroyed) return
+
+                let finalData = event.data
+                try {
+                  const jj = JSON.parse(event.data)
+                  if (!jj.type && event.type) {
+                    jj.type = event.type
+                    finalData = JSON.stringify(jj)
+                  }
+                } catch (e) { }
+
+                if (event.id) res.write(`id: ${event.id}\n`)
+                finalData.split('\n').forEach((l: string) => res.write(`data: ${l}\n`))
+                res.write('\n')
+              }
+            } while (loop && !isDestroyed)
+            if (!isDestroyed) res.end()
+          }
+          play()
+          return
+        }
+
+        // 4. SSE Proxy (For Monitor Mode)
+        if (pathName === '/api/sse' && req.method === 'GET') {
+          const targetUrl = parsedUrl.query.url as string
+          if (!targetUrl) {
+            res.writeHead(400, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ error: 'Missing url' }))
+            return
+          }
           try {
-            const parsedUrl = new URL(targetUrl)
-            const protocol = parsedUrl.protocol === 'https:' ? https : http
-
-            const options: any = {
-              method: 'GET',
+            const target = new URL(targetUrl)
+            const protocol = target.protocol === 'https:' ? https : http
+            const proxyReq = protocol.request(target, {
               headers: {
                 'Accept': 'text/event-stream',
-                'Cache-Control': 'no-cache',
-                'Connection': 'keep-alive',
+                ...(parsedUrl.query.auth ? { 'Authorization': parsedUrl.query.auth as string } : {})
               }
-            }
-
-            if (authHeader) {
-              options.headers['Authorization'] = authHeader
-            }
-
-            console.log(`[SSE Proxy] Conectando a: ${targetUrl}`)
-
-            const proxyReq = protocol.request(parsedUrl, options, (proxyRes: any) => {
-              console.log(`[SSE Proxy] Status: ${proxyRes.statusCode}`)
-
-              if (proxyRes.statusCode === 401) {
-                res.writeHead(401, { 'Content-Type': 'text/event-stream' })
-                res.write('event: error\n')
-                res.write('data: {"error": "Unauthorized - Invalid authentication"}\n\n')
-                res.end()
-                return
-              }
-
-              if (proxyRes.statusCode !== 200) {
-                res.writeHead(proxyRes.statusCode || 500, { 'Content-Type': 'text/event-stream' })
-                res.write('event: error\n')
-                res.write(`data: {"error": "Server returned ${proxyRes.statusCode}"}\n\n`)
-                res.end()
-                return
-              }
-
-              res.writeHead(200, {
+            }, (proxyRes) => {
+              res.writeHead(proxyRes.statusCode || 200, {
                 'Content-Type': 'text/event-stream',
                 'Cache-Control': 'no-cache',
                 'Connection': 'keep-alive',
                 'Access-Control-Allow-Origin': '*',
+                'X-Accel-Buffering': 'no'
               })
-
-              proxyRes.on('data', (chunk: Buffer) => {
-                res.write(chunk)
-              })
-
-              proxyRes.on('end', () => {
-                res.end()
-              })
-
-              proxyRes.on('error', (err: Error) => {
-                console.error('[SSE Proxy] Response error:', err.message)
-                res.write('event: error\n')
-                res.write(`data: {"error": "${err.message}"}\n\n`)
-                res.end()
-              })
+              proxyRes.pipe(res)
             })
-
-            proxyReq.on('error', (err: Error) => {
-              console.error('[SSE Proxy] Request error:', err.message)
-              res.writeHead(500, { 'Content-Type': 'application/json' })
-              res.end(JSON.stringify({ error: err.message }))
+            proxyReq.on('error', (err) => {
+              console.error('[Proxy Error]', err.message)
+              if (!res.headersSent) {
+                res.writeHead(502, {
+                  'Content-Type': 'text/event-stream',
+                  'Cache-Control': 'no-cache',
+                  'Access-Control-Allow-Origin': '*'
+                })
+              }
+              res.write(`event: error\ndata: {"error":"Target server unreachable","details":"${err.message}"}\n\n`)
+              res.end()
             })
-
             proxyReq.end()
-          } catch (err) {
-            console.error('[SSE Proxy] Error:', err instanceof Error ? err.message : String(err))
-            res.writeHead(400, { 'Content-Type': 'application/json' })
-            res.end(JSON.stringify({ error: 'Invalid URL' }))
+          } catch (e: any) {
+            console.error('[Proxy Exception]', e.message)
+            if (!res.headersSent) {
+              res.writeHead(400, {
+                'Content-Type': 'text/event-stream',
+                'Access-Control-Allow-Origin': '*'
+              })
+            }
+            res.write(`event: error\ndata: {"error":"Invalid proxy request","details":"${e.message}"}\n\n`)
+            res.end()
           }
-        })
-      }
+          return
+        }
+
+        // 5. Catch-all for /api/mock
+        if (pathName?.startsWith('/api/mock')) {
+          res.writeHead(404, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ error: 'Mock endpoint not found' }))
+          return
+        }
+
+        next()
+      })
     }
   }
 }
 
-export default defineConfig(({ command, mode }) => {
+export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
-  
+  void env // suppress unused-variable warning
+
   return {
     plugins: [react(), sseProxyPlugin()],
     server: {
-      port: parseInt(env.VITE_PORT || '3000', 10),
+      port: 3001,
+      strictPort: true,
       open: true
     }
   }
