@@ -25,22 +25,35 @@ export const formatTime = (seconds: number): string => {
 
 export const getFieldValue = (event: EventMessage, fieldPath: string): string | null => {
     try {
-        let obj: any = {}
-        try {
-            obj = JSON.parse(event.data)
-        } catch {
-            obj = { data: event.data, type: event.type, parsedType: event.parsedType }
-        }
+        // Handle root event properties first
+        if (fieldPath === 'id') return event.id
+        if (fieldPath === 'type') return event.type
+        if (fieldPath === 'timestamp') return event.timestamp
+        if (fieldPath === 'parsedType') return event.parsedType || null
 
-        const keys = fieldPath.split('.')
-        let value = obj
-        for (const key of keys) {
-            if (value && typeof value === 'object' && key in value) {
-                value = value[key]
-            } else {
+        // Try to parse data for deeper properties
+        let value: any = null
+        if (fieldPath.startsWith('data.')) {
+            try {
+                const parsed = JSON.parse(event.data)
+                const keys = fieldPath.replace('data.', '').split('.')
+                value = parsed
+                for (const key of keys) {
+                    if (value && typeof value === 'object' && key in value) {
+                        value = value[key]
+                    } else {
+                        return null
+                    }
+                }
+            } catch {
                 return null
             }
+        } else if (fieldPath === 'data') {
+            return event.data
+        } else {
+            return null
         }
+
         return value != null ? String(value) : null
     } catch {
         return null
