@@ -9,7 +9,10 @@ const server = http.createServer((req, res) => {
     return res.end();
   }
 
-  if (req.url === '/chaos-stream') {
+  const parsedUrl = new URL(req.url, `http://${req.headers.host}`);
+  const pathname = parsedUrl.pathname;
+
+  if (pathname === '/chaos-stream') {
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
@@ -52,7 +55,7 @@ const server = http.createServer((req, res) => {
     }, 500);
 
     // High throughput simulation endpoint
-  } else if (req.url === '/load-stream') {
+  } else if (pathname === '/load-stream') {
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
@@ -63,7 +66,7 @@ const server = http.createServer((req, res) => {
         res.write(`data: ${JSON.stringify({ id: i, type: 'load', value: Math.random() })}\n\n`);
     }
     res.end();
-  } else if (req.url === '/massive-payload') {
+  } else if (pathname === '/massive-payload') {
     // 1MB+ Payload simulation
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
@@ -85,9 +88,38 @@ const server = http.createServer((req, res) => {
         res.write(`data: ${JSON.stringify({ id: "huge-2", type: "massive", data: hugeObject })}\n\n`);
         res.end();
     }, 1000);
+  } else if (req.url?.startsWith('/api/burst')) {
+    // High-count burst endpoint: /api/burst?count=N
+    const url = new URL(req.url, 'http://localhost:4000')
+    const count = parseInt(url.searchParams.get('count') || '1000', 10)
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    })
+    for (let i = 0; i < count; i++) {
+      res.write(`data: ${JSON.stringify({ id: `msg-${i}`, seq: i, type: 'burst', value: Math.random() })}\n\n`)
+    }
+    res.end()
+  } else if (req.url?.startsWith('/api/stream')) {
+    // Continuous stream at a given frequency: /api/stream?freq=N (events per second)
+    const url = new URL(req.url, 'http://localhost:4000')
+    const freq = parseInt(url.searchParams.get('freq') || '1000', 10)
+    const intervalMs = Math.max(1, Math.floor(1000 / freq))
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    })
+    let seq = 0
+    const iv = setInterval(() => {
+      res.write(`data: ${JSON.stringify({ id: `msg-${seq}`, seq, latency: Math.floor(Math.random() * 800), type: 'stream' })}\n\n`)
+      seq++
+    }, intervalMs)
+    req.on('close', () => clearInterval(iv))
   } else {
-    res.writeHead(404);
-    res.end();
+    res.writeHead(404)
+    res.end()
   }
 });
 

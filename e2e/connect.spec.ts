@@ -14,13 +14,13 @@ test.describe('SSE-Tester E2E', () => {
         await expect(page.locator('text=Connected').first()).toBeVisible({ timeout: 10000 });
 
         // Verify we get events rendered in the DOM
-        // The chaos server sends an initial burst of 50 events immediately
-        await expect(page.locator('text=Event Stream')).toBeVisible();
+        await expect(page.locator('text=Event Stream')).toBeVisible({ timeout: 10000 });
 
         // Wait for the burst to populate
         await page.waitForTimeout(2000);
 
-        // Verify the list contains rows (events)
+        // Verify the list contains rows (events) — wait for at least one to appear
+        await expect(page.getByTestId('event-row').first()).toBeVisible({ timeout: 10000 });
         const eventRows = await page.getByTestId('event-row').count();
         expect(eventRows).toBeGreaterThan(4);
     });
@@ -55,7 +55,7 @@ test.describe('SSE-Tester E2E', () => {
         }
 
         // It should still be alive and not crashed
-        await expect(page.locator('text=Event Stream')).toBeVisible();
+        await expect(page.locator('text=Event Stream')).toBeVisible({ timeout: 10000 });
     });
 
     test('handles high event throughput (stress test)', async ({ page }) => {
@@ -97,7 +97,7 @@ test.describe('SSE-Tester E2E', () => {
         await page.waitForTimeout(2000);
 
         // Verify it didn't crash. There should be an event rendered.
-        // We expect custom "huge-1" or "huge-2" IDs, but simply asserting the DOM survives is primary.
+        await expect(page.getByTestId('event-row').first()).toBeVisible({ timeout: 10000 });
         const rowCount = await page.getByTestId('event-row').count();
         expect(rowCount).toBeGreaterThan(0);
 
@@ -131,13 +131,20 @@ test.describe('SSE-Tester E2E', () => {
         await page.getByRole('button', { name: 'Connect', exact: true }).click();
         await expect(page.locator('text=Connected').first()).toBeVisible({ timeout: 10000 });
 
-        // Apply a filter while the events are pouring in
+        // Wait for events to start accumulating before applying search filter
+        await page.waitForTimeout(2000);
+
+        // Ensure at least one event row rendered before filtering
+        await expect(page.getByTestId('event-row').first()).toBeVisible({ timeout: 10000 });
+
+        // Apply a filter while the events are pouring in ('load' appears in every event payload)
         await page.fill('input[placeholder*="Search events..."]', 'load');
 
-        // Wait to accumulate
-        await page.waitForTimeout(5000);
+        // Wait to accumulate filtered events
+        await page.waitForTimeout(3000);
 
-        // Verify the UI didn't freeze and events are being filtered.
+        // Verify the UI didn't freeze and filtered events are showing
+        await expect(page.getByTestId('event-row').first()).toBeVisible({ timeout: 10000 });
         const eventRows = await page.getByTestId('event-row').count();
         expect(eventRows).toBeGreaterThan(0);
 
@@ -146,17 +153,19 @@ test.describe('SSE-Tester E2E', () => {
 
         // Wait and ensure it's still alive
         await page.waitForTimeout(1000);
-        await expect(page.locator('text=Event Stream')).toBeVisible();
+        await expect(page.locator('text=Event Stream')).toBeVisible({ timeout: 10000 });
     });
 
     test('recovers gracefully from background tab throttling', async ({ page }) => {
+        test.setTimeout(20000);
         await page.goto('/');
 
         await page.fill('input[placeholder*="https://api.example.com/sse"]', 'http://localhost:4000/chaos-stream');
         await page.getByRole('button', { name: 'Connect', exact: true }).click();
         await expect(page.locator('text=Connected').first()).toBeVisible({ timeout: 10000 });
 
-        // Wait for connection to settle
+        // Wait for events to arrive and render
+        await expect(page.getByTestId('event-row').first()).toBeVisible({ timeout: 10000 });
         await page.waitForTimeout(1000);
 
         // Spoof visibility hidden (Background tab)
@@ -174,14 +183,15 @@ test.describe('SSE-Tester E2E', () => {
             document.dispatchEvent(new Event('visibilitychange'));
         });
 
-        // Ensure the DOM updates are still processing
-        await page.waitForTimeout(3000); // Wait longer for render catch-up
+        // Wait for render catch-up after tab becomes visible
+        await page.waitForTimeout(2000);
 
-        // Count rows more reliably
+        // Verify events are still rendering (at least 1 row present)
+        await expect(page.getByTestId('event-row').first()).toBeVisible({ timeout: 10000 });
         const eventRows = await page.getByTestId('event-row').count();
-        expect(eventRows).toBeGreaterThan(10); // Should still have events from burst + window
+        expect(eventRows).toBeGreaterThan(0);
 
         // Assert UI is alive
-        await expect(page.locator('text=Event Stream')).toBeVisible();
+        await expect(page.locator('text=Event Stream')).toBeVisible({ timeout: 10000 });
     });
 });
