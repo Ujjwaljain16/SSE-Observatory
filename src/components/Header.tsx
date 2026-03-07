@@ -1,5 +1,5 @@
 import type { Theme } from '../types'
-import { Activity, Sun, Moon, Github } from 'lucide-react'
+import { Activity, Sun, Moon, Github, BookOpen } from 'lucide-react'
 
 interface HeaderProps {
     theme: Theme
@@ -11,7 +11,7 @@ export const Header = ({ theme, onToggleTheme }: HeaderProps) => {
         <div className="flex items-center justify-between mb-10 animate-fade-in">
             <div className="relative">
                 {/* Decorative glow */}
-                <div className="absolute -inset-4 bg-gradient-to-r from-sky-600/20 via-blue-600/20 to-cyan-600/20 blur-3xl opacity-60 -z-10" />
+                <div className="absolute -inset-4 bg-gradient-to-r from-slate-600/10 via-slate-500/10 to-slate-400/10 blur-3xl opacity-40 -z-10" />
 
                 <div className="flex items-center gap-4">
                     {/* Animated Logo */}
@@ -43,18 +43,36 @@ export const Header = ({ theme, onToggleTheme }: HeaderProps) => {
             </div>
 
             <div className="flex items-center gap-3">
-                {/* GitHub Link */}
+                {/* Docs Link */}
                 <a
-                    href="https://github.com"
+                    href="https://github.com/Ujjwaljain16/SSE-Observatory/tree/main/docs"
                     target="_blank"
                     rel="noopener noreferrer"
                     className={`
-                        p-3 rounded-xl transition-all duration-300 hover:scale-105
+                        p-2.5 rounded-xl transition-all duration-300 hover:scale-105
                         ${theme === 'dark'
                             ? 'bg-slate-800/50 hover:bg-slate-700/70 text-slate-400 hover:text-white border border-slate-700/50'
                             : 'bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 border border-slate-200'
                         }
                     `}
+                    title="Documentation"
+                >
+                    <BookOpen className="w-5 h-5" />
+                </a>
+
+                {/* GitHub Link */}
+                <a
+                    href="https://github.com/Ujjwaljain16/SSE-Observatory"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`
+                        p-2.5 rounded-xl transition-all duration-300 hover:scale-105
+                        ${theme === 'dark'
+                            ? 'bg-slate-800/50 hover:bg-slate-700/70 text-slate-400 hover:text-white border border-slate-700/50'
+                            : 'bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 border border-slate-200'
+                        }
+                    `}
+                    title="View Source"
                 >
                     <Github className="w-5 h-5" />
                 </a>
@@ -63,18 +81,15 @@ export const Header = ({ theme, onToggleTheme }: HeaderProps) => {
                 <button
                     onClick={onToggleTheme}
                     className={`
-                        px-5 py-3 rounded-xl font-semibold transition-all duration-300
-                        flex items-center gap-2 hover:scale-105 group
+                        p-2.5 rounded-xl transition-all duration-300 hover:scale-105
                         ${theme === 'dark'
-                            ? 'bg-gradient-to-r from-amber-400 to-orange-400 text-slate-900 shadow-lg shadow-amber-500/30 hover:shadow-amber-500/50'
-                            : 'bg-gradient-to-r from-slate-700 to-slate-900 text-white shadow-lg shadow-slate-800/30 hover:shadow-slate-800/50'
+                            ? 'bg-slate-800/50 hover:bg-slate-700/70 text-sky-400 hover:text-sky-300 border border-slate-700/50'
+                            : 'bg-slate-100 hover:bg-slate-200 text-orange-500 hover:text-orange-600 border border-slate-200'
                         }
                     `}
+                    title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Mode`}
                 >
-                    <span className="text-xl transition-transform duration-300 group-hover:rotate-12">
-                        {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-                    </span>
-                    <span className="hidden sm:inline">{theme === 'dark' ? 'Light' : 'Dark'}</span>
+                    {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
                 </button>
             </div>
         </div>

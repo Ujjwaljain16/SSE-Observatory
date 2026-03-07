@@ -39,7 +39,7 @@ export const InterceptorEditor = ({
             ? 'bg-slate-900/70 border-slate-700/50 shadow-xl shadow-black/20'
             : 'bg-white border-slate-200 shadow-xl shadow-slate-300/20'
             }`}>
-            {/* Header */}
+
             <div className="flex items-center gap-3 mb-5">
                 <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-gradient-to-br from-amber-500 to-orange-600 shadow-lg shadow-amber-500/30">
                     <Zap className="w-5 h-5 text-white" />
@@ -85,11 +85,8 @@ export const InterceptorEditor = ({
                                 e.preventDefault()
                                 if (!draggedId || draggedId === interceptor.id) return
                                 const fromIndex = interceptors.findIndex(i => i.id === draggedId)
-                                // Only reorder if valid bounds
                                 if (fromIndex !== -1 && fromIndex !== index) {
-                                    // Defer the exact React state change to next tick so
-                                    // HTML5 Drag can finish cleaning up the DOM ghost image.
-                                    // This strictly prevents the React 'insertBefore' NotFoundError.
+                                    // defer reordering to next tick to avoid dom sync conflicts during html5 drag release
                                     setTimeout(() => onReorder(fromIndex, index), 0)
                                 }
                                 setDraggedId(null)
@@ -101,25 +98,25 @@ export const InterceptorEditor = ({
                             className={`rounded-xl border transition-all ${isDark ? 'border-slate-700 bg-slate-800/40' : 'border-slate-200 bg-slate-50'
                                 } ${!interceptor.enabled ? 'opacity-50' : ''} ${draggedId === interceptor.id ? 'opacity-40 scale-[0.98]' : ''}`}
                         >
-                            {/* Interceptor Header Row */}
+
                             <div
                                 className="flex items-center gap-2 p-3 cursor-pointer select-none"
                                 onClick={() => setExpandedId(expandedId === interceptor.id ? null : interceptor.id)}
                             >
-                                {/* Drag Grip */}
+
                                 <div className={`cursor-grab active:cursor-grabbing p-1 -ml-1 ${isDark ? 'text-slate-600 hover:text-slate-400' : 'text-slate-400 hover:text-slate-600'}`}>
                                     <GripVertical className="w-4 h-4" />
                                 </div>
 
 
-                                {/* Priority badge */}
+
                                 <span className={`text-xs font-mono font-bold px-1.5 py-0.5 rounded ${isDark ? 'bg-slate-700 text-slate-400' : 'bg-slate-200 text-slate-500'}`}>
                                     #{index + 1}
                                 </span>
 
 
 
-                                {/* Name w/ Edit Toggle */}
+
                                 {editingId === interceptor.id ? (
                                     <input
                                         autoFocus
@@ -159,7 +156,7 @@ export const InterceptorEditor = ({
                                     </span>
                                 )}
 
-                                {/* Status */}
+
                                 {interceptor.compileError ? (
                                     <span key={`compile-${interceptor.id}`} className="flex items-center gap-1 text-xs text-red-400">
                                         <AlertCircle className="w-3.5 h-3.5" /> Compile Error
@@ -174,15 +171,17 @@ export const InterceptorEditor = ({
                                     </span>
                                 )}
 
-                                {/* Toggle */}
-                                <button onClick={e => { e.stopPropagation(); onToggle(interceptor.id) }}>
-                                    {interceptor.enabled
-                                        ? <ToggleRight className="w-5 h-5 text-amber-400" />
-                                        : <ToggleLeft className={`w-5 h-5 ${isDark ? 'text-slate-600' : 'text-slate-400'}`} />
-                                    }
+
+                                <button onClick={e => { e.stopPropagation(); onToggle(interceptor.id) }} className="flex items-center justify-center">
+                                    <span className="flex">
+                                        {interceptor.enabled
+                                            ? <ToggleRight className="w-5 h-5 text-amber-400" />
+                                            : <ToggleLeft className={`w-5 h-5 ${isDark ? 'text-slate-600' : 'text-slate-400'}`} />
+                                        }
+                                    </span>
                                 </button>
 
-                                {/* Remove */}
+
                                 <button
                                     onClick={e => { e.stopPropagation(); onRemove(interceptor.id) }}
                                     className="p-1 rounded text-red-400/60 hover:text-red-400 hover:bg-red-500/10 transition-all"
@@ -191,7 +190,7 @@ export const InterceptorEditor = ({
                                 </button>
                             </div>
 
-                            {/* Expanded: Code Editor */}
+
                             {expandedId === interceptor.id && (
                                 <div className="px-3 pb-3">
                                     {interceptor.compileError && (
@@ -215,7 +214,7 @@ export const InterceptorEditor = ({
                                             }`}
                                     />
 
-                                    {/* Live preview */}
+
                                     {lastEventRaw && (
                                         <div className="mt-3 grid grid-cols-2 gap-2">
                                             <div>
@@ -244,7 +243,8 @@ export const InterceptorEditor = ({
                         </div>
                     ))}
                 </div>
-            )}
-        </div>
+            )
+            }
+        </div >
     )
 }

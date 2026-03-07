@@ -35,7 +35,7 @@ export const PlaybackControls = ({
                 : 'bg-white/90 border-slate-200/50 shadow-slate-300/40'
             }
         `}>
-            {/* Step Backward (Older) */}
+
             <button
                 onClick={onStepBackward}
                 disabled={currentEventIndex >= totalEvents - 1}
@@ -48,7 +48,7 @@ export const PlaybackControls = ({
                 <SkipBack className="w-5 h-5" />
             </button>
 
-            {/* Play/Pause */}
+
             <button
                 onClick={onTogglePause}
                 className={`
@@ -63,7 +63,7 @@ export const PlaybackControls = ({
                 {isPaused ? <Play className="w-6 h-6 fill-current" /> : <Pause className="w-6 h-6 fill-current" />}
             </button>
 
-            {/* Step Forward (Newer) */}
+
             <button
                 onClick={onStepForward}
                 disabled={currentEventIndex === 0}
@@ -78,7 +78,7 @@ export const PlaybackControls = ({
 
             <div className={`w-px h-8 mx-1 ${isDark ? 'bg-slate-700' : 'bg-slate-200'}`} />
 
-            {/* Live Indicator / Button */}
+
             <button
                 onClick={onGoLive}
                 disabled={isLive}
@@ -96,7 +96,7 @@ export const PlaybackControls = ({
                 {isLive ? 'LIVE' : 'Go Live'}
             </button>
 
-            {/* Event Counter / Scrubber info */}
+
             <div className={`ml-2 text-xs font-mono tabular-nums ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
                 {currentEventIndex > 0 && `-${currentEventIndex} events ago`}
             </div>

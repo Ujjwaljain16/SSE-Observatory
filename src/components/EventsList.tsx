@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import type { Theme, EventMessage, CustomFilter } from '../types'
 import type { TraceEntry } from '../hooks/useCorrelationTracker'
 import { Inbox, Radio, Clock, Hash, Copy, Check, MessageSquare, SplitSquareHorizontal, GitBranch } from 'lucide-react'
@@ -12,12 +13,10 @@ interface EventsListProps {
     copiedId: string | null
     isLive: boolean
     onCopyToClipboard: (text: string, eventId: string) => void
-    // Correlation tracing (optional — panel absent until events arrive with IDs)
     getTraceForEvent?: (event: EventMessage) => TraceEntry | null
     onViewTrace?: (traceId: string) => void
 }
 
-// Modern color palette for event types
 const getTypeTheme = (type: string) => {
     const themes: Record<string, { bg: string; text: string; border: string; glow: string }> = {
         message: {
@@ -69,12 +68,18 @@ export const EventsList = ({
     const [diffEventId, setDiffEventId] = useState<string | null>(null)
     const scrollContainerRef = useRef<HTMLDivElement>(null)
 
-    // Auto-scroll to top when going back to live
     useEffect(() => {
         if (isLive && scrollContainerRef.current) {
             scrollContainerRef.current.scrollTo({ top: 0, behavior: 'smooth' })
         }
     }, [isLive])
+
+    const rowVirtualizer = useVirtualizer({
+        count: filteredEvents.length,
+        getScrollElement: () => scrollContainerRef.current,
+        estimateSize: () => 180,
+        overscan: 5,
+    })
 
     return (
         <div className={`
@@ -85,7 +90,6 @@ export const EventsList = ({
                 : 'bg-white/80 border-slate-200/70 shadow-xl shadow-slate-300/20'
             }
         `}>
-            {/* Header */}
             <div className={`
                 px-6 py-4 border-b flex items-center justify-between
                 ${isDark
@@ -118,7 +122,6 @@ export const EventsList = ({
                 )}
             </div>
 
-            {/* Empty State */}
             {filteredEvents.length === 0 ? (
                 <div className="px-6 py-16 text-center">
                     <div className={`
@@ -147,198 +150,204 @@ export const EventsList = ({
             ) : (
                 <div
                     ref={scrollContainerRef}
-                    className="max-h-[600px] overflow-y-auto p-4 space-y-3"
+                    className="h-[600px] overflow-y-auto p-4 relative"
                 >
-                    {filteredEvents.map((event, index) => {
-                        const typeTheme = getTypeTheme(event.parsedType || event.type)
-                        const isNewest = isLive && index === 0
-                        const prevEvent = index + 1 < filteredEvents.length ? filteredEvents[index + 1] : null
-                        const isDiffActive = diffEventId === event.id
-                        const trace = getTraceForEvent ? getTraceForEvent(event) : null
+                    <div
+                        style={{
+                            height: `${rowVirtualizer.getTotalSize()}px`,
+                            width: '100%',
+                            position: 'relative',
+                        }}
+                    >
+                        {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                            const index = virtualRow.index
+                            const event = filteredEvents[index]
+                            const typeTheme = getTypeTheme(event.parsedType || event.type)
+                            const isNewest = isLive && index === 0
+                            const prevEvent = index + 1 < filteredEvents.length ? filteredEvents[index + 1] : null
+                            const isDiffActive = diffEventId === event.id
+                            const trace = getTraceForEvent ? getTraceForEvent(event) : null
 
-                        return (
-                            <div
-                                key={event.id}
-                                data-testid="event-row"
-                                className={`
-                                    group relative rounded-xl p-4 border transition-all duration-300
-                                    hover:scale-[1.01] cursor-default
-                                    ${isDark
-                                        ? `bg-gradient-to-br ${typeTheme.bg} ${typeTheme.border} hover:shadow-lg ${typeTheme.glow}`
-                                        : 'bg-white border-slate-200 hover:border-slate-300 hover:shadow-md'
-                                    }
-                                    ${isNewest ? 'animate-scale-in ring-2 ring-sky-500/30' : ''}
-                                `}
-                            >
-                                {/* Event Header */}
-                                <div className="flex items-center justify-between gap-4 mb-3 flex-wrap">
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                        {/* Event ID Badge */}
-                                        <span className={`
-                                            inline-flex items-center gap-1 text-xs font-mono px-2.5 py-1 rounded-lg font-semibold
-                                            ${isDark
-                                                ? 'bg-slate-800/80 text-slate-300 border border-slate-700/50'
-                                                : 'bg-slate-100 text-slate-700'
-                                            }
-                                        `}>
-                                            <Hash className="w-3 h-3 opacity-50" />
-                                            {event.id}
-                                        </span>
-
-                                        {/* Stream Lane Badge — only shown in multi-stream mode */}
-                                        {event.streamId && event.streamColor && (
-                                            <span
-                                                className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-md"
-                                                style={{
-                                                    backgroundColor: `${event.streamColor}22`,
-                                                    color: event.streamColor,
-                                                    border: `1px solid ${event.streamColor}44`,
-                                                }}
-                                            >
-                                                <span
-                                                    className="w-1.5 h-1.5 rounded-full inline-block"
-                                                    style={{ backgroundColor: event.streamColor }}
-                                                />
-                                                {event.streamId.split('-').slice(0, 2).join('-')}
-                                            </span>
-                                        )}
-
-                                        {/* Trace Badge — shown when event belongs to a correlation trace */}
-                                        {trace && onViewTrace && (
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); onViewTrace(trace.id) }}
-                                                title={`View trace: ${trace.id} (${trace.events.length} events)`}
-                                                className="inline-flex items-center gap-1 text-xs font-mono px-2 py-0.5 rounded-md cursor-pointer transition-all hover:scale-105"
-                                                style={{
-                                                    backgroundColor: 'rgba(99,102,241,0.15)',
-                                                    color: '#a5b4fc',
-                                                    border: '1px solid rgba(99,102,241,0.3)',
-                                                }}
-                                            >
-                                                <GitBranch className="w-3 h-3" />
-                                                {trace.id.slice(0, 8)}…
-                                            </button>
-                                        )}
-
-                                        {/* Timestamp */}
-                                        <span className={`
-                                            inline-flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-lg
-                                            ${isDark ? 'text-slate-400' : 'text-slate-500'}
-                                        `}>
-                                            <Clock className="w-3 h-3" />
-                                            {event.timestamp}
-                                        </span>
-
-                                        {/* Parsed Type Badge */}
-                                        {event.parsedType && (
-                                            <span className={`
-                                                text-xs px-2.5 py-1 rounded-lg font-bold uppercase tracking-wide
-                                                bg-gradient-to-r from-sky-500 to-blue-500 text-white
-                                                shadow-sm shadow-blue-500/30
-                                            `}>
-                                                {event.parsedType}
-                                            </span>
-                                        )}
-
-                                        {/* Event Type */}
-                                        <span className={`
-                                            text-xs px-2 py-1 rounded-lg font-medium
-                                            ${isDark
-                                                ? 'bg-slate-800/60 text-slate-400 border border-slate-700/50'
-                                                : 'bg-slate-200 text-slate-600'
-                                            }
-                                        `}>
-                                            {event.type}
-                                        </span>
-
-                                        {/* New indicator */}
-                                        {isNewest && (
-                                            <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-semibold border border-emerald-500/30 animate-pulse">
-                                                NEW
-                                            </span>
-                                        )}
-                                    </div>
-
-                                    <div className="flex gap-2">
-                                        {/* Compare Button */}
-                                        {prevEvent && (
-                                            <button
-                                                onClick={() => setDiffEventId(isDiffActive ? null : event.id)}
-                                                className={`
-                                                    px-3 py-1.5 text-xs rounded-lg font-semibold transition-all duration-300
-                                                    flex items-center gap-1.5 hover:scale-105
-                                                    ${isDiffActive
-                                                        ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30'
-                                                        : isDark
-                                                            ? 'bg-slate-700/70 hover:bg-slate-600 text-slate-300 border border-slate-600/50'
-                                                            : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                                                    }
-                                                `}
-                                                title="Compare with previous event in list"
-                                            >
-                                                <SplitSquareHorizontal className="w-3 h-3" />
-                                                {isDiffActive ? 'Hide Diff' : 'Compare'}
-                                            </button>
-                                        )}
-
-                                        {/* Copy Button */}
-                                        <button
-                                            onClick={() => onCopyToClipboard(event.data, event.id)}
+                            return (
+                                <div
+                                    key={event.id}
+                                    data-index={virtualRow.index}
+                                    ref={rowVirtualizer.measureElement}
+                                    className="absolute top-0 left-0 w-full"
+                                    style={{ transform: `translateY(${virtualRow.start}px)` }}
+                                >
+                                    <div className="mb-3">
+                                        <div
+                                            data-testid="event-row"
                                             className={`
-                                                px-3 py-1.5 text-xs rounded-lg font-semibold transition-all duration-300
-                                                flex items-center gap-1.5 hover:scale-105
-                                                ${copiedId === event.id
-                                                    ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg shadow-emerald-500/30'
-                                                    : isDark
-                                                        ? 'bg-slate-700/70 hover:bg-slate-600 text-slate-300 border border-slate-600/50'
-                                                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                                                group relative rounded-xl p-4 border transition-all duration-300
+                                                hover:scale-[1.01] cursor-default
+                                                ${isDark
+                                                    ? `bg-gradient-to-br ${typeTheme.bg} ${typeTheme.border} hover:shadow-lg ${typeTheme.glow}`
+                                                    : 'bg-white border-slate-200 hover:border-slate-300 hover:shadow-md'
                                                 }
+                                                ${isNewest ? 'animate-scale-in ring-2 ring-sky-500/30' : ''}
                                             `}
                                         >
-                                            {copiedId === event.id ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                                            {copiedId === event.id ? 'Copied!' : 'Copy'}
-                                        </button>
+                                            <div className="flex items-center justify-between gap-4 mb-3 flex-wrap">
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <span className={`
+                                                        inline-flex items-center gap-1 text-xs font-mono px-2.5 py-1 rounded-lg font-semibold
+                                                        ${isDark
+                                                            ? 'bg-slate-800/80 text-slate-300 border border-slate-700/50'
+                                                            : 'bg-slate-100 text-slate-700'
+                                                        }
+                                                    `}>
+                                                        <Hash className="w-3 h-3 opacity-50" />
+                                                        {event.id}
+                                                    </span>
+
+                                                    {event.streamId && event.streamColor && (
+                                                        <span
+                                                            className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-md"
+                                                            style={{
+                                                                backgroundColor: `${event.streamColor}22`,
+                                                                color: event.streamColor,
+                                                                border: `1px solid ${event.streamColor}44`,
+                                                            }}
+                                                        >
+                                                            <span
+                                                                className="w-1.5 h-1.5 rounded-full inline-block"
+                                                                style={{ backgroundColor: event.streamColor }}
+                                                            />
+                                                            {event.streamId.split('-').slice(0, 2).join('-')}
+                                                        </span>
+                                                    )}
+
+                                                    {trace && onViewTrace && (
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); onViewTrace(trace.id) }}
+                                                            title={`View trace: ${trace.id} (${trace.events.length} events)`}
+                                                            className="inline-flex items-center gap-1 text-xs font-mono px-2 py-0.5 rounded-md cursor-pointer transition-all hover:scale-105"
+                                                            style={{
+                                                                backgroundColor: 'rgba(99,102,241,0.15)',
+                                                                color: '#a5b4fc',
+                                                                border: '1px solid rgba(99,102,241,0.3)',
+                                                            }}
+                                                        >
+                                                            <GitBranch className="w-3 h-3" />
+                                                            {trace.id.slice(0, 8)}…
+                                                        </button>
+                                                    )}
+
+                                                    <span className={`
+                                                        inline-flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-lg
+                                                        ${isDark ? 'text-slate-400' : 'text-slate-500'}
+                                                    `}>
+                                                        <Clock className="w-3 h-3" />
+                                                        {event.timestamp}
+                                                    </span>
+
+                                                    {event.parsedType && (
+                                                        <span className={`
+                                                            text-xs px-2.5 py-1 rounded-lg font-bold uppercase tracking-wide
+                                                            bg-gradient-to-r from-sky-500 to-blue-500 text-white
+                                                            shadow-sm shadow-blue-500/30
+                                                        `}>
+                                                            {event.parsedType}
+                                                        </span>
+                                                    )}
+
+                                                    <span className={`
+                                                        text-xs px-2 py-1 rounded-lg font-medium
+                                                        ${isDark
+                                                            ? 'bg-slate-800/60 text-slate-400 border border-slate-700/50'
+                                                            : 'bg-slate-200 text-slate-600'
+                                                        }
+                                                    `}>
+                                                        {event.type}
+                                                    </span>
+
+                                                    {isNewest && (
+                                                        <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-semibold border border-emerald-500/30 animate-pulse">
+                                                            NEW
+                                                        </span>
+                                                    )}
+                                                </div>
+
+                                                <div className="flex gap-2">
+                                                    {prevEvent && (
+                                                        <button
+                                                            onClick={() => setDiffEventId(isDiffActive ? null : event.id)}
+                                                            className={`
+                                                                px-3 py-1.5 text-xs rounded-lg font-semibold transition-all duration-300
+                                                                flex items-center gap-1.5 hover:scale-105
+                                                                ${isDiffActive
+                                                                    ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30'
+                                                                    : isDark
+                                                                        ? 'bg-slate-700/70 hover:bg-slate-600 text-slate-300 border border-slate-600/50'
+                                                                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                                                                }
+                                                            `}
+                                                            title="Compare with previous event in list"
+                                                        >
+                                                            <SplitSquareHorizontal className="w-3 h-3" />
+                                                            {isDiffActive ? 'Hide Diff' : 'Compare'}
+                                                        </button>
+                                                    )}
+
+                                                    <button
+                                                        onClick={() => onCopyToClipboard(event.data, event.id)}
+                                                        className={`
+                                                            px-3 py-1.5 text-xs rounded-lg font-semibold transition-all duration-300
+                                                            flex items-center gap-1.5 hover:scale-105
+                                                            ${copiedId === event.id
+                                                                ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg shadow-emerald-500/30'
+                                                                : isDark
+                                                                    ? 'bg-slate-700/70 hover:bg-slate-600 text-slate-300 border border-slate-600/50'
+                                                                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                                                            }
+                                                        `}
+                                                    >
+                                                        {copiedId === event.id ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                                                        {copiedId === event.id ? 'Copied!' : 'Copy'}
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            <div className={`
+                                                rounded-xl p-4 font-mono text-sm overflow-x-auto
+                                                ${isDark
+                                                    ? 'bg-slate-900/60 border border-slate-700/30'
+                                                    : 'bg-slate-50 border border-slate-200'
+                                                }
+                                            `}>
+                                                <pre className={`whitespace-pre-wrap break-words text-xs leading-relaxed ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                                                    {(() => {
+                                                        const raw = typeof event.data === 'string'
+                                                            ? event.data
+                                                            : JSON.stringify(event.data)
+                                                        try {
+                                                            return JSON.stringify(JSON.parse(raw), null, 2)
+                                                        } catch {
+                                                            return raw.length > 500
+                                                                ? raw.substring(0, 500) + '...'
+                                                                : raw
+                                                        }
+                                                    })()}
+                                                </pre>
+                                            </div>
+
+                                            {isDiffActive && prevEvent && (
+                                                <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700/50 animate-slide-up">
+                                                    <JsonDiffView
+                                                        theme={theme}
+                                                        oldData={(() => { try { return JSON.parse(prevEvent.data) } catch { return prevEvent.data } })()}
+                                                        newData={(() => { try { return JSON.parse(event.data) } catch { return event.data } })()}
+                                                    />
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
-
-                                {/* Event Data */}
-                                <div className={`
-                                    rounded-xl p-4 font-mono text-sm overflow-x-auto
-                                    ${isDark
-                                        ? 'bg-slate-900/60 border border-slate-700/30'
-                                        : 'bg-slate-50 border border-slate-200'
-                                    }
-                                `}>
-                                    <pre className={`whitespace-pre-wrap break-words text-xs leading-relaxed ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                                        {(() => {
-                                            // Coerce to string — event.data must always be a string,
-                                            // but guard defensively against any pipeline bug
-                                            const raw = typeof event.data === 'string'
-                                                ? event.data
-                                                : JSON.stringify(event.data)
-                                            try {
-                                                return JSON.stringify(JSON.parse(raw), null, 2)
-                                            } catch {
-                                                return raw.length > 500
-                                                    ? raw.substring(0, 500) + '...'
-                                                    : raw
-                                            }
-                                        })()}
-                                    </pre>
-                                </div>
-
-                                {isDiffActive && prevEvent && (
-                                    <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700/50 animate-slide-up">
-                                        <JsonDiffView
-                                            theme={theme}
-                                            oldData={(() => { try { return JSON.parse(prevEvent.data) } catch { return prevEvent.data } })()}
-                                            newData={(() => { try { return JSON.parse(event.data) } catch { return event.data } })()}
-                                        />
-                                    </div>
-                                )}
-                            </div>
-                        )
-                    })}
+                            )
+                        })}
+                    </div>
                 </div>
             )}
         </div>

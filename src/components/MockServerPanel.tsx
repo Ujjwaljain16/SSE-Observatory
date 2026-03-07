@@ -91,7 +91,7 @@ export const MockServerPanel = ({
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Controls */}
+
                 <div className="flex flex-col gap-4 justify-center">
                     <button
                         onClick={onToggleServer}
@@ -119,7 +119,7 @@ export const MockServerPanel = ({
                         )}
                     </button>
 
-                    {/* Options */}
+
                     <div className="flex gap-2 w-full">
                         <button
                             onClick={onToggleLooping}
@@ -152,7 +152,7 @@ export const MockServerPanel = ({
                     </div>
                 </div>
 
-                {/* Connection Details */}
+
                 <div className={`
                     p-5 rounded-xl border
                     ${isDark ? 'bg-slate-900/90 border-slate-700/50' : 'bg-slate-50 border-slate-200'}

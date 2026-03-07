@@ -1,11 +1,7 @@
-/**
- * AppLayout.tsx
- *
- * Pure layout component. Reads all state from Context — no props needed.
- * All logic/hook calls remain in AppProviders.
- */
+// pure layout component reading state exclusively from context
+// keeps render cycles separate from complex stream orchestration logic
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { useThemeContext } from '../context/ThemeContext'
 import { useUIContext } from '../context/UIContext'
 import { useStreamContext } from '../context/StreamContext'
@@ -14,7 +10,7 @@ import { useSchemaInference } from '../hooks/useSchemaInference'
 
 import { Header } from './Header'
 import { ProfileTabs } from './ProfileTabs'
-import { Instructions } from './Instructions'
+// Removed Instructions component import
 import { ConnectionPanel } from './ConnectionPanel'
 import { CustomFilters } from './CustomFilters'
 import { EventsList } from './EventsList'
@@ -74,17 +70,21 @@ export function AppLayout() {
         addPatternRule, removePatternRule, togglePatternRule, dismissPatternAlert, clearPatternAlerts,
     } = useStreamContext()
 
-    // Perf metrics live in PerfContext so they don't trigger StreamContext re-renders
     const { filterExecMs, isFilterWorkerReady, isSharedWorkerActive } = usePerfContext()
 
-    // Local panel toggle for Patterns (same pattern as showStats / showSchema)
     const [showPatterns, setShowPatterns] = useState(false)
-    // Timeline draw time — updated via EventTimeline's onDrawMs callback
     const [timelineDrawMs, setTimelineDrawMs] = useState(0)
-    // Rolling events/sec rate for PerfOverlay
     const eventsPerSec = useEventsPerSec(allEvents.length)
 
-    // Schema is derived from allEvents — kept local to avoid over-inflating StreamContext
+    // global intercept for idb quota exhaustion to degraded gracefully
+    const [quotaError, setQuotaError] = useState(false)
+    useEffect(() => {
+        const handleQuotaExceeded = () => setQuotaError(true)
+        window.addEventListener('idb-quota-exceeded', handleQuotaExceeded)
+        return () => window.removeEventListener('idb-quota-exceeded', handleQuotaExceeded)
+    }, [])
+
+    // compute schema locally to prevent stream context bloat
     const { schema, isAnalyzing } = useSchemaInference(allEvents)
 
     const stats = useMemo(() => getEventStats(allEvents), [allEvents])
@@ -97,7 +97,23 @@ export function AppLayout() {
             <div className="container mx-auto px-4 py-8">
                 <Header theme={theme} onToggleTheme={toggleTheme} />
 
-                {/* ── Mode Toggle ── */}
+                {quotaError && (
+                    <div className={`mb-6 p-4 rounded-lg flex items-center gap-3 border ${theme === 'dark' ? 'bg-red-900/30 text-red-300 border-red-800' : 'bg-red-50 text-red-800 border-red-200'}`}>
+                        <AlertTriangle className="w-5 h-5 flex-shrink-0 text-red-500" />
+                        <div className="flex-1">
+                            <h3 className="font-bold text-sm">Storage Quota Exceeded</h3>
+                            <p className="text-xs mt-0.5 opacity-90">Your browser's IndexedDB storage is full. Background saving to disk has been disabled. Memory buffer will continue to function normally. Please free up space or clear storage from the Stats panel.</p>
+                        </div>
+                        <button
+                            onClick={() => setQuotaError(false)}
+                            className={`text-xs px-3 py-1.5 rounded-md transition ${theme === 'dark' ? 'bg-red-800 hover:bg-red-700 text-red-100' : 'bg-red-200 hover:bg-red-300 text-red-900'}`}
+                        >
+                            Dismiss
+                        </button>
+                    </div>
+                )}
+
+
                 <div className="flex justify-center mb-8">
                     <div className={`flex p-1 rounded-xl transition-all ${theme === 'dark' ? 'bg-slate-800' : 'bg-slate-200'}`}>
                         {([
@@ -122,7 +138,7 @@ export function AppLayout() {
                     </div>
                 </div>
 
-                {/* ── Mock Mode ── */}
+
                 {appMode === 'mock' && (
                     <MockServerPanel
                         theme={theme}
@@ -139,7 +155,7 @@ export function AppLayout() {
                     />
                 )}
 
-                {/* ── Multi-Stream Mode ── */}
+
                 {appMode === 'multistream' && (
                     <>
                         <StreamLaneManager
@@ -163,7 +179,7 @@ export function AppLayout() {
                     </>
                 )}
 
-                {/* ── Monitor Mode: Connection ── */}
+
                 {appMode === 'monitor' && (
                     <>
                         <ProfileTabs
@@ -176,7 +192,7 @@ export function AppLayout() {
                             onDisconnect={disconnect}
                             connected={connected}
                         />
-                        <Instructions theme={theme} />
+
                         <ConnectionPanel
                             theme={theme}
                             url={url}
@@ -198,8 +214,8 @@ export function AppLayout() {
                     </>
                 )}
 
-                {/* ── Monitor Mode: Events & Tools ── */}
-                {appMode === 'monitor' && (connected || allEvents.length > 0) && (
+
+                {appMode === 'monitor' && (
                     <>
                         <QueryInput
                             theme={theme}
@@ -208,11 +224,11 @@ export function AppLayout() {
                             error={queryError}
                         />
 
-                        {/* Toolbar: search + panel toggles + exports */}
+
                         <div className={`mt-6 rounded-lg shadow-xl p-4 mb-6 border ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'
                             }`}>
                             <div className="flex flex-wrap gap-4 items-center justify-between">
-                                {/* Search */}
+
                                 <div className="flex-1 min-w-[200px]">
                                     <div className="relative">
                                         <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
@@ -231,7 +247,7 @@ export function AppLayout() {
                                     </div>
                                 </div>
 
-                                {/* Panel toggles */}
+
                                 <div className="flex gap-2">
                                     {([
                                         { key: 'stats', label: 'Stats', Icon: BarChart2, active: showStats, onToggle: () => setShowStats(!showStats), activeColor: 'bg-blue-600' },
@@ -268,7 +284,7 @@ export function AppLayout() {
                                         </button>
                                     ))}
 
-                                    {/* Interceptors button with count badge */}
+
                                     <button
                                         onClick={() => setShowInterceptors(!showInterceptors)}
                                         className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${interceptors.some(i => i.enabled && i.compiledFn)
@@ -290,7 +306,7 @@ export function AppLayout() {
                                     </button>
                                 </div>
 
-                                {/* Exports */}
+
                                 <div className="flex gap-2">
                                     {([
                                         { fmt: 'json' as const, label: 'JSON', cls: 'bg-emerald-600 hover:bg-emerald-700' },
@@ -313,7 +329,7 @@ export function AppLayout() {
                                 </div>
                             </div>
 
-                            {/* Stats Panel */}
+
                             {showStats && allEvents.length > 0 && (
                                 <div className={`mt-4 pt-4 border-t ${theme === 'dark' ? 'border-slate-600' : 'border-slate-200'}`}>
                                     <StoragePanel
@@ -367,12 +383,12 @@ export function AppLayout() {
                                 </div>
                             )}
 
-                            {/* Schema Panel */}
+
                             {showSchema && (
                                 <SchemaAnalyzer theme={theme} schema={schema} isAnalyzing={isAnalyzing} />
                             )}
 
-                            {/* Pattern Detection Panel */}
+
                             {showPatterns && (
                                 <div className={`mt-4 pt-4 border-t ${theme === 'dark' ? 'border-slate-600' : 'border-slate-200'}`}>
                                     <PatternPanel
@@ -388,7 +404,7 @@ export function AppLayout() {
                                 </div>
                             )}
 
-                            {/* Interceptor Editor */}
+
                             {showInterceptors && (
                                 <div className={`mt-4 pt-4 border-t ${theme === 'dark' ? 'border-slate-600' : 'border-slate-200'}`}>
                                     <InterceptorEditor
@@ -455,7 +471,7 @@ export function AppLayout() {
                 <Footer theme={theme} />
             </div>
 
-            {/* Sticky Timeline */}
+
             {appMode === 'monitor' && (
                 <EventTimeline
                     theme={theme}
@@ -467,7 +483,7 @@ export function AppLayout() {
                 />
             )}
 
-            {/* Trace Panel modal — mounted at root to overlay everything */}
+
             {activeTraceId && (
                 <TracePanel
                     theme={theme}
@@ -476,7 +492,7 @@ export function AppLayout() {
                 />
             )}
 
-            {/* Dev-only performance overlay — Shift+P to toggle, click pill to show */}
+
             <PerfOverlay
                 filterExecMs={filterExecMs}
                 timelineDrawMs={timelineDrawMs}

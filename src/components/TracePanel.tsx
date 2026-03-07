@@ -1,9 +1,4 @@
-/**
- * TracePanel.tsx
- *
- * Shows the causal event chain for a selected correlation ID.
- * Appears as a slide-in panel / modal when a "Trace" badge is clicked.
- */
+// ui for rendering the causal event chain of a given trace
 
 import { useMemo } from 'react'
 import type { Theme } from '../types'
@@ -41,7 +36,7 @@ export function TracePanel({ theme, trace, onClose }: TracePanelProps) {
                     }`}
                 onClick={e => e.stopPropagation()}
             >
-                {/* Header */}
+
                 <div className={`flex items-center justify-between px-5 py-4 border-b ${isDark ? 'border-slate-700' : 'border-slate-200'
                     }`}>
                     <div className="flex items-center gap-3">
@@ -74,7 +69,7 @@ export function TracePanel({ theme, trace, onClose }: TracePanelProps) {
                     </div>
                 </div>
 
-                {/* Services summary chips */}
+
                 <div className={`px-5 py-3 flex flex-wrap gap-2 border-b ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
                     {trace.services.map(svc => (
                         <span
@@ -87,25 +82,25 @@ export function TracePanel({ theme, trace, onClose }: TracePanelProps) {
                     ))}
                 </div>
 
-                {/* Timeline */}
+
                 <div className="overflow-y-auto flex-1 px-5 py-4 space-y-1">
                     {trace.events.map((event, idx) => {
                         const arrival = event.arrivalTime ?? trace.firstSeen
                         const isFirst = idx === 0
                         return (
                             <div key={event.id} className="flex gap-4 items-start group">
-                                {/* Timeline line + circle */}
+
                                 <div className="flex flex-col items-center w-5 shrink-0 mt-1">
                                     <div className={`w-2.5 h-2.5 rounded-full border-2 shrink-0 ${isFirst
-                                            ? 'border-indigo-500 bg-indigo-500'
-                                            : isDark ? 'border-slate-600 bg-slate-800' : 'border-slate-300 bg-white'
+                                        ? 'border-indigo-500 bg-indigo-500'
+                                        : isDark ? 'border-slate-600 bg-slate-800' : 'border-slate-300 bg-white'
                                         }`} />
                                     {idx < trace.events.length - 1 && (
                                         <div className={`w-px flex-1 min-h-4 ${isDark ? 'bg-slate-700' : 'bg-slate-200'}`} />
                                     )}
                                 </div>
 
-                                {/* Event card */}
+
                                 <div className={`flex-1 pb-3 rounded-lg px-3 py-2 text-sm ${isDark ? 'bg-slate-800 border border-slate-700' : 'bg-slate-50 border border-slate-200'
                                     }`}>
                                     <div className="flex items-center justify-between gap-2">
@@ -118,7 +113,7 @@ export function TracePanel({ theme, trace, onClose }: TracePanelProps) {
                                             {isFirst ? event.timestamp : relativeMs(trace.firstSeen, arrival)}
                                         </span>
                                     </div>
-                                    {/* Data preview */}
+
                                     {event.data && (
                                         <pre className={`mt-1.5 text-xs overflow-x-auto rounded p-1.5 ${isDark ? 'bg-slate-900 text-slate-400' : 'bg-white text-slate-500'
                                             }`}>

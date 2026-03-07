@@ -1,358 +1,146 @@
 # 🛸 SSE Observatory
 
 <div align="center">
-
-<img src="./public/logo.png" alt="SSE Observatory Logo" width="160" style="border-radius: 20px;"/>
-
-### Real-Time Observability for Server-Sent Event Streams
-
-Inspect • Filter • Trace • Replay • Transform
-
-Built entirely with **browser-native APIs**
-(Web Workers • SharedWorkers • IndexedDB)
-
-> 📚 **[View the Full Documentation Site Locally: `npm run docs:dev`](#)**
-
+  <img src="./public/logo.png" alt="SSE Observatory Logo" width="160" style="border-radius: 20px;"/>
+  <h3>Real-Time Observability for Server-Sent Event Streams</h3>
 </div>
 
----
+## 1. Overview of the Problem Solved
 
-# 📡 Overview
+Debugging **Server-Sent Events (SSE)** in production environments is exceptionally difficult. Traditional network inspector tools (like Chrome DevTools) show raw frames but lack advanced filtering, search, and transformation capabilities. Logging to the console quickly becomes overwhelming and leads to browser sluggishness under high-frequency stream conditions.
 
-**SSE Observatory** is a browser-native debugging and observability toolkit designed for **Server-Sent Events (SSE)**.
+**SSE Observatory (SSE Tester)** is a complete browser-native debugging and observability toolkit. It allows engineers to inspect, analyze, transform, and replay real-time event streams with powerful structural filtering, trace correlation, and visualization tools—all without requiring external backend logging infrastructure or APMs.
 
-It allows engineers to inspect, analyze, transform, and replay real-time event streams with powerful filtering and visualization tools — all **without requiring external logging infrastructure or backend storage**.
+## 2. Key Features
 
-The system is designed to run completely inside the browser while maintaining responsive UI performance even under high event throughput.
+- **Real-Time SSE Monitoring & Multi-Stream Support:** Observe multiple SSE endpoints simultaneously. Each stream is isolated in a dedicated lane, making it trivial to detect cross-service race conditions.
+- **Worker-Based Event Processing:** Offloads JSON parsing, indexing, and filtering to dedicated Web Workers, ensuring the React UI remains buttery smooth even at thousands of events per second.
+- **Query Engine & Filtering DSL:** A custom query language enabling precise structural filtering (e.g., `type == "payment" AND data.amount > 500`).
+- **Event Interception Sandbox:** Write custom JavaScript interceptors on-the-fly to mutate, clean, or drop payloads securely inside an isolated, restricted Worker environment.
+- **Dynamic Schema Inference:** Analyzes incoming JSON payloads automatically to produce a live structural representation of the event stream, highlighting data types and field frequencies.
+- **Distributed Trace Waterfall:** Automatically identifies common correlation keys (`traceId`, `spanId`, `x-request-id`) to link disjointed events into cohesive causal chains and visual waterfalls.
+- **Sliding-Window Pattern Detection:** Detect anomalies using sequence rules (e.g., `A -> B -> C`) or burst rules (e.g., more than 5 errors in a 10s window).
+- **Mock Server & Replayable Storage:** Record live sessions, persist them locally via IndexedDB, and replay deterministic scenarios at adjustable speeds without interacting with the live backend.
 
----
+## 3. System Architecture Explanation
 
-# 🎯 The Problem
-
-Server-Sent Events are widely used for:
-
-* live dashboards
-* streaming APIs
-* microservice event pipelines
-* LLM token streaming
-* notifications
-* telemetry pipelines
-
-Yet debugging SSE streams in production is difficult.
-
-Traditional tools have limitations:
-
-| Tool            | Limitation                                             |
-| --------------- | ------------------------------------------------------ |
-| Chrome DevTools | Shows raw frames but lacks filtering/search            |
-| Console logging | Impossible to inspect high-frequency streams           |
-| APM tools       | Sampling and ingestion latency hide real-time behavior |
-
-When hundreds of events arrive every second, engineers need to answer questions like:
-
-* *Which events match a specific payload condition?*
-* *Why did this workflow stall?*
-* *What happened immediately before this error?*
-* *Are events arriving in the expected order?*
-
-**SSE Observatory transforms raw event streams into a queryable, analyzable timeline.**
-
----
-
-# ⚙️ Core Architecture
-
-The system separates ingestion, processing, and rendering across multiple browser workers.
+The system is engineered as a high-performance, bounded-memory pipeline that aggressively isolates processing from rendering.
 
 ```text
-External SSE Server
-        │
-        ▼
-SharedWorker (connection manager)
-        │
-        ▼
-Event Processing Pipeline
-        │
-        ├─ Interceptor Workers
-        │
-        ▼
-Ring Buffer (in-memory)
-        │
-        ├─ IndexedDB Cold Storage
-        │
-        ▼
-Filter Worker
-        │
-        ▼
-React UI
+External SSE Servers
+       │
+       ▼
+[ SharedWorker ] — Controls active SSE connections (multiplexing & connection sharing across tabs)
+       │
+       ▼
+[ Ring Buffer ] — In-memory ring buffer ensures O(1) memory bounds
+       ├── [ IndexedDB ] — Cold storage eviction & persistent session history
+       │
+       ▼
+[ Filter & Interceptor Workers ] — Executes expensive sandbox modifications, regex, and DSL queries
+       │
+       ▼
+[ React VDOM ] — Virtualized rendering layer displaying highly optimized lists
 ```
 
-### Key Design Principles
+- **Ingestion:** Managed by `sharedSSEWorker.ts`. One connection per URL/token, broadcasting events to any active tabs, preventing duplicate connections to backend servers.
+- **Routing & Filtering:** Handled by `filterWorker.ts`. Keeps an in-memory replica, avoiding continuous heavy messaging between the UI and worker.
+- **Transformation:** Managed by `interceptorWorker.ts`, which runs a dynamically generated block of code in a locked-down execution context.
 
-⚡ **UI Thread Isolation**
-Heavy computation runs inside Web Workers to prevent UI blocking.
+## 4. Technology Stack
 
-🧠 **Bounded Memory Model**
-A ring buffer keeps recent events in memory while persisting older events to IndexedDB.
+- **Core/UI:** React 18, TypeScript, Vite, Tailwind CSS
+- **Performance:** Native Web Workers, SharedWorkers, TanStack Virtual (for list virtualization)
+- **Persistence:** IndexedDB (`idb`, batched transactions)
+- **Code Quality/Testing:** ESLint, Vitest (Unit/Integration), Playwright (End-to-End & Soak testing)
+- **Monitoring:** Sentry (optional telemetry support)
 
-🔗 **Connection Sharing**
-A SharedWorker allows multiple browser tabs to share a single SSE connection.
+## 5. Installation Instructions
 
-📊 **Incremental Processing**
-Workers receive only new events instead of full dataset transfers.
+Requires **Node.js 18+**.
 
----
-
-# 🔬 Feature Breakdown
-
-## 🌐 Event Multiplexing (Multi-Stream)
-
-Observe multiple SSE endpoints simultaneously.
-
-Each stream is assigned a dedicated lane on the global timeline, allowing engineers to detect **race conditions or cross-service interactions**.
-
----
-
-## 🔎 Query Engine (Custom DSL)
-
-A custom query language enables precise structural filtering.
-
-Example queries:
-
-```sql
-type == "payment" AND data.amount > 500
-
-data.user.id == "abc123"
-
-type != "heartbeat" AND headers.userAgent matches "curl/.*"
-```
-
-Supported features:
-
-* nested field access
-* numeric comparisons
-* regex operators
-* boolean expressions
-
-Filtering executes inside a **dedicated worker thread**.
-
----
-
-## 🧬 Streaming JavaScript Interceptors
-
-Transform events dynamically using custom JavaScript.
-
-Example:
-
-```javascript
-function intercept(event) {
-  if (event.type === "obfuscated_wrapper") {
-    const payload = JSON.parse(event.data).hidden_payload;
-
-    return {
-      ...event,
-      data: JSON.stringify(payload),
-      type: "clean_payload"
-    };
-  }
-
-  return event;
-}
-```
-
-Interceptors run inside sandboxed worker environments to prevent blocking the UI thread.
-
----
-
-## 🚨 Sliding-Window Pattern Detection
-
-Define rules that monitor the event stream for anomalies.
-
-Supported patterns include:
-
-### Burst Detection
-
-Trigger alerts when a threshold is exceeded within a time window.
-
-Example:
-
-```text
-5 error events within 10 seconds
-```
-
-### Sequence Detection
-
-Ensure expected workflows complete correctly.
-
-Example sequence:
-
-```text
-request_start → db_write → response
-```
-
-Missing steps generate alerts.
-
----
-
-## 🔗 Distributed Trace Waterfall
-
-The system detects common tracing identifiers:
-
-```text
-traceId
-correlationId
-spanId
-requestId
-```
-
-When a trace chain is detected, the **Trace Inspector** renders a waterfall visualization showing:
-
-* event ordering
-* service latency
-* workflow duration
-
----
-
-## 🎞 Mock Server & Replay
-
-Record and replay real event sessions.
-
-Features include:
-
-* exporting `.sse-record` session files
-* deterministic replay using original timing
-* adjustable playback speeds
-* reproducible debugging environments
-
-This enables **incident reproduction without a live backend**.
-
----
-
-## 🧠 Dynamic Schema Inference
-
-Incoming JSON payloads are analyzed to infer structure automatically.
-
-The system tracks:
-
-* field names
-* data types
-* occurrence frequency
-* nested object paths
-
-This produces a **live schema representation** of the event stream.
-
----
-
-## 💾 Cold Storage & Analytics
-
-Older events are persisted to **IndexedDB**.
-
-This provides:
-
-* crash-resistant session history
-* historical queries
-* data export (JSON / CSV)
-
----
-
-# 🛠 Installation
-
-Requires **Node.js 18+**
-
-Clone the repository:
+Clone the repository and install dependencies:
 
 ```bash
-git clone https://github.com/your-org/sse-observatory.git
-cd sse-observatory
-```
-
-Install dependencies:
-
-```bash
+git clone https://github.com/Ujjwaljain16/SSE-Observatory.git
+cd sse-tester
 npm install
 ```
 
-Start the development server:
+## 6. Usage Instructions
+
+To launch the local development server alongside the backend test proxy:
 
 ```bash
 npm run dev
 ```
 
-Open the application:
+This will concurrently run the Vite UI and a lightweight internal Node API (`server.js`).
 
-```text
-http://localhost:3001
+1. Open `http://localhost:3000` (or `3001` based on your Vite port).
+2. Enter your SSE target URL.
+3. Apply filters, interceptors, or simply stream the response live.
+
+To test the resilience of the application against chaos scenarios (dropped connections, heavy bursts):
+
+```bash
+npm run dev:all
+# (Starts the standard UI + Chaos testing servers)
 ```
 
----
+## 7. Project Structure
 
-# 🧪 Chaos Testing
+The codebase strictly segregates responsibilities across `src` and test directories:
 
-The repository includes multiple local test servers for stress testing.
+```text
+src/
+  ├── components/    # React visual components (TracePanel, EventTimeline, etc.)
+  ├── hooks/         # Complex state & business logic (usePatternDetector, useCorrelationTracker)
+  ├── workers/       # Multi-threading logic (filterWorker, sharedSSEWorker, interceptorWorker)
+  ├── utils/         # IDB persistence, query parsing, sandbox utilities
+  ├── pipeline/      # Core throughput/pipeline logic tests
+tests/ / e2e/        # E2E Playwright tests & test configuration
+test-servers/        # Specialized Node scripts to produce chaotic/mock SSE data
+api/                 # Lightweight proxy logic
+```
 
-| Command                   | Purpose                                            |
-| ------------------------- | -------------------------------------------------- |
-| `npm run simple`          | Emits regular heartbeat events                     |
-| `npm run chaos`           | Emits malformed payloads and connection drops      |
-| `node test-servers/test-interceptor-server.js` | Generates wrapped payloads for interceptor testing |
-| `node test-servers/test-pattern-server.js`     | Simulates burst error conditions                   |
-| `node test-servers/test-multistream-server.js` | Produces correlated multi-service streams          |
+## 8. Testing Instructions
 
-These tests validate:
+The testing strategy is heavily optimized for pipeline resilience, memory leaks, and E2E robustness.
 
-* reconnect logic
-* worker isolation
-* pattern detection
-* multi-stream correlation
+- **Unit & Integration tests (Vitest)**
+  Run fast, headless tests against utility functions and worker logic:
+  ```bash
+  npm run test
+  npm run test:coverage
+  ```
 
----
+- **End-to-End tests (Playwright)**
+  Validates real-browser behaviors, UI rendering, and worker-to-main thread communication:
+  ```bash
+  npm run test:e2e
+  ```
 
-# 🚀 Deployment
+- **Long-Running Soak tests**
+  Used to identify memory leaks in the ring buffers under sustained pressure:
+  ```bash
+  npm run test:soak
+  ```
 
-The application can be deployed on platforms like **Vercel**.
+## 9. Key Engineering Decisions
 
-A lightweight proxy layer allows monitoring external SSE endpoints without modifying their CORS configuration.
+- **Why Web Workers?** Parsing massive amounts of JSON payloads, evaluating regex filters, and running user-provided interceptor code natively blocks the main UI thread. Workers guarantee 60fps scrolling under extreme data pressure.
+- **Why SharedWorker connection pooling?** If a user opens 5 tabs viewing the same debugging endpoint, establishing 5 separate SSE connections drains server resources. `SharedWorker` multiplexes a singular connection transparently across all client instances.
+- **Why IndexedDB?** LocalStorage has strict storage limits (often ~5MB). IndexedDB supports storing thousands of historical SSE events locally across reloads.
+- **Why Virtualization?** Pushing 10,000 DOM nodes representing rows of raw log data crashes browsers. We use UI virtualization to render only the elements visibly occupying the viewport.
 
-Deployment steps:
+## 10. Future Improvements
 
-1. Push repository to GitHub
-2. Import project into Vercel
-3. Deploy using default Vite build settings
+- **WASM Query Engine:** Migrate the DSL evaluation step to a WebAssembly module for tighter performance loops.
+- **Protobuf/gRPC-Web Support:** Broaden the observability toolkit to natively decode raw binary transports beyond stringified JSON.
+- **WebSocket Transport Adaptation:** Extend tooling to observe bidirectional WebSocket traffic using a similar shared-worker model.
+- **Advanced Trace Analytics:** Implement visual flame-graphs for microservice spans detected via SSE events.
 
----
+## 11. License
 
-# 🗺 Roadmap
-
-Planned improvements:
-
-* WASM-powered query engine
-* Protobuf decoding support
-* WebSocket transport compatibility
-* large-scale stream analytics
-
----
-
-# 🤝 Contributing
-
-Contributions are welcome.
-
-Please open issues or submit pull requests for:
-
-* bug fixes
-* performance improvements
-* feature proposals
-
----
-
-# 📜 License
-
-MIT License
-
----
-
-<div align="center">
-
-⭐ **If this project helped you debug a difficult event stream, consider starring the repository.**
-
-Built for engineers who prefer **observability over guesswork.**
-
-</div>
+This project is licensed under the MIT License.

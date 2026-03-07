@@ -58,7 +58,7 @@ export const StreamLaneManager = ({
                 )}
             </div>
 
-            {/* Add Stream Form */}
+
             <div className={`flex gap-2 mb-5 p-3 rounded-xl border ${isDark ? 'border-slate-700 bg-slate-800/40' : 'border-slate-200 bg-slate-50'}`}>
                 <input
                     type="text"
@@ -90,7 +90,7 @@ export const StreamLaneManager = ({
                 </button>
             </div>
 
-            {/* Stream lanes list */}
+
             {streams.length === 0 ? (
                 <div className={`text-center py-8 rounded-xl border border-dashed ${isDark ? 'border-slate-700 text-slate-500' : 'border-slate-300 text-slate-400'}`}>
                     <Wifi className="w-8 h-8 mx-auto mb-2 opacity-30" />
@@ -105,7 +105,7 @@ export const StreamLaneManager = ({
                                 }`}
                             style={{ borderLeftWidth: 3, borderLeftColor: stream.color }}
                         >
-                            {/* Color + Status indicator */}
+
                             <div className="flex items-center gap-2">
                                 <Circle
                                     className="w-3 h-3"
@@ -119,7 +119,7 @@ export const StreamLaneManager = ({
                                     }`} />
                             </div>
 
-                            {/* Name + URL */}
+
                             <div className="flex-1 min-w-0">
                                 <div className={`text-sm font-semibold truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
                                     {stream.name}
@@ -132,12 +132,12 @@ export const StreamLaneManager = ({
                                 )}
                             </div>
 
-                            {/* Event count badge */}
+
                             <span className={`px-2 py-0.5 rounded-full text-xs font-mono font-bold ${isDark ? 'bg-slate-700 text-slate-300' : 'bg-slate-200 text-slate-600'}`}>
                                 {stream.events.length.toLocaleString()}
                             </span>
 
-                            {/* Action buttons */}
+
                             <div className="flex items-center gap-1">
                                 {stream.connected ? (
                                     <button

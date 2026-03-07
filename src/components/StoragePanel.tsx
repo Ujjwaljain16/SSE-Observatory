@@ -68,7 +68,7 @@ export const StoragePanel = ({
                 )}
             </div>
 
-            {/* Stats row */}
+
             <div className="grid grid-cols-2 gap-3 mb-3">
                 <div className={`p-2 rounded-lg text-center ${isDark ? 'bg-slate-700/60' : 'bg-white border border-slate-200'}`}>
                     <div className={`text-xs mb-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>RAM Buffer</div>
@@ -87,7 +87,7 @@ export const StoragePanel = ({
                 </div>
             </div>
 
-            {/* Storage fill bar */}
+
             {idbAvailable && totalStoredCount > 0 && (
                 <div className="mb-3">
                     <div className={`h-1.5 w-full rounded-full ${isDark ? 'bg-slate-700' : 'bg-slate-200'}`}>
@@ -102,7 +102,7 @@ export const StoragePanel = ({
                 </div>
             )}
 
-            {/* Actions */}
+
             <div className="flex flex-wrap gap-2">
                 {idbAvailable && (
                     <>

@@ -1,9 +1,4 @@
-/**
- * PatternPanel.tsx
- *
- * Lets engineers define sequence and burst rules, and shows detected alerts
- * in real time with the matching events highlighted.
- */
+// ui for defining sequence and burst rules with real-time alert visualization
 
 import { useState } from 'react'
 import type { Theme } from '../types'
@@ -24,7 +19,7 @@ interface PatternPanelProps {
     onClearAlerts: () => void
 }
 
-// ─── Blank templates ──────────────────────────────────────────────────────────
+
 
 const blankSequence: Omit<SequenceRule, 'id'> = {
     kind: 'sequence',
@@ -42,7 +37,7 @@ const blankBurst: Omit<BurstRule, 'id'> = {
     enabled: true,
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
+
 
 export function PatternPanel({
     theme,
@@ -78,7 +73,7 @@ export function PatternPanel({
 
     return (
         <div className="space-y-4">
-            {/* ── Active Alerts ────────────────────────────────────────────── */}
+
             {activeAlerts.length > 0 && (
                 <div className={`rounded-xl border ${bg} p-4`}>
                     <div className="flex items-center justify-between mb-3">
@@ -159,7 +154,7 @@ export function PatternPanel({
                 </div>
             )}
 
-            {/* ── Rules List ───────────────────────────────────────────────── */}
+
             <div className={`rounded-xl border ${bg} p-4`}>
                 <div className="flex items-center justify-between mb-3">
                     <h3 className={`font-bold flex items-center gap-2 ${text}`}>
@@ -182,7 +177,7 @@ export function PatternPanel({
                     </div>
                 </div>
 
-                {/* Add form */}
+
                 {addKind && (
                     <div className={`mb-3 p-3 rounded-lg border space-y-2 ${isDark ? 'bg-slate-700 border-slate-600' : 'bg-slate-50 border-slate-200'
                         }`}>
@@ -261,19 +256,19 @@ export function PatternPanel({
                         <div
                             key={rule.id}
                             className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-colors ${rule.enabled
-                                    ? isDark ? 'bg-slate-700/50 border-slate-600' : 'bg-slate-50 border-slate-200'
-                                    : isDark ? 'opacity-50 bg-slate-800 border-slate-700' : 'opacity-50 bg-white border-slate-200'
+                                ? isDark ? 'bg-slate-700/50 border-slate-600' : 'bg-slate-50 border-slate-200'
+                                : isDark ? 'opacity-50 bg-slate-800 border-slate-700' : 'opacity-50 bg-white border-slate-200'
                                 }`}
                         >
-                            {/* Kind badge */}
+
                             <span className={`px-2 py-0.5 rounded-full text-xs font-bold shrink-0 ${rule.kind === 'sequence'
-                                    ? 'bg-indigo-900/60 text-indigo-300'
-                                    : 'bg-amber-900/60 text-amber-300'
+                                ? 'bg-indigo-900/60 text-indigo-300'
+                                : 'bg-amber-900/60 text-amber-300'
                                 }`}>
                                 {rule.kind === 'sequence' ? 'SEQ' : 'BURST'}
                             </span>
 
-                            {/* Label */}
+
                             <div className="flex-1 min-w-0">
                                 <div className={`text-sm font-medium truncate ${text}`}>{rule.name}</div>
                                 <div className={`text-xs font-mono truncate ${muted}`}>
@@ -284,12 +279,12 @@ export function PatternPanel({
                                 </div>
                             </div>
 
-                            {/* Built-in badge */}
+
                             {rule.id.startsWith('builtin-') && (
                                 <span className={`text-xs shrink-0 ${muted}`}>built-in</span>
                             )}
 
-                            {/* Toggle */}
+
                             <button onClick={() => onToggleRule(rule.id)} className="shrink-0 transition-colors">
                                 {rule.enabled
                                     ? <ToggleRight className="w-5 h-5 text-indigo-400" />
@@ -297,7 +292,7 @@ export function PatternPanel({
                                 }
                             </button>
 
-                            {/* Remove */}
+
                             {!rule.id.startsWith('builtin-') && (
                                 <button
                                     onClick={() => onRemoveRule(rule.id)}

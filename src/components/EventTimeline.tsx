@@ -1,12 +1,5 @@
-/**
- * EventTimeline.tsx  —  Sticky timeline bar with OffscreenCanvas worker rendering
- *
- * At 10k+ events the drawing is moved into a timelineWorker via OffscreenCanvas.
- * Falls back to synchronous main-thread drawing when OffscreenCanvas is unsupported.
- *
- * Main thread keeps ALL interaction (hover tooltip, seek-on-click) —
- * these only need x-coordinate math, no image data from the worker.
- */
+// delegates drawing to a webgl worker for 10k+ events
+// retains tooltip and click logic on the main thread since only x-coordinates are needed
 
 import { useRef, useEffect, useState, useCallback } from 'react'
 import type { EventMessage, Theme } from '../types'
@@ -23,7 +16,7 @@ interface EventTimelineProps {
     onDrawMs?: (ms: number) => void  // for PerfOverlay
 }
 
-// ─── Slot encoding: 1 byte per event ──────────────────────────────────────────
+
 function encodeSlots(events: EventMessage[], currentIndex: number): Uint8Array {
     const slots = new Uint8Array(events.length)
     for (let i = 0; i < events.length; i++) {
@@ -41,7 +34,7 @@ function encodeSlots(events: EventMessage[], currentIndex: number): Uint8Array {
     return slots
 }
 
-// ─── Main-thread sync fallback draw ───────────────────────────────────────────
+
 function drawSync(
     ctx: CanvasRenderingContext2D,
     events: EventMessage[],
@@ -104,11 +97,11 @@ export const EventTimeline = ({
 
     const isDark = theme === 'dark'
 
-    // ─── Worker setup (OffscreenCanvas path) ───────────────────────────────────
+
     useEffect(() => {
         const canvas = canvasRef.current
         if (!canvas || typeof Worker === 'undefined') return
-        if (!('transferControlToOffscreen' in canvas)) return  // unsupported
+        if (!('transferControlToOffscreen' in canvas)) return
 
         try {
             const worker = workerRegistry.create(WORKER_KEY, () =>
@@ -130,13 +123,13 @@ export const EventTimeline = ({
         }
 
         return () => {
-            offscreenActiveRef.current = false  // reset so remount draw doesn't hit sync path on a transferred canvas
+            offscreenActiveRef.current = false
             workerRef.current = null
             workerRegistry.release(WORKER_KEY)
         }
-    }, []) // eslint-disable-line
+    }, [])
 
-    // ─── Draw (worker or sync) ─────────────────────────────────────────────────
+
     useEffect(() => {
         const container = containerRef.current
         if (!container) return
@@ -145,7 +138,6 @@ export const EventTimeline = ({
         const dpr = window.devicePixelRatio || 1
 
         if (offscreenActiveRef.current && workerRef.current) {
-            // Worker path: encode to Uint8Array (cheap clone)
             const slots = encodeSlots(events, currentEventIndex)
             workerRef.current.postMessage({
                 type: 'draw',
@@ -155,18 +147,15 @@ export const EventTimeline = ({
                 width,
                 height,
                 dpr,
-            }, [slots.buffer])   // Transfer the buffer — zero-copy
+            }, [slots.buffer])
         } else {
-            // Sync fallback — guard with try-catch because once a canvas has
-            // transferred its control to an OffscreenCanvas, calling getContext('2d')
-            // on it throws InvalidStateError even after React unmount/remount.
+            // guard context creation since transferring to offscreen permanently locks the canvas element
             const canvas = canvasRef.current
             if (!canvas) return
             let ctx: CanvasRenderingContext2D | null = null
             try {
                 ctx = canvas.getContext('2d')
             } catch {
-                // Canvas already transferred (StrictMode double-mount in dev) — skip
                 return
             }
             if (!ctx) return
@@ -183,9 +172,9 @@ export const EventTimeline = ({
 
             ctx.setTransform(1, 0, 0, 1, 0, 0)
         }
-    }, [events, isDark, maxEvents, currentEventIndex]) // eslint-disable-line
+    }, [events, isDark, maxEvents, currentEventIndex])
 
-    // ─── Interaction (main thread only — no worker needed) ────────────────────
+
     const handleMouseMove = useCallback((e: React.MouseEvent) => {
         const container = containerRef.current
         if (!container || events.length === 0) return
@@ -207,7 +196,7 @@ export const EventTimeline = ({
             backdrop-blur-md border-t z-40 transition-all duration-300
             ${isDark ? 'bg-slate-900/80 border-slate-700/50' : 'bg-white/80 border-slate-200/50'}
         `}>
-            {/* Hover tooltip */}
+
             {isHovering && hoverIndex !== null && events[hoverIndex] && (
                 <div
                     className="absolute bottom-full mb-2 -translate-x-1/2 px-3 py-1.5 rounded-lg text-xs font-mono bg-black/80 text-white pointer-events-none"

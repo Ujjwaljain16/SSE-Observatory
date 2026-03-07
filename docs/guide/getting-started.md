@@ -7,7 +7,7 @@ SSE Observatory is a high-performance observability tool built to inspect raw Se
 The tool is distributed as a Vite/React SPA. It requires **Node.js 18+**.
 
 ```sh
-git clone https://github.com/your-org/sse-observatory.git
+git clone https://github.com/Ujjwaljain16/SSE-Observatory.git
 cd sse-observatory
 npm install
 npm run dev

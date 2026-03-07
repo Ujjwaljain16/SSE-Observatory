@@ -60,7 +60,7 @@ export const CustomFilters = ({
                 : 'bg-white/80 border-slate-200/70 shadow-xl shadow-slate-300/20'
             }
         `}>
-            {/* Header */}
+
             <div className="flex items-center justify-between mb-5">
                 <div className="flex items-center gap-3">
                     <div className={`
@@ -79,7 +79,7 @@ export const CustomFilters = ({
                     </div>
                 </div>
 
-                {/* Stats Badge */}
+
                 <div className={`
                     flex items-center gap-3 px-4 py-2 rounded-xl
                     ${isDark ? 'bg-slate-800/70' : 'bg-slate-100'}
@@ -104,7 +104,7 @@ export const CustomFilters = ({
                 </div>
             </div>
 
-            {/* Add Filter Input */}
+
             <div className="flex gap-3 mb-5">
                 <div className="relative flex-1">
                     <div className="absolute left-4 top-1/2 -translate-y-1/2 opacity-60">
@@ -142,7 +142,7 @@ export const CustomFilters = ({
                 </button>
             </div>
 
-            {/* Filter Cards */}
+
             {customFilters.length === 0 ? (
                 <div className={`
                     text-center py-8 rounded-xl border-2 border-dashed
@@ -169,7 +169,7 @@ export const CustomFilters = ({
                                     }
                                 `}
                             >
-                                {/* Filter Header */}
+
                                 <div className="flex items-center justify-between mb-3">
                                     <div className="flex items-center gap-2">
                                         <code className={`
@@ -192,7 +192,7 @@ export const CustomFilters = ({
                                     </div>
 
                                     <div className="flex gap-2">
-                                        {/* Regex Toggle */}
+
                                         <button
                                             onClick={() => toggleRegexMode && toggleRegexMode(filter.field)}
                                             className={`
@@ -209,7 +209,7 @@ export const CustomFilters = ({
                                             <Regex className="w-3 h-3" /> Regex
                                         </button>
 
-                                        {/* Clear Button */}
+
                                         {!filter.isRegex && filter.activeValues.size > 0 && (
                                             <button
                                                 onClick={() => onClearFilterValues(filter.field)}
@@ -227,7 +227,7 @@ export const CustomFilters = ({
                                             </button>
                                         )}
 
-                                        {/* Remove Button */}
+
                                         <button
                                             onClick={() => onRemoveCustomFilter(filter.field)}
                                             className={`
@@ -244,7 +244,7 @@ export const CustomFilters = ({
                                     </div>
                                 </div>
 
-                                {/* Filter Content */}
+
                                 {filter.isRegex ? (
                                     <div>
                                         <div className="relative">

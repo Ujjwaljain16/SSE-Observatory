@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Theme } from '../types'
-import { Sparkles, Lightbulb, X, Zap, AlertTriangle, Check } from 'lucide-react'
+import { Terminal, Lightbulb, X, Zap, AlertTriangle, Check } from 'lucide-react'
 
 interface QueryInputProps {
     theme: Theme
@@ -30,14 +30,14 @@ export const QueryInput = ({ theme, query, onQueryChange, error }: QueryInputPro
                 : 'bg-white/80 border-slate-200/70 shadow-xl shadow-slate-300/20'
             }
         `}>
-            {/* Header */}
+
             <div className="flex justify-between items-center mb-4">
                 <div className="flex items-center gap-3">
                     <div className={`
                         w-9 h-9 rounded-xl flex items-center justify-center
                         bg-gradient-to-br from-sky-500 to-blue-500 shadow-lg shadow-blue-500/30
                     `}>
-                        <Sparkles className="w-5 h-5 text-white" />
+                        <Terminal className="w-5 h-5 text-white" />
                     </div>
                     <div>
                         <h3 className={`text-base font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
@@ -61,19 +61,18 @@ export const QueryInput = ({ theme, query, onQueryChange, error }: QueryInputPro
                         }
                     `}
                 >
-                    {showExamples ? (
-                        <>
-                            <X className="w-3 h-3" /> Hide
-                        </>
-                    ) : (
-                        <>
-                            <Lightbulb className="w-3 h-3" /> Examples
-                        </>
-                    )}
+                    <span className="flex items-center gap-1.5">
+                        {showExamples ? (
+                            <X className="w-3 h-3" />
+                        ) : (
+                            <Lightbulb className="w-3 h-3" />
+                        )}
+                        <span>{showExamples ? 'Hide' : 'Examples'}</span>
+                    </span>
                 </button>
             </div>
 
-            {/* Examples Panel */}
+
             {showExamples && (
                 <div className={`
                     mb-4 p-4 rounded-xl border animate-scale-in
@@ -114,7 +113,7 @@ export const QueryInput = ({ theme, query, onQueryChange, error }: QueryInputPro
                 </div>
             )}
 
-            {/* Query Input */}
+
             <div className="relative">
                 <div className="absolute left-4 top-1/2 -translate-y-1/2 opacity-60">
                     <Zap className="w-5 h-5" />
@@ -136,7 +135,7 @@ export const QueryInput = ({ theme, query, onQueryChange, error }: QueryInputPro
                     `}
                 />
 
-                {/* Query status indicator */}
+
                 {query && !error && (
                     <div className="absolute right-4 top-1/2 -translate-y-1/2 text-emerald-400 animate-pulse">
                         <Check className="w-5 h-5" />
@@ -144,7 +143,7 @@ export const QueryInput = ({ theme, query, onQueryChange, error }: QueryInputPro
                 )}
             </div>
 
-            {/* Error Message */}
+
             {error && (
                 <div className={`
                     mt-3 p-3 rounded-xl border flex items-start gap-2 animate-scale-in
@@ -161,7 +160,7 @@ export const QueryInput = ({ theme, query, onQueryChange, error }: QueryInputPro
                 </div>
             )}
 
-            {/* Operators Reference */}
+
             <div className={`
                 mt-3 flex flex-wrap gap-2 items-center text-xs
                 ${isDark ? 'text-slate-500' : 'text-slate-400'}
