@@ -5,9 +5,12 @@ import { promisify } from 'util'
 import { decryptTicket } from './_ticket.js'
 
 const lookup = promisify(dns.lookup)
-const ALLOWED_HOSTS = process.env.ALLOWED_HOSTS ? process.env.ALLOWED_HOSTS.split(',') : []
+const ALLOWED_HOSTS = process.env.ALLOWED_HOSTS 
+    ? process.env.ALLOWED_HOSTS.split(',').map(h => h.trim()) 
+    : []
 
 function isPrivateIP(ip) {
+    if (!ip) return false;
     if (ip === '::1') return true;
     if (ip.toLowerCase().startsWith('fc00:') || ip.toLowerCase().startsWith('fd')) return true;
     if (ip.toLowerCase().startsWith('fe80:')) return true;
@@ -24,91 +27,114 @@ function isPrivateIP(ip) {
 }
 
 export default async function handler(req, res) {
+    // Handle CORS preflight
+    res.setHeader('Access-Control-Allow-Origin', '*')
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+
     if (req.method === 'OPTIONS') {
-        res.setHeader('Access-Control-Allow-Origin', '*')
-        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
         return res.status(200).end()
     }
 
-    if (req.method === 'GET') {
-        let targetUrl = req.query.url
-        let authHeader = req.query.auth
-        const ticketId = req.query.ticket
-        
-        // Secure ticket exchange fallback
-        if (ticketId) {
-            const ticketData = decryptTicket(ticketId);
-            if (!ticketData) {
-                return res.status(401).json({ error: 'Invalid or expired proxy ticket' })
-            }
-            targetUrl = ticketData.url
-            authHeader = ticketData.token
-        }
-
-        if (!targetUrl) {
-            return res.status(400).json({ error: 'Missing target url' })
-        }
-
-        try {
-            const target = new URL(targetUrl)
-
-            // 1. Hostname Allowlist Check
-            if (ALLOWED_HOSTS.length > 0 && !ALLOWED_HOSTS.includes(target.hostname)) {
-                return res.status(403).json({ error: `Host ${target.hostname} is not in the allowlist` })
-            }
-
-            // 2. DNS Resolution & Private IP Check (DNS Rebinding Protection)
-            const { address } = await lookup(target.hostname)
-            
-            // Strict SSRF check block private IPs in production unless specifically opted out
-            if (isPrivateIP(address) && process.env.NODE_ENV === 'production') {
-                return res.status(403).json({ error: 'Blocked attempt to proxy to private IP network' })
-            }
-
-            const protocol = target.protocol === 'https:' ? https : http
-            const proxyReq = protocol.request(target, {
-                headers: {
-                    'Accept': 'text/event-stream',
-                    'User-Agent': 'SSE-Observatory/1.0 (https://github.com/Ujjwaljain16/SSE-Observatory)',
-                    ...(authHeader ? { 'Authorization': authHeader } : {})
-                }
-            }, (proxyRes) => {
-                res.writeHead(proxyRes.statusCode || 200, {
-                    'Content-Type': 'text/event-stream',
-                    'Cache-Control': 'no-cache, no-transform',
-                    'Connection': 'keep-alive',
-                    'Access-Control-Allow-Origin': '*',
-                    'X-Accel-Buffering': 'no'
-                })
-                proxyRes.pipe(res)
-            })
-
-            proxyReq.on('error', (err) => {
-                console.error('[Proxy Error]', err.message)
-                if (!res.headersSent) {
-                    res.writeHead(502, {
-                        'Content-Type': 'text/event-stream',
-                        'Cache-Control': 'no-cache, no-transform',
-                        'Access-Control-Allow-Origin': '*'
-                    })
-                }
-                res.write(`event: error\ndata: {"error":"Target server unreachable","details":"${err.message}"}\n\n`)
-                res.end()
-            })
-            proxyReq.end()
-        } catch (e) {
-            console.error('[Proxy Exception]', e.message)
-            if (!res.headersSent) {
-                res.writeHead(400, {
-                    'Content-Type': 'text/event-stream',
-                    'Access-Control-Allow-Origin': '*'
-                })
-            }
-            res.write(`event: error\ndata: {"error":"Invalid proxy request","details":"${e.message}"}\n\n`)
-            res.end()
-        }
-    } else {
+    if (req.method !== 'GET') {
         return res.status(405).json({ error: 'Method not allowed' })
+    }
+
+    let targetUrl = req.query.url
+    let authHeader = req.query.auth
+    const ticketId = req.query.ticket
+    
+    // Secure ticket exchange fallback
+    if (ticketId) {
+        const ticketData = decryptTicket(ticketId);
+        if (!ticketData) {
+            return res.status(401).json({ error: 'Invalid or expired proxy ticket' })
+        }
+        targetUrl = ticketData.url
+        authHeader = ticketData.token
+    }
+
+    if (!targetUrl) {
+        return res.status(400).json({ error: 'Missing target url' })
+    }
+
+    try {
+        const target = new URL(targetUrl)
+
+        // 1. Hostname Allowlist Check
+        if (ALLOWED_HOSTS.length > 0 && !ALLOWED_HOSTS.includes(target.hostname)) {
+            const msg = `Host ${target.hostname} is not in the allowlist`;
+            res.writeHead(403, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
+            res.write(`event: error\ndata: {"error":"${msg}"}\n\n`);
+            return res.end();
+        }
+
+        // 2. DNS Resolution & Private IP Check (DNS Rebinding Protection)
+        const { address } = await lookup(target.hostname)
+        
+        // Strict SSRF check block private IPs in production
+        if (isPrivateIP(address) && process.env.NODE_ENV === 'production') {
+            const msg = 'Blocked attempt to proxy to private IP network';
+            res.writeHead(403, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
+            res.write(`event: error\ndata: {"error":"${msg}"}\n\n`);
+            return res.end();
+        }
+
+        const protocol = target.protocol === 'https:' ? https : http
+        const proxyReq = protocol.request(target, {
+            headers: {
+                'Accept': 'text/event-stream',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Cache-Control': 'no-cache',
+                ...(authHeader ? { 'Authorization': authHeader } : {})
+            }
+        }, (proxyRes) => {
+            // Set streaming headers
+            res.writeHead(proxyRes.statusCode || 200, {
+                'Content-Type': 'text/event-stream',
+                'Cache-Control': 'no-cache, no-transform',
+                'Connection': 'keep-alive',
+                'X-Accel-Buffering': 'no',
+                'Access-Control-Allow-Origin': '*',
+                // Prevent Vercel from buffering or compressing the stream
+                'Content-Encoding': 'none'
+            })
+
+            // Flush headers immediately if supported
+            if (res.flushHeaders) res.flushHeaders();
+
+            proxyRes.on('data', (chunk) => {
+                res.write(chunk);
+                // Flush chunk if supported (for some environments)
+                if (res.flush) res.flush();
+            });
+
+            proxyRes.on('end', () => {
+                res.end();
+            });
+
+            proxyRes.on('error', (err) => {
+                res.write(`event: error\ndata: {"error":"Stream connection lost","details":"${err.message}"}\n\n`);
+                res.end();
+            });
+        })
+
+        proxyReq.on('error', (err) => {
+            console.error('[Proxy Error]', err.message)
+            if (!res.headersSent) {
+                res.writeHead(502, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
+            }
+            res.write(`event: error\ndata: {"error":"Target server unreachable","details":"${err.message}"}\n\n`);
+            res.end()
+        })
+
+        proxyReq.end()
+    } catch (e) {
+        console.error('[Proxy Exception]', e.message)
+        if (!res.headersSent) {
+            res.writeHead(400, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
+        }
+        res.write(`event: error\ndata: {"error":"Invalid proxy request","details":"${e.message}"}\n\n`)
+        res.end()
     }
 }
