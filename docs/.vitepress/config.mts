@@ -4,6 +4,7 @@ import { defineConfig } from 'vitepress'
 export default defineConfig({
     title: "SSE Observatory",
     description: "Real-Time Observability for Server-Sent Event Streams",
+    base: '/docs/',
     head: [
         ['link', { rel: 'icon', type: 'image/png', href: '/logo.png' }]
     ],
@@ -47,7 +48,7 @@ export default defineConfig({
         },
 
         socialLinks: [
-            { icon: 'github', link: 'https://github.com/your-org/sse-observatory' }
+            { icon: 'github', link: 'https://github.com/Ujjwaljain16/SSE-Observatory' }
         ],
 
         search: {
