@@ -74,7 +74,7 @@ function resetZombieTimer(conn: Connection) {
     }
 }
 
-async function openConnection(key: string, url: string, token?: string): Promise<Connection> {
+async function openConnection(key: string, url: string, token?: string, useProxy = true): Promise<Connection> {
     let conn = connections.get(key)
 
     if (conn) {
@@ -97,7 +97,7 @@ async function openConnection(key: string, url: string, token?: string): Promise
     }
 
     try {
-        const finalUrl = await obtainSSEProxyTicket(url, token)
+        const finalUrl = useProxy ? await obtainSSEProxyTicket(url, token) : url
         const es = new EventSource(finalUrl)
         conn.eventSource = es
 
@@ -158,7 +158,7 @@ setInterval(() => {
             if (msg.type === 'connect') {
                 myKey = makeKey(msg.url, msg.token)
 
-                openConnection(myKey, msg.url, msg.token)
+                openConnection(myKey, msg.url, msg.token, msg.useProxy)
                     .then(conn => {
                         if (!conn.ports.includes(port)) {
                             conn.ports.push(port)

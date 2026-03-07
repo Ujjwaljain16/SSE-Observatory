@@ -8,7 +8,7 @@ interface UseEventStreamReturn {
     events: EventMessage[]
     error: string
     isLoading: boolean
-    connect: (url: string, token?: string, clearHistory?: boolean) => void
+    connect: (url: string, token?: string, clearHistory?: boolean, useProxy?: boolean) => void
     disconnect: () => void
     clearEvents: () => void
     maxEvents: number
@@ -50,7 +50,7 @@ export const useEventStream = (
         }, 500)
     }, [])
 
-    const connect = useCallback(async (url: string, token?: string, clearHistory: boolean = true) => {
+    const connect = useCallback(async (url: string, token?: string, clearHistory: boolean = true, useProxy: boolean = true) => {
         if (!url.trim()) {
             setError('Please enter a valid URL')
             return
@@ -67,7 +67,7 @@ export const useEventStream = (
         reconnectAttemptRef.current = 0
 
         try {
-            const ticketUrl = await obtainSSEProxyTicket(url, token)
+            const ticketUrl = useProxy ? await obtainSSEProxyTicket(url, token) : url;
 
             console.log(`[useEventStream] Connecting to: ${ticketUrl}`);
             const eventSource = new EventSource(ticketUrl)
@@ -100,7 +100,7 @@ export const useEventStream = (
                         setTimeout(() => {
                             if (eventSourceRef.current) {
                                 eventSourceRef.current.close()
-                                connect(url, token, false)
+                                connect(url, token, false, useProxy)
                             }
                         }, 2000 * reconnectAttemptRef.current)
                         return

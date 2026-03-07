@@ -81,12 +81,14 @@ export function useStreamState() {
     }, [applyInterceptorsWithPreview, hasActiveInterceptors])
 
 
+    const [useProxy, setUseProxy] = useState(true)
+
     const {
         connected,
         events: allEvents,
         error: connectionError,
         isLoading,
-        connect,
+        connect: connectBase,
         disconnect,
         clearEvents: clearEventsBase,
     } = useSharedStream(
@@ -94,6 +96,10 @@ export function useStreamState() {
         hasActiveInterceptors ? (e => interceptorRef.current?.(e) ?? Promise.resolve(e)) : undefined,
         idbAvailable ? saveEvent : undefined
     )
+
+    const connect = useCallback((url: string, token?: string) => {
+        connectBase(url, token, true, useProxy)
+    }, [connectBase, useProxy])
 
     const isSharedWorkerActive = typeof SharedWorker !== 'undefined'
 
@@ -267,6 +273,7 @@ export function useStreamState() {
         // Connection
         connected, isLoading, connectionError, connectionTime,
         connect, disconnect,
+        useProxy, setUseProxy,
         // Events
         allEvents, filteredEvents: visibleFilteredEvents, clearEvents, copiedId, copyToClipboard,
         // Playback
@@ -298,7 +305,7 @@ export function useStreamState() {
         patternRules, patternAlerts, activePatternAlerts,
         addPatternRule, removePatternRule, togglePatternRule, dismissPatternAlert, clearPatternAlerts,
     }), [
-        connected, isLoading, connectionError, connectionTime, connect, disconnect,
+        connected, isLoading, connectionError, connectionTime, connect, disconnect, useProxy,
         allEvents, visibleFilteredEvents, clearEvents, copiedId, copyToClipboard,
         isPaused, currentEventIndex, togglePause, seekTo, stepForward, stepBackward, goLive,
         searchQuery, setSearchQuery, query, setQuery, queryError,

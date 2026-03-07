@@ -18,6 +18,8 @@ interface UIContextValue {
     setBearerToken: (v: string) => void
     profileName: string
     setProfileName: (v: string) => void
+    useProxy: boolean
+    setUseProxy: (v: boolean) => void
 }
 
 export const UIContext = createContext<UIContextValue | null>(null)

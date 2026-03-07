@@ -22,6 +22,8 @@ interface ConnectionPanelProps {
     onConnect: () => void
     onDisconnect: () => void
     onClearEvents: () => void
+    useProxy: boolean
+    onProxyToggle: (v: boolean) => void
 }
 
 export const ConnectionPanel = ({
@@ -40,7 +42,9 @@ export const ConnectionPanel = ({
     onSaveProfile,
     onConnect,
     onDisconnect,
-    onClearEvents
+    onClearEvents,
+    useProxy,
+    onProxyToggle
 }: ConnectionPanelProps) => {
     const isDark = theme === 'dark'
 
@@ -175,6 +179,33 @@ export const ConnectionPanel = ({
                             </div>
                         </div>
                     )}
+                </div>
+            </div>
+
+            {/* Proxy Toggle */}
+            <div className="mt-4 mb-2 flex items-center gap-3">
+                <button
+                    onClick={() => onProxyToggle(!useProxy)}
+                    className={`
+                        relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 focus:outline-none
+                        ${useProxy ? 'bg-sky-600' : (isDark ? 'bg-slate-700' : 'bg-slate-300')}
+                    `}
+                >
+                    <span
+                        className={`
+                            inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-200
+                            ${useProxy ? 'translate-x-6' : 'translate-x-1'}
+                        `}
+                    />
+                </button>
+                <div className="flex flex-col">
+                    <span className={`text-sm font-bold flex items-center gap-1.5 ${isDark ? 'text-slate-200' : 'text-slate-900'}`}>
+                        Use Server Proxy
+                        {useProxy && <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-400 font-mono">ENCRYPTED</span>}
+                    </span>
+                    <span className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                        {useProxy ? 'Routes through production proxy (bypasses CORS)' : 'Direct connection (requires CORS or localhost)'}
+                    </span>
                 </div>
             </div>
 

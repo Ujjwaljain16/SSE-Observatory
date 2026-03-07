@@ -38,6 +38,8 @@ export function AppProviders({ children }: Props) {
         setBearerToken: (streamValue as any).setBearerToken as (v: string) => void,
         profileName: (streamValue as any).profileName as string ?? '',
         setProfileName: (streamValue as any).setProfileName as (v: string) => void,
+        useProxy: (streamValue as any).useProxy as boolean,
+        setUseProxy: (streamValue as any).setUseProxy as (v: boolean) => void,
     }), [appMode, showStats, showSchema, showInterceptors, streamValue])
 
     return (

@@ -44,6 +44,7 @@ export function AppLayout() {
         url, setUrl,
         bearerToken, setBearerToken,
         profileName, setProfileName,
+        useProxy, setUseProxy,
     } = useUIContext()
 
     const {
@@ -210,6 +211,8 @@ export function AppLayout() {
                             onConnect={handleConnect}
                             onDisconnect={disconnect}
                             onClearEvents={clearEvents}
+                            useProxy={useProxy}
+                            onProxyToggle={setUseProxy}
                         />
                     </>
                 )}

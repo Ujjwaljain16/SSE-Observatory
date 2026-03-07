@@ -20,9 +20,6 @@ const PING_INTERVAL_MS = 30_000
 const MAX_EVENTS = 1000
 const MAX_RECONNECT_ATTEMPTS = 3
 
-
-
-
 export type UseEventStreamReturn = ReturnType<typeof useEventStream>
 
 export function useSharedStream(
@@ -32,10 +29,7 @@ export function useSharedStream(
 ): UseEventStreamReturn {
     const sharedWorkerSupported = typeof SharedWorker !== 'undefined'
 
-
-
     const fallback = useEventStream(maxEvents, applyInterceptors, onEventPersist)
-
 
     const [connected, setConnected] = useState(false)
     const [events, setEvents] = useState<EventMessage[]>([])
@@ -43,10 +37,10 @@ export function useSharedStream(
     const [isLoading, setIsLoading] = useState(false)
 
     const workerRef = useRef<SharedWorker | null>(null)
-    const counterRef = useRef(0)
     const pingRef = useRef<ReturnType<typeof setInterval> | null>(null)
     const currentUrlRef = useRef<string>('')
     const currentTokenRef = useRef<string | undefined>()
+    const currentUseProxyRef = useRef<boolean>(true)
     const fallbackRef = useRef(false)
     const reconnectAttemptRef = useRef(0)
 
@@ -70,14 +64,6 @@ export function useSharedStream(
             workerRef.current = worker
             worker.port.start()
 
-            if (typeof window !== 'undefined') {
-                const w = window as any
-                if (!w.__sharedWorkerPorts__) w.__sharedWorkerPorts__ = []
-                if (!w.__sharedWorkerPorts__.includes(worker.port)) {
-                    w.__sharedWorkerPorts__.push(worker.port)
-                }
-            }
-
             worker.port.onmessage = async (e: MessageEvent) => {
                 const msg = e.data
 
@@ -90,7 +76,6 @@ export function useSharedStream(
                 }
 
                 if (msg.type === 'catchup') {
-                    // Batch-add catch-up events; extract parsedType from JSON payload
                     const stamped: EventMessage[] = msg.events.map((raw: any) => {
                         let parsedType: string | undefined
                         try {
@@ -98,7 +83,7 @@ export function useSharedStream(
                             if (parsed?.type) parsedType = String(parsed.type)
                         } catch { }
                         return {
-                            id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : (Math.random().toString(36).substring(2) + Date.now().toString(36)),
+                            id: crypto.randomUUID(),
                             timestamp: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
                             arrivalTime: raw.arrivalTime ?? Date.now(),
                             type: 'message',
@@ -117,7 +102,7 @@ export function useSharedStream(
 
                 if (msg.type === 'event') {
                     let newEvent: EventMessage = {
-                        id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : (Math.random().toString(36).substring(2) + Date.now().toString(36)),
+                        id: crypto.randomUUID(),
                         timestamp: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
                         arrivalTime: msg.payload.arrivalTime ?? Date.now(),
                         type: 'message',
@@ -125,7 +110,6 @@ export function useSharedStream(
                         raw: msg.payload.raw,
                     }
 
-                    // Try to extract parsedType from JSON payload — never overwrite data with object
                     try {
                         const parsed = JSON.parse(msg.payload.raw)
                         if (parsed?.type) {
@@ -133,7 +117,6 @@ export function useSharedStream(
                         }
                     } catch { }
 
-                    // Always read interceptors via ref — never stale
                     if (interceptorRef.current) {
                         const transformed = await interceptorRef.current(newEvent)
                         if (transformed === null) return
@@ -152,7 +135,6 @@ export function useSharedStream(
                 }
 
                 if (msg.type === 'error') {
-                    // EventSource error — attempt to reconnect
                     const attempt = reconnectAttemptRef.current
                     if (attempt < MAX_RECONNECT_ATTEMPTS && currentUrlRef.current) {
                         reconnectAttemptRef.current = attempt + 1
@@ -163,6 +145,7 @@ export function useSharedStream(
                                     type: 'connect',
                                     url: currentUrlRef.current,
                                     token: currentTokenRef.current,
+                                    useProxy: currentUseProxyRef.current
                                 })
                             }
                         }, 2000 * (attempt + 1))
@@ -173,7 +156,6 @@ export function useSharedStream(
                 }
 
                 if (msg.type === 'disconnected') {
-                    // Explicit user-initiated disconnect from the SharedWorker
                     setConnected(false)
                     setIsLoading(false)
                     setError('')
@@ -191,25 +173,24 @@ export function useSharedStream(
             if (pingRef.current) clearInterval(pingRef.current)
             workerRegistry.release(WORKER_KEY)
         }
-    }, [])
+    }, [sharedWorkerSupported, maxEvents])
 
-    const connect = useCallback((url: string, token?: string, clearHistory = true) => {
+    const connect = useCallback((url: string, token?: string, clearHistory = true, useProxy = true) => {
         if (!workerRef.current || fallbackRef.current) return
         currentUrlRef.current = url
         currentTokenRef.current = token
+        currentUseProxyRef.current = useProxy
         reconnectAttemptRef.current = 0
 
         if (clearHistory) {
             setEvents([])
-            counterRef.current = 0
         }
 
         setIsLoading(true)
         setError('')
 
-        workerRef.current.port.postMessage({ type: 'connect', url, token })
+        workerRef.current.port.postMessage({ type: 'connect', url, token, useProxy })
 
-        // Start ping heartbeat
         if (pingRef.current) clearInterval(pingRef.current)
         pingRef.current = setInterval(() => {
             workerRef.current?.port.postMessage({ type: 'ping' })
@@ -230,7 +211,6 @@ export function useSharedStream(
         setEvents([])
     }, [])
 
-    // If SharedWorker not supported or failed, use the fallback
     if (!sharedWorkerSupported || fallbackRef.current) {
         return fallback
     }

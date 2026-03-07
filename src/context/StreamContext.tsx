@@ -12,6 +12,8 @@ interface StreamContextValue {
     connectionTime: number
     connect: (url: string, token?: string) => void
     disconnect: () => void
+    useProxy: boolean
+    setUseProxy: (v: boolean) => void
 
     allEvents: EventMessage[]
     filteredEvents: EventMessage[]
