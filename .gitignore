@@ -42,3 +42,13 @@ playwright/.cache/
 
 # SSE Observatory Data
 *.sse-record
+
+# Technical Artifacts
+coverage/
+test-results.json
+*.txt
+.gemini/
+.agents/
+node_modules/
+dist/
+dist-ssr/
