@@ -5,6 +5,10 @@ export interface EventMessage {
     data: string
     raw: string
     parsedType?: string
+    // Multi-stream correlation fields
+    streamId?: string
+    streamColor?: string
+    arrivalTime?: number  // epoch ms - used for chronological merge sorting
 }
 
 export interface Profile {
