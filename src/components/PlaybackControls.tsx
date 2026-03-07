@@ -4,29 +4,23 @@ import type { Theme } from '../types'
 interface PlaybackControlsProps {
     theme: Theme
     isPaused: boolean
-    playbackSpeed: number
-    currentEventIndex: number
-    totalEvents: number
     onTogglePause: () => void
     onStepForward: () => void
     onStepBackward: () => void
     onGoLive: () => void
-    onSetSpeed: (speed: number) => void
-    // onSeek: (index: number) => void // Removed as it is handled by Timeline
+    currentEventIndex: number
+    totalEvents: number
 }
 
 export const PlaybackControls = ({
     theme,
     isPaused,
-    playbackSpeed,
-    currentEventIndex,
-    totalEvents,
     onTogglePause,
     onStepForward,
     onStepBackward,
     onGoLive,
-    onSetSpeed,
-    // onSeek
+    currentEventIndex,
+    totalEvents,
 }: PlaybackControlsProps) => {
     const isDark = theme === 'dark'
     const isLive = !isPaused && currentEventIndex === 0
@@ -84,22 +78,6 @@ export const PlaybackControls = ({
 
             <div className={`w-px h-8 mx-1 ${isDark ? 'bg-slate-700' : 'bg-slate-200'}`} />
 
-            {/* Speed Control */}
-            <button
-                onClick={() => onSetSpeed(playbackSpeed === 1 ? 2 : playbackSpeed === 2 ? 4 : 1)}
-                className={`
-                    flex items-center justify-center w-8 h-8 rounded-lg text-xs font-bold transition-all
-                    ${isDark
-                        ? 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
-                        : 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-900'
-                    }
-                `}
-                title="Playback Speed"
-            >
-                {playbackSpeed}x
-            </button>
-
-
             {/* Live Indicator / Button */}
             <button
                 onClick={onGoLive}
@@ -120,7 +98,7 @@ export const PlaybackControls = ({
 
             {/* Event Counter / Scrubber info */}
             <div className={`ml-2 text-xs font-mono tabular-nums ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                {currentEventIndex === 0 ? 'Latest' : `-${currentEventIndex} events ago`}
+                {currentEventIndex > 0 && `-${currentEventIndex} events ago`}
             </div>
         </div>
     )
