@@ -11,7 +11,29 @@ Debugging **Server-Sent Events (SSE)** in production environments is exceptional
 
 **SSE Observatory (SSE Tester)** is a complete browser-native debugging and observability toolkit. It allows engineers to inspect, analyze, transform, and replay real-time event streams with powerful structural filtering, trace correlation, and visualization tools—all without requiring external backend logging infrastructure or APMs.
 
-## 2. Key Features
+## 2. Platform Showcases
+
+### 🔍 Monitor Mode (Real-Time Observability)
+The primary interface for connecting to SSE streams, applying live filters, and inspecting event payloads with zero latency.
+
+![Monitor Mode](./public/screenshots/monitor-mode.png)
+
+### 🏎️ Multi-Stream Correlation
+Connect and correlate multiple disjointed event streams on a single synchronized timeline. Visualize causal relationships across microservices.
+
+![Multi-Stream](./public/screenshots/multi-stream.png)
+
+### 🛠️ Mock Server Engine
+Replay exported `.sse-record` files to simulate deterministic production scenarios in local development environments.
+
+![Mock Server](./public/screenshots/mock-server.png)
+
+### 📊 Event Stream & Analysis
+Deep-dive into event payloads with structural diffing, automated schema inference, and pattern detection.
+
+![Event Stream](./public/screenshots/event-stream.png)
+
+## 3. Key Features
 
 - **Real-Time SSE Monitoring & Multi-Stream Support:** Observe multiple SSE endpoints simultaneously. Each stream is isolated in a dedicated lane, making it trivial to detect cross-service race conditions.
 - **Worker-Based Event Processing:** Offloads JSON parsing, indexing, and filtering to dedicated Web Workers, ensuring the React UI remains buttery smooth even at thousands of events per second.
