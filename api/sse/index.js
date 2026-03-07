@@ -70,6 +70,7 @@ export default async function handler(req, res) {
             const proxyReq = protocol.request(target, {
                 headers: {
                     'Accept': 'text/event-stream',
+                    'User-Agent': 'SSE-Observatory/1.0 (https://github.com/Ujjwaljain16/SSE-Observatory)',
                     ...(authHeader ? { 'Authorization': authHeader } : {})
                 }
             }, (proxyRes) => {
