@@ -11,14 +11,14 @@ export interface SchemaMap {
     [key: string]: FieldSchema
 }
 
-// Helper to get type
+
 const getType = (value: any): string => {
     if (value === null) return 'null'
     if (Array.isArray(value)) return 'array'
     return typeof value
 }
 
-// Flatten JSON to dot-notation paths
+
 const flattenObject = (obj: any, prefix = '', result: Record<string, string> = {}) => {
     if (obj === null || typeof obj !== 'object' || Array.isArray(obj)) {
         result[prefix] = getType(obj)
@@ -60,7 +60,6 @@ export const useSchemaInference = (events: EventMessage[]) => {
                         }
                     }
                 } catch {
-                    // Not valid JSON, ignore
                 }
             })
 

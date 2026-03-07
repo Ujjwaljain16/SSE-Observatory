@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { buildSSEProxyUrl } from '../utils/sseProxyUrl'
+import { obtainSSEProxyTicket } from '../utils/sseProxyUrl'
 
 import type { EventMessage } from '../types'
 
@@ -50,13 +50,13 @@ export const useEventStream = (
         }, 500)
     }, [])
 
-    const connect = useCallback((url: string, token?: string, clearHistory: boolean = true) => {
+    const connect = useCallback(async (url: string, token?: string, clearHistory: boolean = true) => {
         if (!url.trim()) {
             setError('Please enter a valid URL')
             return
         }
 
-        disconnect() // Close existing connection if any
+        disconnect()
         setIsLoading(true)
         setError('')
 
@@ -67,11 +67,10 @@ export const useEventStream = (
         reconnectAttemptRef.current = 0
 
         try {
-            const baseUrl = buildSSEProxyUrl(url)
-            const sseUrl = token ? `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}auth=${encodeURIComponent(token)}` : baseUrl
+            const ticketUrl = await obtainSSEProxyTicket(url, token)
 
-            console.log(`[useEventStream] Connecting to: ${sseUrl}`);
-            const eventSource = new EventSource(sseUrl)
+            console.log(`[useEventStream] Connecting to: ${ticketUrl}`);
+            const eventSource = new EventSource(ticketUrl)
             eventSourceRef.current = eventSource
 
             eventSource.onopen = () => {
@@ -126,7 +125,6 @@ export const useEventStream = (
                         parsedType = String(parsed.type)
                     }
                 } catch {
-                    // Not JSON or no type field
                 }
 
                 let newEvent: EventMessage = {
@@ -143,14 +141,14 @@ export const useEventStream = (
                     ...(parsedType && { parsedType }),
                 }
 
-                // Run through interceptor chain if provided
                 if (applyInterceptors) {
                     const transformed = await applyInterceptors(newEvent)
-                    if (transformed === null) return // Event was dropped by interceptor
+                    if (transformed === null) return
                     newEvent = transformed
                 }
 
-                // Persist to cold storage if provided
+                newEvent._searchIndex = (typeof newEvent.data === 'string' ? newEvent.data : JSON.stringify(newEvent.data)).toLowerCase()
+
                 onEventPersist?.(newEvent)
 
                 setEvents((prev) => {

@@ -32,7 +32,7 @@ import type { PerfContextValue } from '../context/PerfContext'
 const MAX_EVENTS = 1000
 
 export function useStreamState() {
-    // ── Interceptors ─────────────────────────────────────────
+
     const {
         interceptors,
         addInterceptor,
@@ -45,7 +45,7 @@ export function useStreamState() {
         hasActiveInterceptors,
     } = useInterceptors()
 
-    // ── Cold Storage ─────────────────────────────────────────
+
     const {
         idbAvailable,
         totalStoredCount,
@@ -80,7 +80,7 @@ export function useStreamState() {
         interceptorRef.current = hasActiveInterceptors ? applyInterceptorsWithPreview : undefined
     }, [applyInterceptorsWithPreview, hasActiveInterceptors])
 
-    // ── Core Stream ───────────────────────────────────────────
+
     const {
         connected,
         events: allEvents,
@@ -97,7 +97,7 @@ export function useStreamState() {
 
     const isSharedWorkerActive = typeof SharedWorker !== 'undefined'
 
-    // ── Connection Timer ──────────────────────────────────────
+
     const [connectionTime, setConnectionTime] = useState(0)
     useEffect(() => {
         let interval: number
@@ -108,7 +108,7 @@ export function useStreamState() {
         return () => clearInterval(interval)
     }, [connected])
 
-    // ── Playback ──────────────────────────────────────────────
+
     const {
         isPaused,
         currentEventIndex,
@@ -120,10 +120,10 @@ export function useStreamState() {
         displayedEvents: playbackEvents,
     } = usePlayback(allEvents)
 
-    // ── Profiles ──────────────────────────────────────────────
+
     const { profiles, activeProfileTab, setActiveProfileTab, saveProfile: saveProfileHook, deleteProfile } = useProfiles()
 
-    // ── Filtering ─────────────────────────────────────────────
+
     const {
         customFilters,
         newFilterField,
@@ -140,7 +140,7 @@ export function useStreamState() {
     const { query, setQuery, error: queryError } = useQueryParser(playbackEvents)
     const { searchQuery, setSearchQuery } = useEventSearch(playbackEvents)
 
-    // ── Filter Worker ─────────────────────────────────────────
+
     const {
         filteredEvents,
         filterExecMs,
@@ -171,7 +171,7 @@ export function useStreamState() {
         clearWorker()
     }, [clearEventsBase, clearWorker])
 
-    // ── Clipboard ─────────────────────────────────────────────
+
     const [copiedId, setCopiedId] = useState<string | null>(null)
     const copyToClipboard = useCallback(async (text: string, eventId: string) => {
         try {
@@ -183,7 +183,7 @@ export function useStreamState() {
         }
     }, [])
 
-    // ── Profile helpers ───────────────────────────────────────
+
     const [profileName, setProfileName] = useState('')
     const [url, setUrl] = useState('')
     const [bearerToken, setBearerToken] = useState('')
@@ -200,10 +200,10 @@ export function useStreamState() {
         setActiveProfileTab(profile.name)
     }, [setActiveProfileTab])
 
-    // ── Multi-Stream ──────────────────────────────────────────
+
     const { streams, mergedEvents, addStream, removeStream, connectStream, disconnectStream, clearStreamEvents } = useMultiStream()
 
-    // ── Mock Server ───────────────────────────────────────────
+
     const {
         fileName: mockFileName,
         isUploading: isMockUploading,
@@ -217,13 +217,13 @@ export function useStreamState() {
         setIsLooping: setIsMockLooping,
     } = useMockServer()
 
-    // ── Correlation Tracing ───────────────────────────────────
+
     const {
         traces, activeTraceId, setActiveTraceId,
         getEventChain, getTraceForEvent, correlationField, traceCount, clearTraces,
     } = useCorrelationTracker(allEvents)
 
-    // ── Pattern Detection ─────────────────────────────────────
+
     const {
         rules: patternRules,
         alerts: patternAlerts,
@@ -235,7 +235,7 @@ export function useStreamState() {
         clearAlerts: clearPatternAlerts,
     } = usePatternDetector(allEvents)
 
-    // ── Pause State Slicing ───────────────────────────────────
+
     // The filter worker processes *all* events, so filteredEvents contains the full filtered history.
     // If the stream is paused, we must freeze the visible list to only show events up to the pause point.
     // We do this by finding the cutoff index in filteredEvents using arrivalTime.
@@ -252,7 +252,7 @@ export function useStreamState() {
         return filteredEvents.slice(cutoffIndex)
     }, [filteredEvents, isPaused, currentEventIndex, allEvents])
 
-    // ── Assemble context values ───────────────────────────────
+
 
     // perfValue updates on every filter run — isolated from streamValue so
     // StreamContext consumers are NOT re-rendered by filter metric changes

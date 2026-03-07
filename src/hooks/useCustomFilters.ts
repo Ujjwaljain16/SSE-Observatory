@@ -61,7 +61,7 @@ export const useCustomFilters = (events: EventMessage[]) => {
                     ...filter,
                     isRegex: !filter.isRegex,
                     regexPattern: '',
-                    activeValues: new Set() // Clear values when switching modes
+                    activeValues: new Set()
                 }
             }
             return filter
@@ -77,15 +77,7 @@ export const useCustomFilters = (events: EventMessage[]) => {
         }))
     }
 
-    // We'll manage query state here or pass it in. For now, let's assume query filtering happens outside or we integrate it here.
-    // However, the requirement is to have a robust query engine. 
-    // Let's allow passing an external query filter function if needed, or keep it simple.
-    // Actually, following the plan, we should integrate it here or in App.tsx. 
-    // Let's modify App.tsx to handle the query filter composition.
 
-    // For this hook, let's just ensure it handles the existing filters correctly. 
-    // The query parser is a separate concern that filters the *result* of this hook, or vice versa.
-    // Let's keep this hook focused on "Component-based" filters (Simple/Regex).
 
     const filteredEvents = useMemo(() => {
         if (customFilters.length === 0) return events
@@ -95,17 +87,17 @@ export const useCustomFilters = (events: EventMessage[]) => {
                 const eventValue = getFieldValue(event, filter.field)
 
                 if (filter.isRegex) {
-                    if (!filter.regexPattern) return true // No pattern = no filter
+                    if (!filter.regexPattern) return true
                     try {
                         const regex = new RegExp(filter.regexPattern, 'i')
                         return eventValue !== null && regex.test(String(eventValue))
                     } catch {
-                        return true // Invalid regex = ignore filter
+                        return true
                     }
                 }
 
                 if (filter.activeValues.size === 0) return true
-                return eventValue !== null && filter.activeValues.has(String(eventValue)) // Ensure string comparison
+                return eventValue !== null && filter.activeValues.has(String(eventValue))
             })
         })
     }, [events, customFilters])

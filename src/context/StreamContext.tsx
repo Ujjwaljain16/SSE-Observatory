@@ -6,7 +6,6 @@ import type { TraceEntry } from '../hooks/useCorrelationTracker'
 import type { PatternRule, PatternAlert } from '../hooks/usePatternDetector'
 
 interface StreamContextValue {
-    // Connection
     connected: boolean
     isLoading: boolean
     connectionError: string
@@ -14,14 +13,12 @@ interface StreamContextValue {
     connect: (url: string, token?: string) => void
     disconnect: () => void
 
-    // Events
     allEvents: EventMessage[]
     filteredEvents: EventMessage[]
     clearEvents: () => void
     copiedId: string | null
     copyToClipboard: (text: string, eventId: string) => void
 
-    // Playback / Time travel
     isPaused: boolean
     currentEventIndex: number
     togglePause: () => void
@@ -30,7 +27,6 @@ interface StreamContextValue {
     stepBackward: () => void
     goLive: () => void
 
-    // Filtering
     searchQuery: string
     setSearchQuery: (q: string) => void
     query: string
@@ -47,7 +43,6 @@ interface StreamContextValue {
     toggleRegexMode: (field: string) => void
     setRegexPattern: (field: string, pattern: string) => void
 
-    // Interceptors
     interceptors: Interceptor[]
     addInterceptor: (name?: string) => void
     removeInterceptor: (id: string) => void
@@ -57,14 +52,12 @@ interface StreamContextValue {
     reorderInterceptors: (from: number, to: number) => void
     lastEventPreview: { raw: string; transformed: string | undefined } | undefined
 
-    // Cold Storage
     idbAvailable: boolean
     totalStoredCount: number
     loadBefore: (cursor?: number | null) => Promise<EventMessage[]>
     clearStorage: () => Promise<void>
     replayFromStorage: () => Promise<EventMessage[]>
 
-    // Multi-Stream
     streams: StreamInstance[]
     mergedEvents: EventMessage[]
     addStream: (name: string, url: string) => string
@@ -73,7 +66,6 @@ interface StreamContextValue {
     disconnectStream: (id: string) => void
     clearStreamEvents: (id: string) => void
 
-    // Profiles
     profiles: Profile[]
     activeProfileTab: string | null
     setActiveProfileTab: (name: string | null) => void
@@ -81,7 +73,6 @@ interface StreamContextValue {
     loadProfile: (profile: Profile) => void
     deleteProfile: (name: string) => void
 
-    // Mock Server
     mockFileName: string | null
     isMockUploading: boolean
     isMockRunning: boolean
@@ -93,11 +84,8 @@ interface StreamContextValue {
     setMockSpeed: (speed: number) => void
     setIsMockLooping: (val: boolean) => void
 
-    // (Perf metrics — filterExecMs, isFilterWorkerReady, isSharedWorkerActive
-    //  have been moved to PerfContext to prevent high-frequency re-renders
-    //  in all StreamContext consumers. See PerfContext.tsx.)
+    // perf metrics moved to PerfContext to prevent high-frequency re-renders
 
-    // Correlation Tracing
     traces: Map<string, TraceEntry>
     activeTraceId: string | null
     setActiveTraceId: (id: string | null) => void
@@ -107,7 +95,6 @@ interface StreamContextValue {
     traceCount: number
     clearTraces: () => void
 
-    // Pattern Detection
     patternRules: PatternRule[]
     patternAlerts: PatternAlert[]
     activePatternAlerts: PatternAlert[]

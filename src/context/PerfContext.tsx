@@ -1,15 +1,5 @@
-/**
- * PerfContext.tsx
- *
- * Holds high-frequency perf metrics that update on every filter run:
- *   filterExecMs        — how long the last filter pass took
- *   isFilterWorkerReady — whether the filter Worker has initialised
- *   isSharedWorkerActive — whether the SharedWorker is being used
- *
- * Isolated from StreamContext so that PerfOverlay re-renders (which happen
- * on every event) do NOT trigger re-renders in EventsList, ConnectionPanel,
- * or any other StreamContext consumer.
- */
+// isolates high-frequency performance metrics from main stream context
+// prevents events list and connection panels from re-rendering on every metric update
 
 import { createContext, useContext } from 'react'
 

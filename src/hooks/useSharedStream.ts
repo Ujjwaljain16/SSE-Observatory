@@ -22,7 +22,7 @@ const MAX_RECONNECT_ATTEMPTS = 3
 
 
 
-// Re-export the same return type as useEventStream for drop-in compatibility
+
 export type UseEventStreamReturn = ReturnType<typeof useEventStream>
 
 export function useSharedStream(
@@ -32,11 +32,11 @@ export function useSharedStream(
 ): UseEventStreamReturn {
     const sharedWorkerSupported = typeof SharedWorker !== 'undefined'
 
-    // ── Fallback to regular useEventStream ────────────────────────────────────
-    // eslint-disable-next-line react-hooks/rules-of-hooks
+
+
     const fallback = useEventStream(maxEvents, applyInterceptors, onEventPersist)
 
-    // ── SharedWorker path ─────────────────────────────────────────────────────
+
     const [connected, setConnected] = useState(false)
     const [events, setEvents] = useState<EventMessage[]>([])
     const [error, setError] = useState('')
@@ -70,6 +70,14 @@ export function useSharedStream(
             workerRef.current = worker
             worker.port.start()
 
+            if (typeof window !== 'undefined') {
+                const w = window as any
+                if (!w.__sharedWorkerPorts__) w.__sharedWorkerPorts__ = []
+                if (!w.__sharedWorkerPorts__.includes(worker.port)) {
+                    w.__sharedWorkerPorts__.push(worker.port)
+                }
+            }
+
             worker.port.onmessage = async (e: MessageEvent) => {
                 const msg = e.data
 
@@ -90,13 +98,14 @@ export function useSharedStream(
                             if (parsed?.type) parsedType = String(parsed.type)
                         } catch { }
                         return {
-                            id: crypto.randomUUID(),
+                            id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : (Math.random().toString(36).substring(2) + Date.now().toString(36)),
                             timestamp: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
                             arrivalTime: raw.arrivalTime ?? Date.now(),
                             type: 'message',
                             data: raw.raw ?? raw,
                             raw: typeof raw === 'string' ? raw : JSON.stringify(raw),
                             ...(parsedType && { parsedType }),
+                            _searchIndex: (typeof raw === 'string' ? raw : JSON.stringify(raw)).toLowerCase()
                         }
                     })
                     setEvents(prev => {
@@ -108,7 +117,7 @@ export function useSharedStream(
 
                 if (msg.type === 'event') {
                     let newEvent: EventMessage = {
-                        id: crypto.randomUUID(),
+                        id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : (Math.random().toString(36).substring(2) + Date.now().toString(36)),
                         timestamp: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
                         arrivalTime: msg.payload.arrivalTime ?? Date.now(),
                         type: 'message',
@@ -130,6 +139,8 @@ export function useSharedStream(
                         if (transformed === null) return
                         newEvent = transformed
                     }
+
+                    newEvent._searchIndex = (typeof newEvent.data === 'string' ? newEvent.data : JSON.stringify(newEvent.data)).toLowerCase()
 
                     onEventPersistRef.current?.(newEvent)
 
@@ -180,7 +191,7 @@ export function useSharedStream(
             if (pingRef.current) clearInterval(pingRef.current)
             workerRegistry.release(WORKER_KEY)
         }
-    }, []) // eslint-disable-line
+    }, [])
 
     const connect = useCallback((url: string, token?: string, clearHistory = true) => {
         if (!workerRef.current || fallbackRef.current) return

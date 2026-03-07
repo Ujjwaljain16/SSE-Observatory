@@ -107,7 +107,7 @@ export function useFilterWorker(
     const lastParamsRef = useRef(params)
     lastParamsRef.current = params
 
-    // ── Fallback synchronous filter (used when worker not available) ──────────
+
     const syncFilter = useCallback((events: EventMessage[], p: FilterParams) => {
         const t0 = performance.now()
         const result = (p.query.trim() && !p.queryError)
@@ -117,7 +117,7 @@ export function useFilterWorker(
         setFilteredEvents(result)
     }, [])
 
-    // ── Worker setup ──────────────────────────────────────────────────────────
+
     useEffect(() => {
         if (typeof Worker === 'undefined') {
             // Fallback: sync inline in test/old browser environments
@@ -133,9 +133,10 @@ export function useFilterWorker(
             setIsWorkerReady(true)
 
             worker.onmessage = (e: MessageEvent) => {
-                if (e.data.type === 'result') {
-                    setFilteredEvents(e.data.filtered)
-                    setFilterExecMs(e.data.execMs)
+                const msg = e.data
+                if (msg.type === 'FILTERED_EVENTS') {
+                    setFilteredEvents(msg.events)
+                    setFilterExecMs(msg.execMs)
                 }
             }
 
@@ -148,12 +149,12 @@ export function useFilterWorker(
         }
 
         return () => workerRegistry.release(WORKER_KEY)
-    }, []) // eslint-disable-line react-hooks/exhaustive-deps
+    }, [])
 
-    // ── API ───────────────────────────────────────────────────────────────────
+
     const addEventToWorker = useCallback((event: EventMessage) => {
         if (workerRef.current && isWorkerReady) {
-            workerRef.current.postMessage({ type: 'add_event', event })
+            workerRef.current.postMessage({ type: 'ADD_EVENTS', events: [event] })
         } else {
             // Handled by syncFilter path via allEvents change
         }
@@ -164,10 +165,13 @@ export function useFilterWorker(
         debounceRef.current = setTimeout(() => {
             if (workerRef.current && isWorkerReady) {
                 workerRef.current.postMessage({
-                    type: 'filter',
+                    type: 'QUERY_UPDATE',
                     query: p.queryError ? '' : p.query,
-                    searchQuery: p.searchQuery,
-                    customFilters: serializeFilters(p.customFilters),
+                    search: p.searchQuery,
+                })
+                workerRef.current.postMessage({
+                    type: 'CUSTOM_FILTERS_UPDATE',
+                    filters: serializeFilters(p.customFilters),
                 })
             } else {
                 syncFilter(allEvents, p)
@@ -177,22 +181,22 @@ export function useFilterWorker(
 
     const clearWorker = useCallback(() => {
         if (workerRef.current && isWorkerReady) {
-            workerRef.current.postMessage({ type: 'clear' })
+            workerRef.current.postMessage({ type: 'CLEAR' })
         }
         setFilteredEvents([])
     }, [isWorkerReady])
 
-    // ── Sync fallback: re-run when allEvents changes (non-worker env) ─────────
+
     useEffect(() => {
         if (!isWorkerReady) {
             syncFilter(allEvents, lastParamsRef.current)
         }
     }, [allEvents, isWorkerReady, syncFilter])
 
-    // ── Send filter params to worker when they change ─────────────────────────
+
     useEffect(() => {
         sendFilterToWorker(params)
-    }, [params.query, params.queryError, params.searchQuery, params.customFilters]) // eslint-disable-line
+    }, [params.query, params.queryError, params.searchQuery, params.customFilters])
 
     return useMemo(() => ({
         filteredEvents,

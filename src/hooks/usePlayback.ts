@@ -96,35 +96,6 @@ export const usePlayback = (
         stopReplay()
     }, [])
 
-    // TODO: Implement actual auto-replay loop if requested later.
-    // For now, "Replay" might just mean navigating history.
-    // But if we want "Press Play to watch history unfold":
-    /*
-    const startReplay = useCallback(() => {
-        setIsReplaying(true)
-        setIsPaused(true)
-        replayTimerRef.current = window.setInterval(() => {
-            setCurrentEventIndex(prev => {
-                if (prev <= 0) {
-                    stopReplay()
-                    return 0
-                }
-                return prev - 1
-            })
-        }, 1000 / playbackSpeed) 
-    }, [playbackSpeed])
-    */
-
-    // Determine what events to display
-    // If live (index 0, not paused), show all events.
-    // If paused/seeked, show events from index downwards (older events)
-    // Actually, usually we want to see the state AT that point in time.
-    // So if I'm at index 5 (5th newest event), I probably want to see events[5...end]
-    // But typically user wants to see "what happened up to this point".
-    // So displayedEvents should be events.slice(currentEventIndex)
-
-    // Wait, if I'm at index 10 (10 events ago), I want to see the list AS IT WAS then.
-    // So I effectively hide events[0...9].
     const displayedEvents = allEvents.slice(currentEventIndex)
 
     return {

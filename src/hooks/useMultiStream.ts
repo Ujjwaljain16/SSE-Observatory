@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import type { EventMessage } from '../types'
-import { buildSSEProxyUrl } from '../utils/sseProxyUrl'
+import { obtainSSEProxyTicket } from '../utils/sseProxyUrl'
 
 
 // 6 distinct, accessible colors for stream lanes
@@ -17,6 +17,7 @@ export interface StreamInstance {
     id: string
     name: string
     url: string
+    token?: string
     color: string
     events: EventMessage[]
     connected: boolean
@@ -71,59 +72,63 @@ export const useMultiStream = (): UseMultiStreamReturn => {
 
             // Close existing connection safely outside, technically this is still inside prev 
             // but we can schedule the side effect using setTimeout to break out of React's pure render phase
-            setTimeout(() => {
+            setTimeout(async () => {
                 const existing = eventSourcesRef.current.get(id)
                 if (existing) existing.close()
 
-                const sseUrl = buildSSEProxyUrl(stream.url)
-                const es = new EventSource(sseUrl)
-                eventSourcesRef.current.set(id, es)
-                eventCountersRef.current.set(id, 0)
+                try {
+                    const sseUrl = await obtainSSEProxyTicket(stream.url, stream.token)
+                    const es = new EventSource(sseUrl)
+                    eventSourcesRef.current.set(id, es)
+                    eventCountersRef.current.set(id, 0)
 
-                es.onopen = () => {
-                    updateStream(id, { connected: true, isLoading: false, error: '' })
-                }
+                    es.onopen = () => {
+                        updateStream(id, { connected: true, isLoading: false, error: '' })
+                    }
 
-                es.onmessage = (e) => {
-                    const counter = eventCountersRef.current.get(id) ?? 0
-                    eventCountersRef.current.set(id, counter + 1)
+                    es.onmessage = (e) => {
+                        const counter = eventCountersRef.current.get(id) ?? 0
+                        eventCountersRef.current.set(id, counter + 1)
 
-                    let parsedType: string | undefined
-                    try {
-                        const parsed = JSON.parse(e.data)
-                        if (parsed && typeof parsed === 'object' && 'type' in parsed) {
-                            parsedType = String(parsed.type)
+                        let parsedType: string | undefined
+                        try {
+                            const parsed = JSON.parse(e.data)
+                            if (parsed && typeof parsed === 'object' && 'type' in parsed) {
+                                parsedType = String(parsed.type)
+                            }
+                        } catch { /* not JSON */ }
+
+                        const newEvent: EventMessage = {
+                            id: `${id}-${counter}`,
+                            timestamp: new Date().toLocaleTimeString('en-US', {
+                                hour: '2-digit', minute: '2-digit', second: '2-digit',
+                            }),
+                            arrivalTime: Date.now(),
+                            type: 'message',
+                            data: e.data,
+                            raw: JSON.stringify(e, null, 2),
+                            streamId: id,
+                            streamColor: stream.color,
+                            ...(parsedType && { parsedType }),
                         }
-                    } catch { /* not JSON */ }
 
-                    const newEvent: EventMessage = {
-                        id: `${id}-${counter}`,
-                        timestamp: new Date().toLocaleTimeString('en-US', {
-                            hour: '2-digit', minute: '2-digit', second: '2-digit',
-                        }),
-                        arrivalTime: Date.now(),
-                        type: 'message',
-                        data: e.data,
-                        raw: JSON.stringify(e, null, 2),
-                        streamId: id,
-                        streamColor: stream.color,
-                        ...(parsedType && { parsedType }),
+                        setStreams(current => current.map(s => {
+                            if (s.id !== id) return s
+                            const updated = [newEvent, ...s.events]
+                            return { ...s, events: updated.slice(0, PER_STREAM_LIMIT) }
+                        }))
                     }
 
-                    setStreams(current => current.map(s => {
-                        if (s.id !== id) return s
-                        const updated = [newEvent, ...s.events]
-                        return { ...s, events: updated.slice(0, PER_STREAM_LIMIT) }
-                    }))
-                }
-
-                es.onerror = () => {
-                    if (es.readyState === EventSource.CLOSED) {
-                        eventSourcesRef.current.delete(id)
-                        updateStream(id, { connected: false, isLoading: false, error: 'Connection closed' })
-                    } else {
-                        updateStream(id, { isLoading: false, error: 'Connection interrupted, reconnecting...' })
+                    es.onerror = () => {
+                        if (es.readyState === EventSource.CLOSED) {
+                            eventSourcesRef.current.delete(id)
+                            updateStream(id, { connected: false, isLoading: false, error: 'Connection closed' })
+                        } else {
+                            updateStream(id, { isLoading: false, error: 'Connection interrupted, reconnecting...' })
+                        }
                     }
+                } catch (err) {
+                    updateStream(id, { connected: false, isLoading: false, error: 'Failed to negotiate secure SSE proxy ticket' })
                 }
             }, 0)
 
@@ -140,13 +145,14 @@ export const useMultiStream = (): UseMultiStreamReturn => {
         updateStream(id, { connected: false, isLoading: false, eventSource: null })
     }, [updateStream])
 
-    const addStream = useCallback((name: string, url: string, _token?: string): string => {
+    const addStream = useCallback((name: string, url: string, token?: string): string => {
         const id = `stream-${++streamCounter}-${Date.now()}`
         const color = STREAM_COLORS[streamCounter % STREAM_COLORS.length]
         const newStream: StreamInstance = {
             id, name, url, color,
             events: [], connected: false, isLoading: false,
             error: '', eventSource: null,
+            ...(token && { token }),
         }
         setStreams(prev => [...prev, newStream])
         return id

@@ -1,20 +1,9 @@
 /**
- * useCorrelationTracker.ts
- *
  * Detects causal chains across SSE events by extracting correlation identifiers
  * from event payloads. Standard distributed tracing fields are checked automatically.
  *
  * Correlation fields checked (in order of priority):
- *   traceId, requestId, correlationId, transactionId, spanId, sessionId, userId
- *
- * Returns:
- *   traces        — Map<correlationId, TraceEntry>  (all currently known chains)
- *   activeTraceId — currently selected trace for UI display
- *   setActiveTraceId
- *   getEventChain(id) — sorted array of events for a given correlation ID
- *   getTraceForEvent(event) — which trace this event belongs to (if any)
- *   correlationField — which field name was most commonly found (for UI hint)
- *   clearTraces()
+ * traceId, requestId, correlationId, transactionId, spanId, sessionId, userId
  */
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
@@ -163,7 +152,7 @@ export function useCorrelationTracker(events: EventMessage[]) {
             if (count > bestCount) { best = field; bestCount = count }
         }
         return best || 'traceId'
-    }, [traces]) // eslint-disable-line
+    }, [traces])
 
     return {
         traces,

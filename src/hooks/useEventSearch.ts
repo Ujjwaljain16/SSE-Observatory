@@ -9,13 +9,9 @@ export const useEventSearch = (events: EventMessage[]) => {
 
         const query = searchQuery.toLowerCase()
         return events.filter(event => {
-            // Search in event data
             if (event.data.toLowerCase().includes(query)) return true
-            // Search in parsed type
             if (event.parsedType?.toLowerCase().includes(query)) return true
-            // Search in event type
             if (event.type.toLowerCase().includes(query)) return true
-            // Search in timestamp
             if (event.timestamp.toLowerCase().includes(query)) return true
             return false
         })

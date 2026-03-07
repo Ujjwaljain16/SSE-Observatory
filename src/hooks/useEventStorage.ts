@@ -9,9 +9,9 @@ import {
     deleteOldest,
 } from '../utils/idbUtils'
 
-const FLUSH_INTERVAL_MS = 100   // Flush queue every 100ms
-const FLUSH_BATCH_SIZE = 50     // Also flush if queue reaches 50 events
-const MAX_STORED_EVENTS = 100_000  // Auto-evict oldest when exceeding this
+const FLUSH_INTERVAL_MS = 100
+const FLUSH_BATCH_SIZE = 50
+const MAX_STORED_EVENTS = 100_000
 
 interface UseEventStorageReturn {
     idbAvailable: boolean
@@ -34,21 +34,36 @@ export const useEventStorage = (): UseEventStorageReturn => {
         const queue = writeQueueRef.current
         if (!db || queue.length === 0) return
 
-        const batch = queue.splice(0, queue.length) // drain queue atomically
+        const batch = queue.splice(0, queue.length)
 
         try {
             await putBatch(db, batch)
 
-            // Auto-evict if over max
-            const total = await countAll(db)
-            if (total > MAX_STORED_EVENTS) {
-                await deleteOldest(db, total - MAX_STORED_EVENTS)
-            }
+            setTotalStoredCount(prev => {
+                const newTotal = prev + batch.length
 
-            const finalCount = await countAll(db)
-            setTotalStoredCount(finalCount)
-        } catch (e) {
+                // If we estimate we exceeded max, trigger a real count and eviction in background
+                if (newTotal > MAX_STORED_EVENTS) {
+                    countAll(db).then(async actualTotal => {
+                        if (actualTotal > MAX_STORED_EVENTS) {
+                            await deleteOldest(db, actualTotal - MAX_STORED_EVENTS)
+                            const finalCount = await countAll(db)
+                            setTotalStoredCount(finalCount)
+                        } else {
+                            setTotalStoredCount(actualTotal)
+                        }
+                    }).catch(console.warn)
+                }
+
+                return newTotal
+            })
+
+        } catch (e: any) {
             console.warn('[useEventStorage] Flush failed:', e)
+            if (e.name === 'QuotaExceededError') {
+                setIdbAvailable(false)
+                window.dispatchEvent(new CustomEvent('idb-quota-exceeded'))
+            }
         }
     }, [])
 
@@ -58,7 +73,6 @@ export const useEventStorage = (): UseEventStorageReturn => {
             .then(async (db) => {
                 dbRef.current = db
                 setIdbAvailable(true)
-                // Load initial count
                 const count = await countAll(db)
                 setTotalStoredCount(count)
             })
@@ -72,7 +86,7 @@ export const useEventStorage = (): UseEventStorageReturn => {
 
         return () => {
             if (flushTimerRef.current) clearInterval(flushTimerRef.current)
-            flush() // Final flush on unmount
+            flush()
         }
     }, [flush])
 

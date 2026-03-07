@@ -45,8 +45,11 @@ export const useInterceptors = (): UseInterceptorsReturn => {
     }, [])
 
     const addInterceptor = useCallback((name?: string) => {
-        // Generate UUID + compile strictly outside the setter to keep setter pure
-        const id = crypto.randomUUID()
+        // Fallback for environments where crypto.randomUUID might be missing
+        const id = (typeof crypto !== 'undefined' && crypto.randomUUID)
+            ? crypto.randomUUID()
+            : (Math.random().toString(36).substring(2) + Date.now().toString(36));
+
         const { fn, error } = compileInterceptor(DEFAULT_INTERCEPTOR_CODE)
 
         setInterceptors(prev => {
@@ -112,10 +115,12 @@ export const useInterceptors = (): UseInterceptorsReturn => {
 
         // Reflect any runtime errors back into interceptor state for the UI
         if (Object.keys(errors).length > 0) {
-            setInterceptors(prev => prev.map(i => ({
-                ...i,
-                lastError: errors[i.id] ?? i.lastError,
-            })))
+            setInterceptors(prev => prev.map(i => {
+                if (errors[i.id]) {
+                    return { ...i, lastError: errors[i.id] }
+                }
+                return i
+            }))
         }
 
         return result

@@ -18,7 +18,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import type { EventMessage } from '../types'
 
-// ─── Rule types ───────────────────────────────────────────────────────────────
+
 
 export interface SequenceRule {
     id: string
@@ -40,7 +40,7 @@ export interface BurstRule {
 
 export type PatternRule = SequenceRule | BurstRule
 
-// ─── Alert ────────────────────────────────────────────────────────────────────
+
 
 export interface PatternAlert {
     id: string
@@ -52,7 +52,7 @@ export interface PatternAlert {
     dismissed: boolean
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 
 let alertCounter = 0
 function uid() { return `alert-${Date.now()}-${alertCounter++}` }
@@ -131,7 +131,7 @@ function checkBurst(
     return null
 }
 
-// ─── Built-in default rules ───────────────────────────────────────────────────
+
 
 const DEFAULT_RULES: PatternRule[] = [
     {
@@ -163,7 +163,7 @@ const DEFAULT_RULES: PatternRule[] = [
     },
 ]
 
-// ─── Hook ─────────────────────────────────────────────────────────────────────
+
 
 export function usePatternDetector(events: EventMessage[]) {
     const [rules, setRules] = useState<PatternRule[]>(DEFAULT_RULES)
@@ -203,7 +203,7 @@ export function usePatternDetector(events: EventMessage[]) {
         }
     }, [events, rules])
 
-    // ── API ───────────────────────────────────────────────────────────────────
+
 
     const addRule = useCallback((rule: Omit<PatternRule, 'id'>) => {
         const id = `rule-${Date.now()}`

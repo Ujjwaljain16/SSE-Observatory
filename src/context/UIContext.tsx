@@ -3,17 +3,15 @@ import { createContext, useContext } from 'react'
 export type AppMode = 'monitor' | 'mock' | 'multistream'
 
 interface UIContextValue {
-    // Mode
     appMode: AppMode
     setAppMode: (mode: AppMode) => void
-    // Panel visibility
     showStats: boolean
     setShowStats: (v: boolean) => void
     showSchema: boolean
     setShowSchema: (v: boolean) => void
     showInterceptors: boolean
     setShowInterceptors: (v: boolean) => void
-    // Connection form state (lifted out of local)
+    // connection form state lifted from local components
     url: string
     setUrl: (v: string) => void
     bearerToken: string

@@ -1,18 +1,5 @@
-/**
- * AppProviders.tsx
- *
- * Thin provider wrapper: instantiates context values via useStreamState
- * and useTheme, then nests the four context providers.
- *
- * Context boundaries:
- *   ThemeContext  — theme + toggle
- *   UIContext     — app-mode, panel visibility
- *   StreamContext — all stream state (events, filters, playback, …)
- *   PerfContext   — high-frequency filter/worker metrics (isolated to prevent
- *                   StreamContext consumers from re-rendering on every event)
- *
- * All orchestration (12 hooks + context value assembly) lives in useStreamState.
- */
+// orchestrates global context providers
+// separates high-frequency metrics (PerfContext) from UI state to prevent render thrashing
 
 import { useState, useMemo, type ReactNode } from 'react'
 import { useTheme } from '../hooks/useTheme'
@@ -28,23 +15,18 @@ interface Props {
 }
 
 export function AppProviders({ children }: Props) {
-    // ── Theme ──────────────────────────────────────────────────────────────────
     const { theme, toggleTheme } = useTheme()
     const themeValue = useMemo(() => ({ theme, toggleTheme }), [theme, toggleTheme])
 
-    // ── UI State (app-level panel toggles) ─────────────────────────────────────
-    // Connection form fields (url, bearerToken, profileName) live in StreamContext
-    // via useStreamState; UIContext only holds view-toggle state.
+    // ui context only holds view toggles, connection fields live in stream context
     const [appMode, setAppMode] = useState<'monitor' | 'mock' | 'multistream'>('monitor')
     const [showStats, setShowStats] = useState(false)
     const [showSchema, setShowSchema] = useState(false)
     const [showInterceptors, setShowInterceptors] = useState(false)
 
-    // ── Stream + Perf state (all 12 hooks assembled by useStreamState) ─────────
     const { streamValue, perfValue } = useStreamState()
 
-    // UIContext still exposes url/bearerToken/profileName from streamValue so
-    // AppLayout.tsx and ConnectionPanel can keep reading from useUIContext()
+    // expose stream connection fields through ui context for backward compatibility
     const uiValue = useMemo(() => ({
         appMode, setAppMode,
         showStats, setShowStats,
