@@ -41,7 +41,8 @@ describe('useSharedStream', () => {
         expect(mockPort.postMessage).toHaveBeenCalledWith({
             type: 'connect',
             url: 'http://test.com',
-            token: 'token123'
+            token: 'token123',
+            useProxy: true
         })
         expect(result.current.isLoading).toBe(true)
     })
