@@ -58,17 +58,18 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Missing target url' })
     }
 
+    // 1. Authenticated Access vs. Allowlist
+    const isTicketed = !!ticketId;
+    const isAllowed = ALLOWED_HOSTS.length > 0 && ALLOWED_HOSTS.includes(target.hostname);
+
+    if (process.env.NODE_ENV === 'production' && !isTicketed && !isAllowed) {
+        const msg = `Proxy access denied. Host ${target.hostname} is not in the allowlist and no security ticket was provided.`;
+        res.writeHead(403, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
+        res.write(`event: error\ndata: {"error":"${msg}"}\n\n`);
+        return res.end();
+    }
+
     try {
-        const target = new URL(targetUrl)
-
-        // 1. Hostname Allowlist Check
-        if (ALLOWED_HOSTS.length > 0 && !ALLOWED_HOSTS.includes(target.hostname)) {
-            const msg = `Host ${target.hostname} is not in the allowlist`;
-            res.writeHead(403, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
-            res.write(`event: error\ndata: {"error":"${msg}"}\n\n`);
-            return res.end();
-        }
-
         // 2. DNS Resolution & Private IP Check (DNS Rebinding Protection)
         const { address } = await lookup(target.hostname)
         
