@@ -94,11 +94,12 @@ export default async function handler(req, res) {
         const proxyReq = protocol.request(target, {
             headers: {
                 'Accept': 'text/event-stream',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'User-Agent': 'SSE-Observatory/1.0 (https://github.com/Ujjwaljain16/SSE-Observatory)',
                 'Cache-Control': 'no-cache',
                 ...(authHeader ? { 'Authorization': authHeader } : {})
             }
         }, (proxyRes) => {
+            // Set streaming headers
             res.writeHead(proxyRes.statusCode || 200, {
                 'Content-Type': 'text/event-stream; charset=utf-8',
                 'Cache-Control': 'no-cache, no-transform, no-store, must-revalidate',
@@ -106,18 +107,26 @@ export default async function handler(req, res) {
                 'Expires': '0',
                 'Connection': 'keep-alive',
                 'X-Accel-Buffering': 'no',
-                'Content-Encoding': 'identity' // Strictly disable any compression buffering
+                'Access-Control-Allow-Origin': origin || '*'
             });
 
-            // Keep-alive heartbeat (SSE comment) every 15 seconds to prevent Vercel timeout
+            // Immediate heartbeat to flush headers and signal aliveness
+            res.write(': sse-proxy-ping\n\n');
+            if (res.flush) res.flush();
+
+            // Keep-alive heartbeat every 15 seconds to prevent gateway timeouts
             const heartbeat = setInterval(() => {
-                res.write(': keep-alive\n\n');
-                if (res.flush) res.flush();
+                if (!res.writableEnded) {
+                    res.write(': keep-alive\n\n');
+                    if (res.flush) res.flush();
+                }
             }, 15000);
 
             proxyRes.on('data', (chunk) => {
-                res.write(chunk);
-                if (res.flush) res.flush();
+                if (!res.writableEnded) {
+                    res.write(chunk);
+                    if (res.flush) res.flush();
+                }
             });
 
             proxyRes.on('end', () => {
