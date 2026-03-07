@@ -58,6 +58,13 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Missing target url' })
     }
 
+    let target;
+    try {
+        target = new URL(targetUrl)
+    } catch (e) {
+        return res.status(400).json({ error: 'Invalid target URL' })
+    }
+
     // 1. Authenticated Access vs. Allowlist
     const isTicketed = !!ticketId;
     const isAllowed = ALLOWED_HOSTS.length > 0 && ALLOWED_HOSTS.includes(target.hostname);
