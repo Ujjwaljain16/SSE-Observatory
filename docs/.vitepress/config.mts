@@ -6,11 +6,11 @@ export default defineConfig({
     description: "Real-Time Observability for Server-Sent Event Streams",
     base: '/docs/',
     head: [
-        ['link', { rel: 'icon', type: 'image/png', href: '/logo.png' }]
+        ['link', { rel: 'icon', type: 'image/png', href: '/docs/logo.png' }]
     ],
     themeConfig: {
         // https://vitepress.dev/reference/default-theme-config
-        logo: '/logo.png',
+        logo: '/docs/logo.png',
         nav: [
             { text: 'Home', link: '/' },
             { text: 'Guide', link: '/guide/getting-started' },
