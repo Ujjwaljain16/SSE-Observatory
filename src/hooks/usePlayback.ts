@@ -4,10 +4,8 @@ import type { EventMessage } from '../types'
 interface UsePlaybackReturn {
     isPaused: boolean
     isReplaying: boolean
-    playbackSpeed: number
     currentEventIndex: number // Index in the events array (0 is newest)
     togglePause: () => void
-    setPlaybackSpeed: (speed: number) => void
     seekTo: (index: number) => void // Seek to specific index
     stepForward: () => void
     stepBackward: () => void
@@ -19,25 +17,49 @@ export const usePlayback = (
     allEvents: EventMessage[] // The full history from useEventStream
 ): UsePlaybackReturn => {
     const [isPaused, setIsPaused] = useState(false)
-    const [playbackSpeed, setPlaybackSpeed] = useState(1)
     const [currentEventIndex, setCurrentEventIndex] = useState(0) // 0 means "live" / newest
     const [isReplaying, setIsReplaying] = useState(false) // True if we are auto-advancing history
-
+    const prevEventsLengthRef = useRef(allEvents.length)
     const replayTimerRef = useRef<number | null>(null)
 
-    // Ensure index is valid when events update
+    // Index Locking Logic:
+    // If we are paused or tracking history (index > 0), and new events arrive 
+    // at the front of the array (unshifted), we must increment our index 
+    // so the view "stays" on the same physical events.
     useEffect(() => {
-        if (currentEventIndex >= allEvents.length && allEvents.length > 0) {
+        const lengthDiff = allEvents.length - prevEventsLengthRef.current
+
+        if (lengthDiff > 0 && (isPaused || currentEventIndex > 0)) {
+            setCurrentEventIndex(prev => prev + lengthDiff)
+        }
+
+        prevEventsLengthRef.current = allEvents.length
+    }, [allEvents.length, isPaused, currentEventIndex])
+
+    // Ensure index is valid when events update (e.g. on clear)
+    useEffect(() => {
+        if (allEvents.length === 0) {
+            setCurrentEventIndex(0)
+            return
+        }
+        if (currentEventIndex >= allEvents.length) {
             setCurrentEventIndex(allEvents.length - 1)
         }
     }, [allEvents.length, currentEventIndex])
 
     const togglePause = useCallback(() => {
-        setIsPaused(prev => !prev)
+        setIsPaused(prev => {
+            const willBePlaying = prev === true
+            // If we are resuming (playing) and we were in the past, jump to live
+            if (willBePlaying && currentEventIndex > 0) {
+                setCurrentEventIndex(0)
+            }
+            return !prev
+        })
         if (isReplaying) {
             stopReplay()
         }
-    }, [isReplaying])
+    }, [isReplaying, currentEventIndex])
 
     const stopReplay = () => {
         setIsReplaying(false)
@@ -108,10 +130,8 @@ export const usePlayback = (
     return {
         isPaused,
         isReplaying,
-        playbackSpeed,
         currentEventIndex,
         togglePause,
-        setPlaybackSpeed,
         seekTo,
         stepForward,
         stepBackward,
