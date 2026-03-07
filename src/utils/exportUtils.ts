@@ -1,7 +1,8 @@
 import type { EventMessage } from '../types'
+import { createRecording } from './replayUtils'
 
 export interface ExportOptions {
-    format: 'json' | 'csv'
+    format: 'json' | 'csv' | 'record'
     filename?: string
 }
 
@@ -14,7 +15,12 @@ export const exportEvents = (events: EventMessage[], options: ExportOptions): vo
     let mimeType: string
     let extension: string
 
-    if (format === 'json') {
+    if (format === 'record') {
+        const recording = createRecording(events)
+        content = JSON.stringify(recording, null, 2)
+        mimeType = 'application/json'
+        extension = 'sse-record'
+    } else if (format === 'json') {
         const exportData = events.map(event => {
             try {
                 return {
