@@ -44,9 +44,11 @@ export function buildSSEProxyUrl(rawUrl: string): string {
 }
 
 export async function obtainSSEProxyTicket(rawUrl: string, token?: string): Promise<string> {
+    // Relative paths connect directly
     if (rawUrl.startsWith('/')) {
         return token ? `${rawUrl}${rawUrl.includes('?') ? '&' : '?'}auth=${encodeURIComponent(token)}` : rawUrl;
     }
+
     try {
         const currentOrigin = typeof window !== 'undefined' ? window.location.origin : (typeof self !== 'undefined' ? self.location.origin : '');
         if (currentOrigin && rawUrl.startsWith(currentOrigin)) {
@@ -56,17 +58,9 @@ export async function obtainSSEProxyTicket(rawUrl: string, token?: string): Prom
         }
     } catch { }
 
-    const res = await fetch('/api/sse/ticket', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: rawUrl, token })
-    });
-
-    if (!res.ok) {
-        throw new Error('Failed to negotiate secure SSE proxy ticket');
-    }
-
-    const data = await res.json();
-    return `/api/sse?ticket=${data.ticket}`;
+    // Use direct proxy URL with URL and Auth parameters.
+    // The server-side proxy handles Origin/Referer validation for security.
+    const baseUrl = `/api/sse?url=${encodeURIComponent(rawUrl)}`;
+    return token ? `${baseUrl}&auth=${encodeURIComponent(token)}` : baseUrl;
 }
 
