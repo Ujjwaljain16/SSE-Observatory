@@ -144,3 +144,9 @@ The testing strategy is heavily optimized for pipeline resilience, memory leaks,
 ## 11. License
 
 This project is licensed under the MIT License.
+### Persistent Mock Servers (Optional)
+By default, recorded mock sessions on Vercel are ephemeral. To make them persistent:
+1. Go to your **Vercel Dashboard** > **Storage**.
+2. Create a **KV (Redis)** database.
+3. Link it to your project.
+The tool will automatically detect the `KV_URL` and enable persistence for your mock recordings.
