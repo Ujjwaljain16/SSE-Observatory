@@ -1,255 +1,358 @@
+# 🛸 SSE Observatory
+
 <div align="center">
 
-# 🎯 SSE-Observatory
+<img src="./public/logo.png" alt="SSE Observatory Logo" width="160" style="border-radius: 20px;"/>
 
-### Real-time Server-Sent Events Debugging & Monitoring Tool
+### Real-Time Observability for Server-Sent Event Streams
 
-[![React](https://img.shields.io/badge/React-18.2.0-61DAFB?style=for-the-badge&logo=react&logoColor=white)](https://react.dev/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.9.3-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Tailwind CSS](https://img.shields.io/badge/Tailwind-3.4.1-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
-[![Vite](https://img.shields.io/badge/Vite-5.0.8-646CFF?style=for-the-badge&logo=vite&logoColor=white)](https://vitejs.dev/)
+Inspect • Filter • Trace • Replay • Transform
 
-*A developer tool born from frustration, built for productivity.*
+Built entirely with **browser-native APIs**
+(Web Workers • SharedWorkers • IndexedDB)
 
----
-
-[Features](#-features) • [Installation](#-installation) • [Usage](#-usage) • [The Story](#-the-story) • [Contributing](#-contributing)
+> 📚 **[View the Full Documentation Site Locally: `npm run docs:dev`](#)**
 
 </div>
 
 ---
 
-## 📖 The Story
+# 📡 Overview
 
-### Why I Built This
+**SSE Observatory** is a browser-native debugging and observability toolkit designed for **Server-Sent Events (SSE)**.
 
-It was 2 AM. I was debugging a payment webhook system that used Server-Sent Events to push real-time transaction updates. The events were firing—I could see them in the network tab—but something was wrong. Events were being dropped, timestamps didn't match, and I had no way to filter through the hundreds of events flooding in.
+It allows engineers to inspect, analyze, transform, and replay real-time event streams with powerful filtering and visualization tools — all **without requiring external logging infrastructure or backend storage**.
 
-**I needed to see what was actually happening.**
-
-I tried browser DevTools, but the Network tab doesn't let you filter SSE events by content. I tried logging to console, but when you're getting 50+ events per second, good luck finding anything. I tried third-party tools, but they either didn't handle authentication or couldn't deal with CORS.
-
-So I built this.
-
-### What Started as a Quick Script...
-
-What began as a hacky Node.js script to proxy SSE connections evolved into something I now use daily. Every time I work with:
-- **Real-time dashboards** that need event verification
-- **Webhook systems** where I need to see exactly what's being pushed
-- **Chat applications** with live message debugging
-- **IoT data streams** from various sensors
-- **Stock/crypto tickers** and financial data feeds
-
-I open this tool.
-
-### The Philosophy
-
-**Developers need clarity, not complexity.**
-
-This tool does one thing exceptionally well: it shows you exactly what's coming through your SSE connection, lets you filter it however you want, and gets out of your way. No bloat, no learning curve, no enterprise pricing.
+The system is designed to run completely inside the browser while maintaining responsive UI performance even under high event throughput.
 
 ---
 
-## ✨ Features
+# 🎯 The Problem
 
-### 🔌 Core Capabilities
-| Feature | Description |
-|---------|-------------|
-| **One-Click Connect** | Paste a URL, click connect. That's it. |
-| **Bearer Auth Support** | Token-based authentication just works. |
-| **Live Event Stream** | Watch events flow in real-time with premium color-coded types. |
-| **Profile Saving** | Save your frequent connections for quick access. |
-| **Dark/Light Mode** | Easy on the eyes, day or night. |
-| **Auto-Reconnect** | Smart reconnection logic handles network drops gracefully. |
+Server-Sent Events are widely used for:
 
-### 🔍 Power-User Filtering (New in v2.0)
-| Feature | Description |
-|---------|-------------|
-| **Smart Filtering** | Filter by ANY JSON field, including nested paths (e.g., `data.user.id`). |
-| **Regex Support** | Use standard regex patterns for complex text matching. |
-| **Numeric Logic** | Filter values with operators: `>`, `<`, `>=`, `<=`, `==`, `!=` (e.g., `latency > 500`). |
-| **Query Language** | Write SQL-like queries: `type == "error" AND data.severity == "high"`. |
-| **Global Search** | Instant text search across all event types and payloads. |
+* live dashboards
+* streaming APIs
+* microservice event pipelines
+* LLM token streaming
+* notifications
+* telemetry pipelines
 
-### ⏳ Time-Travel Debugging (New in v2.0)
-| Feature | Description |
-|---------|-------------|
-| **Event Timeline** | Visual scrubber showing event density over time. |
-| **Time Travel** | Pause the stream and replay history to spot transient bugs. |
-| **Playback Controls** | Step forward/backward frame-by-frame or replay at 1x/2x/4x speed. |
-| **Ring Buffer** | Efficiently manages up to 1,000 events without browser lag. |
-| **Live vs. Replay** | Seamlessly toggle between live real-time view and historical inspection. |
+Yet debugging SSE streams in production is difficult.
+
+Traditional tools have limitations:
+
+| Tool            | Limitation                                             |
+| --------------- | ------------------------------------------------------ |
+| Chrome DevTools | Shows raw frames but lacks filtering/search            |
+| Console logging | Impossible to inspect high-frequency streams           |
+| APM tools       | Sampling and ingestion latency hide real-time behavior |
+
+When hundreds of events arrive every second, engineers need to answer questions like:
+
+* *Which events match a specific payload condition?*
+* *Why did this workflow stall?*
+* *What happened immediately before this error?*
+* *Are events arriving in the expected order?*
+
+**SSE Observatory transforms raw event streams into a queryable, analyzable timeline.**
 
 ---
 
-## 🚀 Installation
+# ⚙️ Core Architecture
 
-### Prerequisites
+The system separates ingestion, processing, and rendering across multiple browser workers.
 
-- **Node.js** 18+ ([Download](https://nodejs.org))
-- **npm** or **yarn**
+```text
+External SSE Server
+        │
+        ▼
+SharedWorker (connection manager)
+        │
+        ▼
+Event Processing Pipeline
+        │
+        ├─ Interceptor Workers
+        │
+        ▼
+Ring Buffer (in-memory)
+        │
+        ├─ IndexedDB Cold Storage
+        │
+        ▼
+Filter Worker
+        │
+        ▼
+React UI
+```
 
-### Quick Start
+### Key Design Principles
+
+⚡ **UI Thread Isolation**
+Heavy computation runs inside Web Workers to prevent UI blocking.
+
+🧠 **Bounded Memory Model**
+A ring buffer keeps recent events in memory while persisting older events to IndexedDB.
+
+🔗 **Connection Sharing**
+A SharedWorker allows multiple browser tabs to share a single SSE connection.
+
+📊 **Incremental Processing**
+Workers receive only new events instead of full dataset transfers.
+
+---
+
+# 🔬 Feature Breakdown
+
+## 🌐 Event Multiplexing (Multi-Stream)
+
+Observe multiple SSE endpoints simultaneously.
+
+Each stream is assigned a dedicated lane on the global timeline, allowing engineers to detect **race conditions or cross-service interactions**.
+
+---
+
+## 🔎 Query Engine (Custom DSL)
+
+A custom query language enables precise structural filtering.
+
+Example queries:
+
+```sql
+type == "payment" AND data.amount > 500
+
+data.user.id == "abc123"
+
+type != "heartbeat" AND headers.userAgent matches "curl/.*"
+```
+
+Supported features:
+
+* nested field access
+* numeric comparisons
+* regex operators
+* boolean expressions
+
+Filtering executes inside a **dedicated worker thread**.
+
+---
+
+## 🧬 Streaming JavaScript Interceptors
+
+Transform events dynamically using custom JavaScript.
+
+Example:
+
+```javascript
+function intercept(event) {
+  if (event.type === "obfuscated_wrapper") {
+    const payload = JSON.parse(event.data).hidden_payload;
+
+    return {
+      ...event,
+      data: JSON.stringify(payload),
+      type: "clean_payload"
+    };
+  }
+
+  return event;
+}
+```
+
+Interceptors run inside sandboxed worker environments to prevent blocking the UI thread.
+
+---
+
+## 🚨 Sliding-Window Pattern Detection
+
+Define rules that monitor the event stream for anomalies.
+
+Supported patterns include:
+
+### Burst Detection
+
+Trigger alerts when a threshold is exceeded within a time window.
+
+Example:
+
+```text
+5 error events within 10 seconds
+```
+
+### Sequence Detection
+
+Ensure expected workflows complete correctly.
+
+Example sequence:
+
+```text
+request_start → db_write → response
+```
+
+Missing steps generate alerts.
+
+---
+
+## 🔗 Distributed Trace Waterfall
+
+The system detects common tracing identifiers:
+
+```text
+traceId
+correlationId
+spanId
+requestId
+```
+
+When a trace chain is detected, the **Trace Inspector** renders a waterfall visualization showing:
+
+* event ordering
+* service latency
+* workflow duration
+
+---
+
+## 🎞 Mock Server & Replay
+
+Record and replay real event sessions.
+
+Features include:
+
+* exporting `.sse-record` session files
+* deterministic replay using original timing
+* adjustable playback speeds
+* reproducible debugging environments
+
+This enables **incident reproduction without a live backend**.
+
+---
+
+## 🧠 Dynamic Schema Inference
+
+Incoming JSON payloads are analyzed to infer structure automatically.
+
+The system tracks:
+
+* field names
+* data types
+* occurrence frequency
+* nested object paths
+
+This produces a **live schema representation** of the event stream.
+
+---
+
+## 💾 Cold Storage & Analytics
+
+Older events are persisted to **IndexedDB**.
+
+This provides:
+
+* crash-resistant session history
+* historical queries
+* data export (JSON / CSV)
+
+---
+
+# 🛠 Installation
+
+Requires **Node.js 18+**
+
+Clone the repository:
 
 ```bash
-# Clone the repository
-git clone https://github.com/yourusername/sse-observatory.git
+git clone https://github.com/your-org/sse-observatory.git
 cd sse-observatory
-
-# Install dependencies
-npm install
-
-# Start the development server
-npm run dev
 ```
 
-The app opens automatically at `http://localhost:3000`
-
-### Environment Configuration (Optional)
-
-Create a `.env` file to customize the port:
-
-```env
-VITE_PORT=3001
-```
-
----
-
-## 📖 Usage
-
-### Basic Connection
-
-1. **Enter your SSE endpoint URL**
-   ```
-   https://api.yourservice.com/events/stream
-   ```
-
-2. **Add authentication (if needed)**
-   - Paste your Bearer token
-   - It's sent as: `Authorization: Bearer <your-token>`
-
-3. **Click Connect** and watch the events flow!
-
-### Advanced Filtering
-
-The filtering system is designed for power users:
-
-- **Regex**: Toggle `.*` mode to use regex patterns (e.g., `^user_\d+`).
-- **Logic**: Use numeric comparisons like `data.score > 100`.
-- **Query Mode**: Use the query bar for complex logic:
-  ```sql
-  type == "update" AND (data.status == "failed" OR data.latency > 1000)
-  ```
-
-### Time-Travel Debugging
-
-1. **Pause** the stream to stop the live feed (events continue buffering in background).
-2. **Scrub** the timeline at the bottom to jump to past events.
-3. **Step** through events one by one to analyze state changes.
-4. **Replay** the session at 1x, 2x, or 4x speed to visualize the flow of events as they happened.
-5. Click **GO LIVE** to return to the real-time stream.
-
----
-
-## 🏗️ Architecture
-
-### How It Works
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Your Browser                              │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│   ┌─────────────┐     ┌─────────────┐     ┌─────────────────┐   │
-│   │   React UI  │────▶│  EventSource │────▶│  Vite Proxy     │   │
-│   │             │◀────│  API        │◀────│  /api/sse       │   │
-│   └─────────────┘     └─────────────┘     └────────┬────────┘   │
-│                                                      │           │
-│                                                      │           │
-│  ┌──────────────┐                          ┌─────────▼────────┐  │
-│  │ Time-Travel  │                          │   Your SSE       │  │
-│  │ Ring Buffer  │                          │   Endpoint       │  │
-│  └──────────────┘                          │   (Any Origin)   │  │
-│                                            └──────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### Why a Proxy?
-
-Browsers block cross-origin SSE connections (CORS) by default. SSE-Observatory includes a built-in lightweight proxy (via Vite) that:
-1. Proxies requests server-side to bypass CORS.
-2. Injects headers (like Auth tokens) securely.
-3. Streams responses back to the client instantly.
-
----
-
-## 🛠️ Development
-
-### Available Scripts
+Install dependencies:
 
 ```bash
-# Development with hot reload
+npm install
+```
+
+Start the development server:
+
+```bash
 npm run dev
-
-# Type checking
-npx tsc --noEmit
-
-# Production build
-npm run build
-
-# Preview production build
-npm run preview
-
-# Lint code
-npm run lint
 ```
 
-### Project Structure
+Open the application:
 
-```
-src/
-├── App.tsx              # Main application orchestrator
-├── components/          # UI components
-│   ├── EventTimeline.tsx # Canvas-based timeline visualization
-│   ├── PlaybackControls.tsx # Time-travel controls
-│   ├── CustomFilters.tsx # Advanced filtering UI
-│   ├── QueryInput.tsx    # SQL-like query parser UI
-│   └── ...
-├── hooks/               # Custom React hooks
-│   ├── useEventStream.ts # SSE connection & Ring Buffer logic
-│   ├── usePlayback.ts    # Replay & Time-travel state machine
-│   ├── useQueryParser.ts # AST parser for query language
-│   └── ...
-├── types/               # TypeScript interfaces
-└── utils/               # Helper functions
+```text
+http://localhost:3001
 ```
 
 ---
 
-## 🤝 Contributing
+# 🧪 Chaos Testing
 
-Contributions make open source amazing! Here's how to help:
+The repository includes multiple local test servers for stress testing.
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+| Command                   | Purpose                                            |
+| ------------------------- | -------------------------------------------------- |
+| `npm run simple`          | Emits regular heartbeat events                     |
+| `npm run chaos`           | Emits malformed payloads and connection drops      |
+| `node test-servers/test-interceptor-server.js` | Generates wrapped payloads for interceptor testing |
+| `node test-servers/test-pattern-server.js`     | Simulates burst error conditions                   |
+| `node test-servers/test-multistream-server.js` | Produces correlated multi-service streams          |
+
+These tests validate:
+
+* reconnect logic
+* worker isolation
+* pattern detection
+* multi-stream correlation
 
 ---
 
-## 📜 License
+# 🚀 Deployment
 
-This project is open source and available under the [MIT License](LICENSE).
+The application can be deployed on platforms like **Vercel**.
+
+A lightweight proxy layer allows monitoring external SSE endpoints without modifying their CORS configuration.
+
+Deployment steps:
+
+1. Push repository to GitHub
+2. Import project into Vercel
+3. Deploy using default Vite build settings
+
+---
+
+# 🗺 Roadmap
+
+Planned improvements:
+
+* WASM-powered query engine
+* Protobuf decoding support
+* WebSocket transport compatibility
+* large-scale stream analytics
+
+---
+
+# 🤝 Contributing
+
+Contributions are welcome.
+
+Please open issues or submit pull requests for:
+
+* bug fixes
+* performance improvements
+* feature proposals
+
+---
+
+# 📜 License
+
+MIT License
 
 ---
 
 <div align="center">
 
-**Built with ☕ and frustration**
+⭐ **If this project helped you debug a difficult event stream, consider starring the repository.**
 
-*If this tool saved you time, consider starring the repo!*
-
-⭐
+Built for engineers who prefer **observability over guesswork.**
 
 </div>
