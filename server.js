@@ -157,88 +157,115 @@ setInterval(() => {
 
 
 app.get('/api/sse', async (req, res) => {
+    const origin = req.headers.origin || req.headers.referer;
+    const isLocal = origin && (origin.includes('localhost:') || origin.includes('127.0.0.1:'));
+    const isInternal = isLocal || process.env.NODE_ENV !== 'production';
+
     let targetUrl = req.query.url;
     let authHeader = req.query.auth;
     const ticketId = req.query.ticket;
 
-    // Secure ticket exchange
     if (ticketId) {
         const ticketData = sseTickets.get(ticketId);
-        if (!ticketData || ticketData.expiresAt < Date.now()) {
-            return res.status(401).json({ error: 'Invalid or expired proxy ticket' });
+        if (ticketData && ticketData.expiresAt > Date.now()) {
+            targetUrl = ticketData.url;
+            authHeader = ticketData.token;
+            sseTickets.delete(ticketId);
         }
-        sseTickets.delete(ticketId); // Single use
-        targetUrl = ticketData.url;
-        authHeader = ticketData.token;
     }
 
     if (!targetUrl) return res.status(400).json({ error: 'Missing target url' });
 
+    let target;
     try {
-        const target = new URL(targetUrl);
+        target = new URL(targetUrl);
+    } catch (e) {
+        return res.status(400).json({ error: 'Invalid target URL' });
+    }
 
-        // 1. Hostname Allowlist Check
-        if (ALLOWED_HOSTS.length > 0 && !ALLOWED_HOSTS.includes(target.hostname)) {
-            return res.status(403).json({ error: `Host ${target.hostname} is not in the allowlist` });
+    if (process.env.NODE_ENV === 'production' && !isInternal) {
+        const isHostAllowed = ALLOWED_HOSTS.length > 0 && ALLOWED_HOSTS.includes(target.hostname);
+        if (!isHostAllowed) {
+            res.writeHead(403, { 'Content-Type': 'text/event-stream' });
+            res.write(`event: error\ndata: {"error":"Unauthorized origin"}\n\n`);
+            return res.end();
         }
+    }
 
-        // 2. DNS Resolution & Private IP Check (DNS Rebinding Protection)
-        const { address } = await lookup(target.hostname);
-        
-        // Strict SSRF check block private IPs in production unless specifically opted out
-        if (isPrivateIP(address) && process.env.NODE_ENV === 'production') {
-            return res.status(403).json({ error: 'Blocked attempt to proxy to private IP network' });
+    try {
+        const { address } = await lookup(target.hostname).catch(() => ({ address: null }));
+        if (address && isPrivateIP(address) && process.env.NODE_ENV === 'production') {
+            res.writeHead(403, { 'Content-Type': 'text/event-stream' });
+            res.write(`event: error\ndata: {"error":"Blocked access to private network"}\n\n`);
+            return res.end();
         }
 
         const protocol = target.protocol === 'https:' ? https : http;
         const proxyReq = protocol.request(target, {
             headers: {
                 'Accept': 'text/event-stream',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'User-Agent': 'SSE-Observatory/1.0 (https://github.com/Ujjwaljain16/SSE-Observatory)',
                 'Cache-Control': 'no-cache',
                 ...(authHeader ? { 'Authorization': authHeader } : {})
             }
         }, (proxyRes) => {
             res.writeHead(proxyRes.statusCode || 200, {
-                'Content-Type': 'text/event-stream',
-                'Cache-Control': 'no-cache, no-transform',
+                'Content-Type': 'text/event-stream; charset=utf-8',
+                'Cache-Control': 'no-cache, no-transform, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0',
                 'Connection': 'keep-alive',
                 'X-Accel-Buffering': 'no',
-                'Content-Encoding': 'none',
-                'Access-Control-Allow-Origin': '*'
+                'Access-Control-Allow-Origin': origin || '*'
             });
 
+            res.write(': sse-proxy-ping\n\n');
+            if (res.flush) res.flush();
+
+            const heartbeat = setInterval(() => {
+                if (!res.writableEnded) {
+                    res.write(': keep-alive\n\n');
+                    if (res.flush) res.flush();
+                }
+            }, 15000);
+
             proxyRes.on('data', (chunk) => {
-                res.write(chunk);
-                if (res.flush) res.flush(); // Flush if compression middleware is present
+                if (!res.writableEnded) {
+                    res.write(chunk);
+                    if (res.flush) res.flush();
+                }
             });
 
             proxyRes.on('end', () => {
+                clearInterval(heartbeat);
                 res.end();
             });
 
             proxyRes.on('error', (err) => {
-                res.write(`event: error\ndata: {"error":"Stream connection lost","details":"${err.message}"}\n\n`);
+                clearInterval(heartbeat);
+                res.write(`event: error\ndata: {"error":"Upstream connection lost","details":"${err.message}"}\n\n`);
                 res.end();
+            });
+
+            req.on('close', () => {
+                clearInterval(heartbeat);
+                proxyReq.destroy();
             });
         });
 
         proxyReq.on('error', (err) => {
-            logger.error('[Proxy Error]', { message: err.message, target: targetUrl });
-            if (!res.headersSent) {
-                res.writeHead(502, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform' });
-            }
-            res.write(`event: error\ndata: {"error":"Target server unreachable","details":"${err.message}"}\n\n`);
+            if (!res.headersSent) res.writeHead(502, { 'Content-Type': 'text/event-stream' });
+            res.write(`event: error\ndata: {"error":"Failed to reach target","details":"${err.message}"}\n\n`);
             res.end();
         });
+
         proxyReq.end();
     } catch (e) {
-        logger.error('[Proxy Exception]', { message: e.message, target: targetUrl });
-        if (!res.headersSent) {
-            return res.status(400).json({ error: 'Invalid proxy request', details: e.message });
+        if (!res.headersSent) res.status(500).json({ error: e.message });
+        else {
+            res.write(`event: error\ndata: {"error":"Proxy fault","details":"${e.message}"}\n\n`);
+            res.end();
         }
-        res.write(`event: error\ndata: {"error":"Invalid proxy request","details":"${e.message}"}\n\n`);
-        res.end();
     }
 });
 
