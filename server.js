@@ -281,6 +281,6 @@ if (process.env.NODE_ENV === 'production') {
 
 Sentry.setupExpressErrorHandler(app);
 
-app.listen(PORT, () => {
-    logger.info(`Backend service listening on port ${PORT}`, { environment: process.env.NODE_ENV || 'development' });
+app.listen(PORT, '127.0.0.1', () => {
+    logger.info(`Backend service listening on http://127.0.0.1:${PORT}`, { environment: process.env.NODE_ENV || 'development' });
 });
