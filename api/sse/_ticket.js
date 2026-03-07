@@ -1,8 +1,10 @@
 import crypto from 'crypto';
 
-// Use a provided secret or fallback to process lifecycle randomness 
-// (which behaves identically to the memory Map across lambda warm boots)
-const SECRET = process.env.PROXY_SECRET || crypto.randomBytes(32).toString('hex');
+// Use a provided secret or fallback to VERCEL_GIT_COMMIT_SHA to ensure consistency across Lambdas.
+// If both are missing, we use a fallback that is stable for the duration of the deployment.
+const SECRET = process.env.PROXY_SECRET 
+    || process.env.VERCEL_GIT_COMMIT_SHA 
+    || 'sse-observatory-default-stable-secret-3g4h5j6k7l8m';
 
 export function encryptTicket(url, token) {
     const payload = JSON.stringify({ url, token, exp: Date.now() + 30000 });

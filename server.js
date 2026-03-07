@@ -194,6 +194,8 @@ app.get('/api/sse', async (req, res) => {
         const proxyReq = protocol.request(target, {
             headers: {
                 'Accept': 'text/event-stream',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Cache-Control': 'no-cache',
                 ...(authHeader ? { 'Authorization': authHeader } : {})
             }
         }, (proxyRes) => {
@@ -201,9 +203,24 @@ app.get('/api/sse', async (req, res) => {
                 'Content-Type': 'text/event-stream',
                 'Cache-Control': 'no-cache, no-transform',
                 'Connection': 'keep-alive',
-                'X-Accel-Buffering': 'no' // Important for Nginx
+                'X-Accel-Buffering': 'no',
+                'Content-Encoding': 'none',
+                'Access-Control-Allow-Origin': '*'
             });
-            proxyRes.pipe(res);
+
+            proxyRes.on('data', (chunk) => {
+                res.write(chunk);
+                if (res.flush) res.flush(); // Flush if compression middleware is present
+            });
+
+            proxyRes.on('end', () => {
+                res.end();
+            });
+
+            proxyRes.on('error', (err) => {
+                res.write(`event: error\ndata: {"error":"Stream connection lost","details":"${err.message}"}\n\n`);
+                res.end();
+            });
         });
 
         proxyReq.on('error', (err) => {
