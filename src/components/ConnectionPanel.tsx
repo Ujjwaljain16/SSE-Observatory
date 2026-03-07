@@ -3,7 +3,7 @@ import { formatTime } from '../utils/eventUtils'
 import {
     Link, Globe, Lock, Save, AlertTriangle,
     Clock, Play, Square, Trash2, Loader2,
-    Plug, PowerOff
+    Plug
 } from 'lucide-react'
 
 interface ConnectionPanelProps {
@@ -212,9 +212,11 @@ export const ConnectionPanel = ({
                             }
                         `} />
                         <span className={`text-sm font-medium ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                            {connected && <span className="text-emerald-400">Connected</span>}
-                            {!connected && isLoading && <span className="text-amber-400">Connecting...</span>}
-                            {!connected && !isLoading && <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>Disconnected</span>}
+                            <span key="status-text">
+                                {connected && <span className="text-emerald-400">Connected</span>}
+                                {!connected && isLoading && <span className="text-amber-400">Connecting...</span>}
+                                {!connected && !isLoading && <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>Disconnected</span>}
+                            </span>
                         </span>
                     </div>
 
@@ -246,14 +248,13 @@ export const ConnectionPanel = ({
                         `}
                     >
                         {isLoading ? (
-                            <>
-                                <Loader2 className="w-5 h-5 animate-spin" />
-                                Connecting...
-                            </>
+                            <span key="connecting-wrapper" className="flex items-center gap-2">
+                                <Loader2 key="icon-loading" className="w-5 h-5 animate-spin" /> Connecting...
+                            </span>
                         ) : (
-                            <>
-                                <Play className="w-5 h-5" /> Connect
-                            </>
+                            <span key="connect-wrapper" className="flex items-center gap-2">
+                                <Play key="icon-play" className="w-5 h-5" /> Connect
+                            </span>
                         )}
                     </button>
 
@@ -272,13 +273,13 @@ export const ConnectionPanel = ({
                         `}
                     >
                         {isLoading ? (
-                            <>
-                                <Square className="w-5 h-5" /> Abort
-                            </>
+                            <span key="abort-wrapper" className="flex items-center gap-2">
+                                <Square key="icon-abort" className="w-5 h-5" /> Abort
+                            </span>
                         ) : (
-                            <>
-                                <Plug className="w-5 h-5" /> Disconnect
-                            </>
+                            <span key="disconnect-wrapper" className="flex items-center gap-2">
+                                <Plug key="icon-plug" className="w-5 h-5" /> Disconnect
+                            </span>
                         )}
                     </button>
 
