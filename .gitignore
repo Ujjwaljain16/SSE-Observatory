@@ -33,3 +33,12 @@ dist-ssr
 .vercel
 *.tsbuildinfo
 vite.config.js
+
+# Testing and Reports
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+
+# SSE Observatory Data
+*.sse-record
