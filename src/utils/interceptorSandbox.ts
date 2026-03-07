@@ -106,7 +106,6 @@ class InterceptorWorkerPool {
     }
 }
 
-// Singleton pool — instantiated lazily on first interceptor use
 let _pool: InterceptorWorkerPool | null = null
 
 function getPool(): InterceptorWorkerPool {
@@ -117,15 +116,11 @@ function getPool(): InterceptorWorkerPool {
     return _pool
 }
 
-/**
- * Validates that user code compiles (syntax check) without running it.
- * Returns an error string if compilation fails, null if valid.
- */
 export const compileInterceptor = (
     code: string
 ): { fn: true | null; error: string | null } => {
     try {
-        // eslint-disable-next-line no-new-func
+
         new Function('event', 'ctx', `"use strict";\n${code}`)
         return { fn: true, error: null }
     } catch (e: any) {
@@ -133,10 +128,6 @@ export const compileInterceptor = (
     }
 }
 
-/**
- * Runs a single interceptor code string against an event in the Worker pool.
- * Returns the transformed event, null (drop), or the original event on error/timeout.
- */
 export const runInterceptorWithTimeout = async (
     code: string,
     event: EventMessage
@@ -144,11 +135,6 @@ export const runInterceptorWithTimeout = async (
     return getPool().run(code, event)
 }
 
-/**
- * Applies a full chain of interceptors sequentially (async pipeline).
- * If any interceptor returns null, the event is dropped immediately.
- * If any interceptor errors/times out, it is skipped and the chain continues.
- */
 export const applyInterceptorChain = async (
     interceptors: Array<{
         id: string
@@ -177,7 +163,6 @@ export const applyInterceptorChain = async (
     return { event: current, errors }
 }
 
-/** Call on app teardown (e.g. React strict-mode unmount) to release worker threads. */
 export const disposeInterceptorPool = () => {
     _pool?.dispose()
     _pool = null

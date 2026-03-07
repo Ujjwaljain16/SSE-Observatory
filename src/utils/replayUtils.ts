@@ -12,13 +12,6 @@ export interface SSERecording {
     events: SSERecordEvent[]
 }
 
-/**
- * Takes an array of events (newest first, as stored in our ring buffer)
- * and formats them into a chronological recording with deltaMs.
- *
- * Uses arrivalTime (epoch ms) for millisecond-accurate deltas.
- * Falls back to the locale timestamp string only when arrivalTime is absent.
- */
 export const createRecording = (events: EventMessage[]): SSERecording => {
     // Events in our system are stored newest-first. We need oldest-first for playback.
     const chronologicalEvents = [...events].reverse()

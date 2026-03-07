@@ -19,10 +19,6 @@ interface Entry<T extends WorkerLike> {
 const registry = new Map<string, Entry<WorkerLike>>()
 
 export const workerRegistry = {
-    /**
-     * Returns an existing worker for the key, or creates one using the factory.
-     * Ref-counted: multiple consumers of the same key share one instance.
-     */
     create<T extends WorkerLike>(key: string, factory: () => T): T {
         const existing = registry.get(key)
         if (existing) {
@@ -34,9 +30,6 @@ export const workerRegistry = {
         return instance
     },
 
-    /**
-     * Decrements ref count. Terminates and removes the worker when count reaches 0.
-     */
     release(key: string): void {
         const entry = registry.get(key)
         if (!entry) return
@@ -52,10 +45,6 @@ export const workerRegistry = {
         }
     },
 
-    /**
-     * Force-terminates a worker regardless of ref count.
-     * Use only in cleanup/disposal scenarios.
-     */
     terminate(key: string): void {
         const entry = registry.get(key)
         if (!entry) return
@@ -71,6 +60,5 @@ export const workerRegistry = {
         return registry.has(key)
     },
 
-    /** Exposed for testing only */
     _registry: registry,
 }

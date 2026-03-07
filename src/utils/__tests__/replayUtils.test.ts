@@ -13,9 +13,9 @@ describe('createRecording utility', () => {
     it('calculates deltaMs accurately for chronological timestamps', () => {
         // Events come from the ring buffer newest first
         const events: EventMessage[] = [
-            { id: '3', timestamp: '10:00:02.500', type: 'message', data: 'last', raw: 'raw' },
-            { id: '2', timestamp: '10:00:01.500', type: 'message', data: 'mid', raw: 'raw' },
-            { id: '1', timestamp: '10:00:01.000', type: 'message', data: 'first', raw: 'raw' }
+            { id: '3', timestamp: '10:00:02.500', arrivalTime: 1000002500, type: 'message', data: 'last', raw: 'raw' },
+            { id: '2', timestamp: '10:00:01.500', arrivalTime: 1000001500, type: 'message', data: 'mid', raw: 'raw' },
+            { id: '1', timestamp: '10:00:01.000', arrivalTime: 1000001000, type: 'message', data: 'first', raw: 'raw' }
         ]
 
         const recording = createRecording(events)
@@ -41,8 +41,8 @@ describe('createRecording utility', () => {
 
     it('handles midnight crossovers', () => {
         const events: EventMessage[] = [
-            { id: '2', timestamp: '00:00:01.000', type: 'message', data: 'day2', raw: 'raw' },
-            { id: '1', timestamp: '23:59:59.000', type: 'message', data: 'day1', raw: 'raw' }
+            { id: '2', timestamp: '00:00:01.000', arrivalTime: 1700000001000, type: 'message', data: 'day2', raw: 'raw' },
+            { id: '1', timestamp: '23:59:59.000', arrivalTime: 1699999999000, type: 'message', data: 'day1', raw: 'raw' }
         ]
 
         const recording = createRecording(events)

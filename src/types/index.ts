@@ -4,11 +4,11 @@ export interface EventMessage {
     type: string
     data: string
     raw: string
-    parsedType?: string
-    // Multi-stream correlation fields
-    streamId?: string
-    streamColor?: string
-    arrivalTime?: number  // epoch ms - used for chronological merge sorting
+    parsedType?: string | undefined
+    streamId?: string | undefined
+    streamColor?: string | undefined
+    arrivalTime?: number | undefined
+    _searchIndex?: string | undefined
 }
 
 export interface Profile {

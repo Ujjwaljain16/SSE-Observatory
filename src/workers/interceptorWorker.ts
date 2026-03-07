@@ -1,30 +1,17 @@
-/**
- * interceptorWorker.ts — Sandboxed Worker for running user interceptor code.
- *
- * This Worker receives an event payload and a user-supplied code string,
- * executes the code in a truly restricted environment, and replies with
- * the transformed event (or null to drop it).
- *
- * Security properties vs old new Function() approach:
- *   ✓  No access to `window`, `document`, `localStorage`, `sessionStorage`
- *   ✓  No access to `fetch` (Workers have fetch, but we shadow it with undefined)
- *   ✓  No access to `XMLHttpRequest`
- *   ✓  Synchronous infinite loops are killed via worker.terminate() from the caller
- *   ✓  Crashes in user code cannot affect the main thread
- *
- * Message in  (main → worker): { code: string, event: EventMessage }
- * Message out (worker → main): { result: EventMessage | null, error?: string }
- */
+// runs user-provided javascript to modify streaming events securely
+// isolates execution to prevent malicious code from accessing dom or storage
+// masks global apis like fetch to prevent external network calls
+//
+// message in  (main -> worker): { code, event }
+// message out (worker -> main): { result, error }
 
 /// <reference lib="webworker" />
 
 import type { EventMessage } from '../types'
 
 
-/**
- * Minimal safe context explicitly handed to the user function.
- * Nothing outside this object is accessible by name (function scope shadowing).
- */
+// explicit allowed sandbox context for user scripts
+// limits available runtime functions to safe built-ins
 const SAFE_CTX = Object.freeze({
     JSON: {
         parse: JSON.parse.bind(JSON),
@@ -45,13 +32,12 @@ self.onmessage = (e: MessageEvent<{ code: string; event: EventMessage }>) => {
     const { code, event } = e.data
 
     try {
-        // Shadow all restricted globals via variable declarations in the function scope.
-        // The user function receives only `event` and `ctx`.
-        // eslint-disable-next-line no-new-func
+        // redefine dangerous globals as undefined in the function scope closure
+        // forces the user script to execute within the restricted sandbox
+
         const fn = new Function(
-            // Named parameters for the inner function
             'event', 'ctx',
-            // Shadow dangerous names by declaring local vars that shadow the outer scope
+            // shadow restricted globals to isolate sandbox
             `"use strict";
 const fetch = undefined;
 const XMLHttpRequest = undefined;
@@ -66,14 +52,16 @@ const sessionStorage = undefined;
 const location = undefined;
 const navigator = undefined;
 const origin = undefined;
-// User code below
 ${code}`
         ) as (event: EventMessage, ctx: typeof SAFE_CTX) => EventMessage | null
 
         const result = fn(event, SAFE_CTX)
         self.postMessage({ result: result ?? null, error: null })
     } catch (err: any) {
-        // Compilation or runtime error — pass event through unchanged
-        self.postMessage({ result: event, error: err.message ?? String(err) })
+        // stringify error manually because structured clone fails on custom error prototypes
+        self.postMessage({
+            result: event,
+            error: err instanceof Error ? err.message : String(err)
+        })
     }
 }

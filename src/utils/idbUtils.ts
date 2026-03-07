@@ -6,10 +6,7 @@ const STORE_NAME = 'events'
 
 let dbInstance: IDBDatabase | null = null
 
-/**
- * Opens (or returns) the IndexedDB instance.
- * Rejects gracefully if IDB is unavailable (private mode, storage quota, etc.)
- */
+
 export const openDB = (): Promise<IDBDatabase> => {
     if (dbInstance) return Promise.resolve(dbInstance)
 
@@ -47,17 +44,10 @@ export const openDB = (): Promise<IDBDatabase> => {
     })
 }
 
-/**
- * Resets the cached DB instance (used in tests or after clear)
- */
 export const resetDBInstance = () => {
     dbInstance = null
 }
 
-/**
- * Writes a batch of events in a single transaction.
- * Much more efficient than one transaction per event.
- */
 export const putBatch = (db: IDBDatabase, events: EventMessage[]): Promise<void> => {
     return new Promise((resolve, reject) => {
         if (events.length === 0) return resolve()
@@ -74,10 +64,6 @@ export const putBatch = (db: IDBDatabase, events: EventMessage[]): Promise<void>
     })
 }
 
-/**
- * Retrieves up to `limit` events from IDB, optionally starting after `afterArrivalTime`.
- * Results are sorted by arrivalTime ascending (oldest first).
- */
 export const getAllAfter = (
     db: IDBDatabase,
     afterArrivalTime: number | null = null,
@@ -108,9 +94,6 @@ export const getAllAfter = (
     })
 }
 
-/**
- * Returns a total count of stored events.
- */
 export const countAll = (db: IDBDatabase): Promise<number> => {
     return new Promise((resolve, reject) => {
         const tx = db.transaction(STORE_NAME, 'readonly')
@@ -121,9 +104,6 @@ export const countAll = (db: IDBDatabase): Promise<number> => {
     })
 }
 
-/**
- * Clears all events from the store.
- */
 export const clearStore = (db: IDBDatabase): Promise<void> => {
     return new Promise((resolve, reject) => {
         const tx = db.transaction(STORE_NAME, 'readwrite')
@@ -134,10 +114,6 @@ export const clearStore = (db: IDBDatabase): Promise<void> => {
     })
 }
 
-/**
- * Deletes the oldest N events from the store (auto-eviction).
- * Uses the arrivalTime index to identify oldest records.
- */
 export const deleteOldest = (db: IDBDatabase, count: number): Promise<void> => {
     return new Promise((resolve, reject) => {
         const tx = db.transaction(STORE_NAME, 'readwrite')

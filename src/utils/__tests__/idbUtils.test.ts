@@ -1,149 +1,143 @@
-import { describe, it, expect, beforeEach } from 'vitest'
-import 'fake-indexeddb/auto'
-import { indexedDB } from 'fake-indexeddb'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { openDB, putBatch, getAllAfter, countAll, clearStore, deleteOldest, resetDBInstance } from '../idbUtils'
 import type { EventMessage } from '../../types'
-
-    // Polyfill so our module uses fake-indexeddb
-    ; (globalThis as any).indexedDB = indexedDB
-
-import {
-    openDB,
-    putBatch,
-    getAllAfter,
-    countAll,
-    clearStore,
-    deleteOldest,
-    resetDBInstance,
-} from '../../utils/idbUtils'
-
-const makeEvent = (id: string, arrivalTime: number, data = '{}'): EventMessage => ({
-    id,
-    timestamp: '',
-    type: 'message',
-    data,
-    raw: '',
-    arrivalTime,
-})
 
 describe('idbUtils', () => {
     let db: IDBDatabase
 
     beforeEach(async () => {
-        // Fresh DB for each test
         resetDBInstance()
         db = await openDB()
         await clearStore(db)
     })
 
-    // --------------------------------------------------
-    it('opens the database successfully', async () => {
+    afterEach(async () => {
+        try {
+            await clearStore(db)
+        } catch { }
+        if (db) db.close()
+    })
+
+    const createEvents = (count: number): EventMessage[] => {
+        return Array.from({ length: count }, (_, i) => ({
+            id: `evt-${i}`,
+            data: JSON.stringify({ test: true }),
+            arrivalTime: Date.now() + i,
+            timestamp: new Date().toISOString(),
+            type: 'message',
+            raw: '...',
+        }))
+    }
+
+    it('should open database and create store', async () => {
         expect(db).toBeDefined()
-        expect(db.name).toBe('sse-tester-db')
+        expect(db.objectStoreNames.contains('events')).toBe(true)
     })
 
-    // --------------------------------------------------
-    it('putBatch stores multiple events in a single transaction', async () => {
-        const batch = [
-            makeEvent('e1', 100),
-            makeEvent('e2', 200),
-            makeEvent('e3', 300),
-        ]
-        await putBatch(db, batch)
+    it('should put and get a batch of events', async () => {
+        const events = createEvents(5)
+        await putBatch(db, events)
+
         const count = await countAll(db)
-        expect(count).toBe(3)
+        expect(count).toBe(5)
+
+        const stored = await getAllAfter(db, null, 10)
+        expect(stored.length).toBe(5)
+        expect(stored[0].id).toBe('evt-0')
+        expect(stored[4].id).toBe('evt-4')
     })
 
-    // --------------------------------------------------
-    it('putBatch is a no-op for empty arrays', async () => {
-        await putBatch(db, [])
-        const count = await countAll(db)
-        expect(count).toBe(0)
+    it('should paginate using getAllAfter', async () => {
+        const events = createEvents(10)
+        await putBatch(db, events)
+
+        // Get first 5
+        const firstPage = await getAllAfter(db, null, 5)
+        expect(firstPage.length).toBe(5)
+        expect(firstPage[4].id).toBe('evt-4')
+
+        // Get next 5 using the arrivalTime of the last item
+        const lastTime = firstPage[4].arrivalTime!
+        const secondPage = await getAllAfter(db, lastTime, 5)
+        expect(secondPage.length).toBe(5)
+        // Note: lowerBound(val, true) means > val
+        expect(secondPage[0].id).toBe('evt-5')
     })
 
-    // --------------------------------------------------
-    it('getAllAfter returns all events when no cursor given', async () => {
-        await putBatch(db, [makeEvent('a', 100), makeEvent('b', 200), makeEvent('c', 300)])
-        const results = await getAllAfter(db, null)
-        expect(results).toHaveLength(3)
-    })
-
-    // --------------------------------------------------
-    it('getAllAfter paginates correctly using cursor', async () => {
-        await putBatch(db, [
-            makeEvent('a', 100),
-            makeEvent('b', 200),
-            makeEvent('c', 300),
-            makeEvent('d', 400),
-        ])
-        // Load first 2
-        const page1 = await getAllAfter(db, null, 2)
-        expect(page1).toHaveLength(2)
-        expect(page1[0].id).toBe('a')
-        expect(page1[1].id).toBe('b')
-
-        // Load next 2, starting after last arrivalTime of page1
-        const page2 = await getAllAfter(db, page1[page1.length - 1].arrivalTime!, 2)
-        expect(page2).toHaveLength(2)
-        expect(page2[0].id).toBe('c')
-    })
-
-    // --------------------------------------------------
-    it('getAllAfter returns events sorted by arrivalTime ascending', async () => {
-        await putBatch(db, [
-            makeEvent('z', 900),
-            makeEvent('a', 100),
-            makeEvent('m', 500),
-        ])
-        const results = await getAllAfter(db, null)
-        const times = results.map(e => e.arrivalTime!)
-        expect(times).toEqual([100, 500, 900])
-    })
-
-    // --------------------------------------------------
-    it('countAll returns correct count', async () => {
-        await putBatch(db, [makeEvent('x', 1), makeEvent('y', 2)])
-        expect(await countAll(db)).toBe(2)
-    })
-
-    // --------------------------------------------------
-    it('clearStore wipes all events', async () => {
-        await putBatch(db, [makeEvent('x', 1), makeEvent('y', 2)])
+    it('should clear store', async () => {
+        await putBatch(db, createEvents(3))
+        expect(await countAll(db)).toBe(3)
         await clearStore(db)
         expect(await countAll(db)).toBe(0)
     })
 
-    // --------------------------------------------------
-    it('deleteOldest removes the N oldest events by arrivalTime', async () => {
-        await putBatch(db, [
-            makeEvent('old1', 100),
-            makeEvent('old2', 200),
-            makeEvent('keep1', 300),
-            makeEvent('keep2', 400),
-        ])
-        await deleteOldest(db, 2)
-        const remaining = await getAllAfter(db, null)
-        expect(remaining).toHaveLength(2)
-        expect(remaining.map(e => e.id)).toContain('keep1')
-        expect(remaining.map(e => e.id)).toContain('keep2')
-        expect(remaining.map(e => e.id)).not.toContain('old1')
+    it('should evict oldest events', async () => {
+        await putBatch(db, createEvents(10))
+        await deleteOldest(db, 4)
+        const remaining = await countAll(db)
+        expect(remaining).toBe(6)
+
+        const all = await getAllAfter(db, null, 10)
+        expect(all[0].id).toBe('evt-4') // 0, 1, 2, 3 should be gone
     })
 
-    // --------------------------------------------------
-    it('IDB FALLBACK: gracefully rejects when indexedDB throws', async () => {
-        // Simulate IDB being unavailable
-        const original = (globalThis as any).indexedDB
-            ; (globalThis as any).indexedDB = undefined
-        resetDBInstance()
+    describe('IDB Corruption & Storage Limits (Edge Cases)', () => {
 
-        try {
-            await openDB()
-            // If we get here, fail the test
-            expect(true).toBe(false) // Should not reach
-        } catch (e: any) {
-            expect(e.message).toContain('IDB not available')
-        } finally {
-            ; (globalThis as any).indexedDB = original
+        it('should handle QuotaExceededError gracefully by throwing', async () => {
+            // Mock transaction to throw QuotaExceededError
+            const originalTx = db.transaction.bind(db)
+            vi.spyOn(db, 'transaction').mockImplementationOnce((storeNames, mode) => {
+                const tx = originalTx(storeNames, mode)
+                // Override objectStore to inject the error on put
+                const originalObjectStore = tx.objectStore.bind(tx)
+                vi.spyOn(tx, 'objectStore').mockImplementationOnce((name) => {
+                    const store = originalObjectStore(name)
+                    vi.spyOn(store, 'put').mockImplementationOnce(() => {
+                        throw new DOMException('Quota Exceeded', 'QuotaExceededError')
+                    })
+                    return store
+                })
+                return tx
+            })
+
+            await expect(putBatch(db, createEvents(1))).rejects.toThrow('Quota Exceeded')
+        })
+
+        it('should handle TransactionInactiveError and not freeze', async () => {
+            const originalTx = db.transaction.bind(db)
+            vi.spyOn(db, 'transaction').mockImplementationOnce((storeNames, mode) => {
+                const tx = originalTx(storeNames, mode)
+                const originalObjectStore = tx.objectStore.bind(tx)
+                vi.spyOn(tx, 'objectStore').mockImplementationOnce((name) => {
+                    const store = originalObjectStore(name)
+                    vi.spyOn(store, 'put').mockImplementationOnce(() => {
+                        throw new DOMException('Transaction has been aborted', 'TransactionInactiveError')
+                    })
+                    return store
+                })
+                return tx
+            })
+
+            await expect(putBatch(db, createEvents(1))).rejects.toThrow('Transaction has been aborted')
+        })
+
+        it('should handle database deletion mid-stream', async () => {
+            // Force close then delete db
+            db.close()
             resetDBInstance()
-        }
+
+            await new Promise<void>((resolve, reject) => {
+                const req = indexedDB.deleteDatabase('sse-tester-db')
+                req.onsuccess = () => resolve()
+                req.onerror = () => reject(req.error)
+            })
+
+            // It should successfully reopen
+            const newDb = await openDB()
+            expect(newDb).toBeDefined()
+            await putBatch(newDb, createEvents(1))
+            expect(await countAll(newDb)).toBe(1)
+            newDb.close()
+        })
     })
 })

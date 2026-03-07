@@ -1,29 +1,19 @@
-/**
- * timelineWorker.ts  —  OffscreenCanvas timeline renderer
- *
- * Runs drawing entirely off the main thread.
- * Main thread only sends a compact Uint8Array (1 byte per event) — not full objects.
- *
- * Byte layout per event slot:
- *   bits 0–3: type code  0=default, 1=error, 2=ping, 3=update, 4–15=future
- *   bits 4–5: flags      bit4=selected (currentIndex), bit5=hovered
- *   bits 6–7: reserved
- *
- * Message protocol (main → worker):
- *   { type: 'init', canvas: OffscreenCanvas }
- *   { type: 'draw', slots: Uint8Array, currentIndex: number, isDark: boolean, width: number, height: number, dpr: number }
- */
+// renders the event timeline on a background thread using offscreencanvas
+// avoids blocking the main ui rendering cycle when drawing thousands of events
+//
+// byte layout per event slot:
+//   bits 0-3: type code
+//   bits 4-5: flags (bit4=selected, bit5=hovered)
 
 /// <reference lib="webworker" />
 
 let canvas: OffscreenCanvas | null = null
 let ctx: OffscreenCanvasRenderingContext2D | null = null
 
-// Frame throttle — cap at 60fps
+// cap draw frequency to 60fps to save cpu
 let lastDraw = 0
 const FRAME_BUDGET_MS = 16
 
-// ─── Color palettes ───────────────────────────────────────────────────────────
 const COLORS_DARK = {
     default: '#475569',
     error: '#ef4444',
@@ -49,8 +39,6 @@ function typeColor(code: number, isDark: boolean): string {
     }
 }
 
-// ─── Draw ─────────────────────────────────────────────────────────────────────
-
 function draw(msg: {
     slots: Uint8Array
     currentIndex: number
@@ -64,8 +52,6 @@ function draw(msg: {
     const { slots, currentIndex, isDark, width, height, dpr } = msg
     const n = slots.length
     if (n === 0) return
-
-    // Resize if needed
     if (canvas.width !== width * dpr || canvas.height !== height * dpr) {
         canvas.width = Math.round(width * dpr)
         canvas.height = Math.round(height * dpr)
@@ -82,14 +68,14 @@ function draw(msg: {
         const typeCode = byte & 0x0F
         const isSelected = (byte >> 4) & 0x01
 
-        // visual index: 0 = oldest (left), n-1 = newest (right)
+        // draw oldest events on the left, newest on the right
         const visualIndex = (n - 1) - i
         const x = visualIndex * slotW
         const w = Math.max(1, slotW - gap)
 
         const isCurrentPosition = i === currentIndex
         let barH = height * 0.6
-        if (typeCode === 1) barH = height * 0.8   // errors are taller
+        if (typeCode === 1) barH = height * 0.8
         if (isCurrentPosition || isSelected) barH = height * 0.9
 
         const y = (height - barH) / 2
@@ -98,7 +84,7 @@ function draw(msg: {
             : typeColor(typeCode, isDark)
 
         ctx.beginPath()
-        // roundRect may not be available in all OffscreenCanvas contexts
+        // fallback for browsers lacking roundrect support in workers
         if (ctx.roundRect) {
             ctx.roundRect(x, y, w, barH, 2)
         } else {
@@ -107,7 +93,6 @@ function draw(msg: {
         ctx.fill()
     }
 
-    // Reset scale for next draw
     ctx.setTransform(1, 0, 0, 1, 0, 0)
 }
 
@@ -124,7 +109,7 @@ self.onmessage = (e: MessageEvent) => {
 
     if (msg.type === 'draw') {
         const now = performance.now()
-        if (now - lastDraw < FRAME_BUDGET_MS) return  // frame throttle
+        if (now - lastDraw < FRAME_BUDGET_MS) return
 
         lastDraw = now
         const t0 = performance.now()

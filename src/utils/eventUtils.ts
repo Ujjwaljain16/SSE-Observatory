@@ -33,27 +33,28 @@ export const getFieldValue = (event: EventMessage, fieldPath: string): string | 
 
         // Try to parse data for deeper properties
         let value: any = null
-        if (fieldPath.startsWith('data.')) {
-            try {
-                const parsed = JSON.parse(event.data)
-                const keys = fieldPath.replace('data.', '').split('.')
-                value = parsed
-                for (const key of keys) {
-                    if (value && typeof value === 'object' && key in value) {
-                        value = value[key]
-                    } else {
-                        return null
-                    }
-                }
-            } catch {
-                return null
-            }
-        } else if (fieldPath === 'data') {
+        if (fieldPath === 'data') {
             return event.data
-        } else {
-            return null
         }
 
+        // Implicitly treat paths that don't start with 'data.' as data properties
+        const actualPath = fieldPath.startsWith('data.') ? fieldPath.replace('data.', '') : fieldPath
+
+        try {
+            // First treat data as an object (as sometimes happens in tests) or parse it
+            const parsed = typeof event.data === 'string' ? JSON.parse(event.data) : event.data
+            const keys = actualPath.split('.')
+            value = parsed
+            for (const key of keys) {
+                if (value && typeof value === 'object' && key in value) {
+                    value = value[key]
+                } else {
+                    return null
+                }
+            }
+        } catch {
+            return null
+        }
         return value != null ? String(value) : null
     } catch {
         return null

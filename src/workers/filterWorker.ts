@@ -1,18 +1,13 @@
-/**
- * filterWorker.ts  —  Stateful, indexed filter worker
- *
- * Runs entirely off the main thread. Owns a replica of the event ring buffer
- * so the main thread only needs to send incremental "add_event" messages rather
- * than the full array on every filter change.
- *
- * Message protocol (main → worker):
- *   { type: 'add_event',  event: EventMessage }
- *   { type: 'clear' }
- *   { type: 'filter',     query: string, searchQuery: string, customFilters: SerializedFilter[] }
- *
- * Message protocol (worker → main):
- *   { type: 'result',     filtered: EventMessage[], execMs: number }
- */
+// runs event filtering in a web worker to preserve main thread framerate
+// maintains a replica of the event log to incrementally process additions
+//
+// message protocol (main -> worker):
+//   { type: 'add_event', event }
+//   { type: 'clear' }
+//   { type: 'filter', query, search, customFilters }
+//
+// message protocol (worker -> main):
+//   { type: 'result', filtered, execMs }
 
 import type { EventMessage } from '../types'
 
@@ -23,53 +18,29 @@ interface SerializedFilter {
     regexPattern?: string
 }
 
-interface FilterMsg {
-    type: 'filter'
-    query: string
-    searchQuery: string
-    customFilters: SerializedFilter[]
-}
+import { FilterWorkerRequest, encodeFilterWorkerResponse, decodeFilterWorkerRequest } from './contracts'
+import { QueryParser } from '../utils/queryParser'
 
-interface AddEventMsg {
-    type: 'add_event'
-    event: EventMessage
-}
-
-interface ClearMsg {
-    type: 'clear'
-}
-
-type IncomingMsg = FilterMsg | AddEventMsg | ClearMsg
-
-// ─── Worker-internal state ────────────────────────────────────────────────────
+const typeIndex = new Map<string, number[]>()
 
 let events: EventMessage[] = []
 
-// typeIndex: event.type (lowercased) → array of indices into `events[]`
-// Provides O(k) lookup for type= queries where k << n
-const typeIndex = new Map<string, number[]>()
-
-// Last filter params — re-applied when add_event arrives
+// store previous filter state to re-filter efficiently when new events arrive
 let lastQuery = ''
 let lastSearchQuery = ''
 let lastFilters: SerializedFilter[] = []
 
-// Pre-compiled RegExp objects for last filter params (reused across events)
+// compile regexes once to avoid parsing overhead per event
 let compiledRegexes: (RegExp | null)[] = []
 
-// ─── Index management ─────────────────────────────────────────────────────────
-
 function indexEvent(event: EventMessage, index: number) {
-    // Normalise to lowercase so type=error, type=Error, type=ERROR all match
-    const key = (event.type ?? 'message').toLowerCase()
+    // normalize to lowercase for case-insensitive type lookups
+    const key = String(event.type ?? 'message').toLowerCase()
     const bucket = typeIndex.get(key) ?? []
     bucket.push(index)
     typeIndex.set(key, bucket)
 }
 
-// ─── RegExp compilation ───────────────────────────────────────────────────────
-
-/** Compile each filter's regexPattern once. Returns null for non-regex or invalid patterns. */
 function compileRegexes(filters: SerializedFilter[]): (RegExp | null)[] {
     return filters.map(f => {
         if (!f.isRegex || !f.regexPattern) return null
@@ -78,42 +49,28 @@ function compileRegexes(filters: SerializedFilter[]): (RegExp | null)[] {
     })
 }
 
-// ─── Filter logic ─────────────────────────────────────────────────────────────
+function applyQuery(evts: EventMessage[], queryASTOrString: any): EventMessage[] {
+    if (!queryASTOrString) return evts
 
-/** Simple query parser: supports `type=error`, `data=foo` prefix syntax */
-function applyQuery(evts: EventMessage[], query: string): EventMessage[] {
-    const q = query.trim()
-    if (!q) return evts
+    try {
+        let fn: (evt: EventMessage) => boolean
 
-    // Fast path: `type=<value>` — use the index (lowercase key)
-    const typeMatch = q.match(/^type=(.+)$/i)
-    if (typeMatch) {
-        const val = typeMatch[1].toLowerCase()
-        const indices = typeIndex.get(val) ?? []
-        return indices.map(i => events[i]).filter(Boolean)
+        const parser = new QueryParser(typeof queryASTOrString === 'string' ? queryASTOrString : '')
+        if (typeof queryASTOrString === 'object') {
+            fn = parser.compile(queryASTOrString)
+        } else {
+            fn = parser.compile(parser.parse())
+        }
+
+        return evts.filter(fn)
+    } catch {
+        // fallback to simple substring search if query is invalid
+        const lower = String(queryASTOrString).toLowerCase()
+        return evts.filter(e =>
+            String(e.type).toLowerCase().includes(lower) ||
+            String(e._searchIndex || '').includes(lower)
+        )
     }
-
-    // Field equality: `<field>=<value>`
-    // Field equality: `<field>=<value>`
-    const fieldMatch = q.match(/^(\w[\w.]*)\s*=\s*(.+)$/)
-
-    if (fieldMatch) {
-        const [, field, val] = fieldMatch
-        return evts.filter(e => {
-            const ev = e as any
-            const candidate = field === 'type' ? e.type
-                : field === 'id' ? e.id
-                    : ev[field]
-            return String(candidate ?? '').toLowerCase().includes(val.toLowerCase())
-        })
-    }
-
-    // Fallback: substring search across type + data
-    const lower = q.toLowerCase()
-    return evts.filter(e =>
-        e.type.toLowerCase().includes(lower) ||
-        JSON.stringify(e.data).toLowerCase().includes(lower)
-    )
 }
 
 function applySearch(evts: EventMessage[], searchQuery: string): EventMessage[] {
@@ -121,7 +78,7 @@ function applySearch(evts: EventMessage[], searchQuery: string): EventMessage[] 
     const q = searchQuery.toLowerCase()
     return evts.filter(e =>
         e.type.toLowerCase().includes(q) ||
-        JSON.stringify(e.data).toLowerCase().includes(q) ||
+        (e._searchIndex || '').includes(q) ||
         e.timestamp.toLowerCase().includes(q) ||
         e.id.toString().includes(q)
     )
@@ -143,7 +100,6 @@ function applyCustomFilters(evts: EventMessage[], filters: SerializedFilter[]): 
             }
 
             if (filter.isRegex) {
-                // Use pre-compiled regex (compiled once per filter message, not per event)
                 const rx = compiledRegexes[fi]
                 if (!rx) return true
                 return val != null && rx.test(String(val))
@@ -163,44 +119,62 @@ function runFilter(): EventMessage[] {
     return result
 }
 
-// ─── Message handler ──────────────────────────────────────────────────────────
-
-self.addEventListener('message', (e: MessageEvent<IncomingMsg>) => {
-    const msg = e.data
-
-    if (msg.type === 'add_event') {
-        const idx = events.length
-        events.push(msg.event)
-        indexEvent(msg.event, idx)
-        // Re-apply current filter and post result
-        const t0 = performance.now()
-        const filtered = runFilter()
-        const execMs = +(performance.now() - t0).toFixed(2)
-        // Reverse so UI receives newest-first (matches original ring buffer order)
-        self.postMessage({ type: 'result', filtered: filtered.slice().reverse(), execMs })
+export const _onMessage = (e: MessageEvent) => {
+    let msg: FilterWorkerRequest
+    try {
+        msg = decodeFilterWorkerRequest(e.data)
+    } catch {
         return
     }
 
-    if (msg.type === 'clear') {
+    if (msg.type === 'PING') {
+        self.postMessage(encodeFilterWorkerResponse({ type: 'READY' }))
+        return
+    }
+
+    if (msg.type === 'ADD_EVENTS') {
+        const startIndex = events.length
+        for (let i = 0; i < msg.events.length; i++) {
+            events.push(msg.events[i])
+            indexEvent(msg.events[i], startIndex + i)
+        }
+        const t0 = performance.now()
+        const filtered = runFilter()
+        const execMs = +(performance.now() - t0).toFixed(2)
+        // reverse results to display newest events first in ui
+        self.postMessage(encodeFilterWorkerResponse({ type: 'FILTERED_EVENTS', events: filtered.slice().reverse(), execMs }))
+        return
+    }
+
+    if (msg.type === 'CLEAR') {
         events = []
         typeIndex.clear()
         lastQuery = ''
         lastSearchQuery = ''
         lastFilters = []
         compiledRegexes = []
-        self.postMessage({ type: 'result', filtered: [], execMs: 0 })
+        self.postMessage(encodeFilterWorkerResponse({ type: 'FILTERED_EVENTS', events: [], execMs: 0 }))
         return
     }
 
-    if (msg.type === 'filter') {
+    if (msg.type === 'QUERY_UPDATE') {
         lastQuery = msg.query
-        lastSearchQuery = msg.searchQuery
-        lastFilters = msg.customFilters
-        // Compile regexes once for this new filter — reused across all events
+        lastSearchQuery = msg.search || ''
+        const t0 = performance.now()
+        const filtered = runFilter()
+        const execMs = +(performance.now() - t0).toFixed(2)
+        self.postMessage(encodeFilterWorkerResponse({ type: 'FILTERED_EVENTS', events: filtered.slice().reverse(), execMs }))
+        return
+    }
+
+    if (msg.type === 'CUSTOM_FILTERS_UPDATE') {
+        lastFilters = msg.filters
         compiledRegexes = compileRegexes(lastFilters)
         const t0 = performance.now()
         const filtered = runFilter()
         const execMs = +(performance.now() - t0).toFixed(2)
-        self.postMessage({ type: 'result', filtered: filtered.slice().reverse(), execMs })
+        self.postMessage(encodeFilterWorkerResponse({ type: 'FILTERED_EVENTS', events: filtered.slice().reverse(), execMs }))
     }
-})
+}
+
+self.addEventListener('message', _onMessage)

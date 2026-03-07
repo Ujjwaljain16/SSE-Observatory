@@ -14,18 +14,11 @@
  * is kept in sync manually (see the comment in sharedSSEWorker.ts).
  */
 
-const LOCAL_ORIGINS = ['http://localhost:3001', 'http://127.0.0.1:3001']
+const LOCAL_ORIGINS = [
+    'http://localhost:3001', 'http://127.0.0.1:3001',
+    'http://localhost:4000', 'http://127.0.0.1:4000',
+]
 
-/**
- * Given a raw URL string entered by the user, returns the SSE URL that the
- * browser EventSource should connect to.
- *
- * @param rawUrl  The URL as typed in the connection panel, e.g.:
- *                  "/events"
- *                  "http://localhost:3001/events"
- *                  "https://api.example.com/v1/events"
- * @returns  A URL string suitable for `new EventSource(…)`
- */
 export function buildSSEProxyUrl(rawUrl: string): string {
     // Relative paths connect directly (handled by the dev server)
     if (rawUrl.startsWith('/')) return rawUrl
@@ -34,7 +27,13 @@ export function buildSSEProxyUrl(rawUrl: string): string {
     try {
         const parsed = new URL(rawUrl)
         if (LOCAL_ORIGINS.some(o => rawUrl.startsWith(o))) {
-            return parsed.pathname + parsed.search
+            // Only strip origin if it matches our current origin (same-origin request)
+            const currentOrigin = typeof window !== 'undefined' ? window.location.origin : (typeof self !== 'undefined' ? self.location.origin : '');
+            if (currentOrigin && rawUrl.startsWith(currentOrigin)) {
+                return parsed.pathname + parsed.search
+            }
+            // For other local ports (e.g. port 4000 vs 3001), return full URL
+            return rawUrl
         }
     } catch {
         // Not a valid absolute URL — fall through to proxy
@@ -43,3 +42,31 @@ export function buildSSEProxyUrl(rawUrl: string): string {
     // All external URLs route through the Vite SSE proxy plugin at /api/sse
     return `/api/sse?url=${encodeURIComponent(rawUrl)}`
 }
+
+export async function obtainSSEProxyTicket(rawUrl: string, token?: string): Promise<string> {
+    if (rawUrl.startsWith('/')) {
+        return token ? `${rawUrl}${rawUrl.includes('?') ? '&' : '?'}auth=${encodeURIComponent(token)}` : rawUrl;
+    }
+    try {
+        const currentOrigin = typeof window !== 'undefined' ? window.location.origin : (typeof self !== 'undefined' ? self.location.origin : '');
+        if (currentOrigin && rawUrl.startsWith(currentOrigin)) {
+            const parsed = new URL(rawUrl);
+            const local = parsed.pathname + parsed.search;
+            return token ? `${local}${local.includes('?') ? '&' : '?'}auth=${encodeURIComponent(token)}` : local;
+        }
+    } catch { }
+
+    const res = await fetch('/api/sse/ticket', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: rawUrl, token })
+    });
+
+    if (!res.ok) {
+        throw new Error('Failed to negotiate secure SSE proxy ticket');
+    }
+
+    const data = await res.json();
+    return `/api/sse?ticket=${data.ticket}`;
+}
+
