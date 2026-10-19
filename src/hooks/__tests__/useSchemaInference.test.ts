@@ -137,4 +137,24 @@ describe('useSchemaInference', () => {
         expect(schema.type.size).toBe(2) // Types preserved (number, string)
         expect(schema.frequency).toBe(0.375) // 3/8 = 37.5%
     })
+
+    it('keeps up with a steady stream: events every 200ms no longer starve the analysis', () => {
+        let evs = createEvents([{ a: 1 }])
+        const { result, rerender } = renderHook(({ e }) => useSchemaInference(e), { initialProps: { e: evs } })
+        for (let i = 1; i <= 50; i++) {
+            evs = [...createEvents([{ a: 1, b: 'x' }]), ...evs]
+            rerender({ e: evs })
+            act(() => { vi.advanceTimersByTime(200) })
+        }
+        expect(Object.keys(result.current.schema).sort()).toEqual(['a', 'b']) // populated while still streaming
+        act(() => { vi.advanceTimersByTime(600) })
+        expect(result.current.isAnalyzing).toBe(false)
+    })
+
+    it('survives hostile keys like __proto__ and constructor', () => {
+        const hostile = createEvents([JSON.parse('{"__proto__": {"x": 1}, "constructor": 2}')])
+        const { result } = renderHook(() => useSchemaInference(hostile))
+        act(() => { vi.runAllTimers() })
+        expect(Object.keys(result.current.schema).sort()).toEqual(['__proto__.x', 'constructor'])
+    })
 })
