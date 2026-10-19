@@ -23,40 +23,61 @@ export const formatTime = (seconds: number): string => {
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
 }
 
-export const getFieldValue = (event: EventMessage, fieldPath: string): string | null => {
+const NOT_JSON = Symbol('not-json')
+const parseCache = new WeakMap<object, unknown>()
+
+/**
+ * Returns the event payload as a parsed value. JSON strings are parsed once per event
+ * object (cached), objects are returned as-is, anything else yields undefined.
+ */
+export const getParsedData = (event: EventMessage): unknown => {
+    const raw = event.data as unknown
+    if (raw !== null && typeof raw === 'object') return raw
+    if (typeof raw !== 'string') return undefined
+    const hit = parseCache.get(event)
+    if (hit !== undefined) return hit === NOT_JSON ? undefined : hit
     try {
-        // Handle root event properties first
-        if (fieldPath === 'id') return event.id
-        if (fieldPath === 'type') return event.type
-        if (fieldPath === 'timestamp') return event.timestamp
-        if (fieldPath === 'parsedType') return event.parsedType || null
+        const value = JSON.parse(raw)
+        parseCache.set(event, value)
+        return value
+    } catch {
+        parseCache.set(event, NOT_JSON)
+        return undefined
+    }
+}
 
-        // Try to parse data for deeper properties
-        let value: any = null
-        if (fieldPath === 'data') {
-            return event.data
-        }
+const ROOT_FIELDS = new Set(['id', 'type', 'timestamp', 'parsedType', 'streamId', 'streamColor', 'arrivalTime'])
+const hasOwn = (o: object, k: string) => Object.prototype.hasOwnProperty.call(o, k)
 
-        // Implicitly treat paths that don't start with 'data.' as data properties
-        const actualPath = fieldPath.startsWith('data.') ? fieldPath.replace('data.', '') : fieldPath
+const stringify = (value: unknown): string | null => {
+    if (value === null || value === undefined) return null
+    if (typeof value === 'object') {
+        try { return JSON.stringify(value) } catch { return null }
+    }
+    return String(value)
+}
 
-        try {
-            // First treat data as an object (as sometimes happens in tests) or parse it
-            const parsed = typeof event.data === 'string' ? JSON.parse(event.data) : event.data
-            const keys = actualPath.split('.')
-            value = parsed
-            for (const key of keys) {
-                if (value && typeof value === 'object' && key in value) {
-                    value = value[key]
-                } else {
-                    return null
-                }
-            }
-        } catch {
+/**
+ * Single source of truth for reading a field from an event (used by the filter worker,
+ * the query language and the UI). Root fields are read directly; everything else is a
+ * path into the JSON payload, with or without a leading "data." (array indexes work: items.0.id).
+ */
+export const getFieldValue = (event: EventMessage, fieldPath: string): string | null => {
+    if (fieldPath === 'data') {
+        const d = event.data as unknown
+        return typeof d === 'string' ? d : stringify(d)
+    }
+    if (ROOT_FIELDS.has(fieldPath)) return stringify((event as unknown as Record<string, unknown>)[fieldPath])
+
+    let value: unknown = getParsedData(event)
+    if (value === undefined) return null
+    const path = fieldPath.startsWith('data.') ? fieldPath.slice(5) : fieldPath
+    for (const key of path.split('.')) {
+        if (value !== null && typeof value === 'object' && hasOwn(value as object, key)) {
+            value = (value as Record<string, unknown>)[key]
+        } else {
             return null
         }
-        return value != null ? String(value) : null
-    } catch {
-        return null
     }
+    return stringify(value)
 }

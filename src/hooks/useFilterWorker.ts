@@ -16,6 +16,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import type { EventMessage, CustomFilter } from '../types'
 import { workerRegistry } from '../utils/workerRegistry'
+import { getFieldValue } from '../utils/eventUtils'
 
 const WORKER_KEY = 'filter-worker'
 const DEBOUNCE_MS = 10
@@ -57,13 +58,7 @@ function inlineFilter(
     if (customFilters.length) {
         result = result.filter(event =>
             customFilters.every(filter => {
-                let val: any
-                if (filter.field === 'type') val = event.type
-                else if (filter.field === 'id') val = event.id
-                else if (filter.field.startsWith('data.')) {
-                    const path = filter.field.split('.').slice(1)
-                    val = path.reduce((o: any, k) => o?.[k], event.data)
-                } else { val = (event as any)[filter.field] }
+                const val = getFieldValue(event, filter.field)
 
                 if (filter.isRegex) {
                     if (!filter.regexPattern) return true

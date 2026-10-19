@@ -20,6 +20,7 @@ interface SerializedFilter {
 
 import { FilterWorkerRequest, encodeFilterWorkerResponse, decodeFilterWorkerRequest } from './contracts'
 import { QueryParser } from '../utils/queryParser'
+import { getFieldValue } from '../utils/eventUtils'
 
 const typeIndex = new Map<string, number[]>()
 
@@ -89,15 +90,7 @@ function applyCustomFilters(evts: EventMessage[], filters: SerializedFilter[]): 
     const activeValues = filters.map(f => new Set(f.activeValues))
     return evts.filter(event =>
         filters.every((filter, fi) => {
-            let val: any
-            if (filter.field === 'type') val = event.type
-            else if (filter.field === 'id') val = event.id
-            else if (filter.field.startsWith('data.')) {
-                const path = filter.field.split('.').slice(1)
-                val = path.reduce((obj: any, key) => obj?.[key], event.data)
-            } else {
-                val = (event as any)[filter.field]
-            }
+            const val = getFieldValue(event, filter.field)
 
             if (filter.isRegex) {
                 const rx = compiledRegexes[fi]
