@@ -1,63 +1,48 @@
-// renders the event timeline on a background thread using offscreencanvas
-// avoids blocking the main ui rendering cycle when drawing thousands of events
+// Draws the event timeline on a background thread using OffscreenCanvas.
 //
 // byte layout per event slot:
-//   bits 0-3: type code
-//   bits 4-5: flags (bit4=selected, bit5=hovered)
+//   bits 0-3: type code (see utils/timelinePalette)
+//   bit  4  : selected / current playhead
 
 /// <reference lib="webworker" />
+
+import { colorFor, barHeightFraction } from '../utils/timelinePalette'
 
 let canvas: OffscreenCanvas | null = null
 let ctx: OffscreenCanvasRenderingContext2D | null = null
 
-// cap draw frequency to 60fps to save cpu
-let lastDraw = 0
+// Cap drawing at ~60fps, but never drop the LAST request: a draw that arrives inside the frame budget is
+// remembered and executed when the budget is over, so the picture always ends up current.
 const FRAME_BUDGET_MS = 16
+let lastDraw = 0
+let pending: DrawMessage | null = null
+let timer: ReturnType<typeof setTimeout> | null = null
 
-const COLORS_DARK = {
-    default: '#475569',
-    error: '#ef4444',
-    ping: '#f59e0b',
-    update: '#0ea5e9',
-    selected: '#6366f1',
-}
-const COLORS_LIGHT = {
-    default: '#cbd5e1',
-    error: '#f87171',
-    ping: '#fbbf24',
-    update: '#38bdf8',
-    selected: '#818cf8',
-}
-
-function typeColor(code: number, isDark: boolean): string {
-    const p = isDark ? COLORS_DARK : COLORS_LIGHT
-    switch (code & 0x0F) {
-        case 1: return p.error
-        case 2: return p.ping
-        case 3: return p.update
-        default: return p.default
-    }
-}
-
-function draw(msg: {
+interface DrawMessage {
+    type: 'draw'
     slots: Uint8Array
     currentIndex: number
     isDark: boolean
     width: number
     height: number
     dpr: number
-}) {
+}
+
+function draw(msg: DrawMessage) {
     if (!canvas || !ctx) return
 
     const { slots, currentIndex, isDark, width, height, dpr } = msg
     const n = slots.length
-    if (n === 0) return
-    if (canvas.width !== width * dpr || canvas.height !== height * dpr) {
-        canvas.width = Math.round(width * dpr)
-        canvas.height = Math.round(height * dpr)
+    const w = Math.round(width * dpr)
+    const h = Math.round(height * dpr)
+    if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w
+        canvas.height = h
     }
 
+    ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.clearRect(0, 0, canvas.width, canvas.height)
+    if (n === 0) return
     ctx.scale(dpr, dpr)
 
     const gap = 1
@@ -65,38 +50,28 @@ function draw(msg: {
 
     for (let i = 0; i < n; i++) {
         const byte = slots[i]
-        const typeCode = byte & 0x0F
-        const isSelected = (byte >> 4) & 0x01
+        const code = byte & 0x0f
+        const selected = ((byte >> 4) & 1) === 1 || i === currentIndex
 
         // draw oldest events on the left, newest on the right
-        const visualIndex = (n - 1) - i
-        const x = visualIndex * slotW
-        const w = Math.max(1, slotW - gap)
+        const x = (n - 1 - i) * slotW
+        const barH = height * barHeightFraction(code, selected)
 
-        const isCurrentPosition = i === currentIndex
-        let barH = height * 0.6
-        if (typeCode === 1) barH = height * 0.8
-        if (isCurrentPosition || isSelected) barH = height * 0.9
-
-        const y = (height - barH) / 2
-
-        ctx.fillStyle = isCurrentPosition ? (isDark ? COLORS_DARK.selected : COLORS_LIGHT.selected)
-            : typeColor(typeCode, isDark)
-
+        ctx.fillStyle = colorFor(code, isDark, selected)
         ctx.beginPath()
-        // fallback for browsers lacking roundrect support in workers
-        if (ctx.roundRect) {
-            ctx.roundRect(x, y, w, barH, 2)
-        } else {
-            ctx.rect(x, y, w, barH)
-        }
+        if (ctx.roundRect) ctx.roundRect(x, (height - barH) / 2, Math.max(1, slotW - gap), barH, 2)
+        else ctx.rect(x, (height - barH) / 2, Math.max(1, slotW - gap), barH)
         ctx.fill()
     }
-
     ctx.setTransform(1, 0, 0, 1, 0, 0)
 }
 
-// ─── Message handler ──────────────────────────────────────────────────────────
+function run(msg: DrawMessage) {
+    lastDraw = performance.now()
+    const t0 = lastDraw
+    draw(msg)
+    self.postMessage({ type: 'draw_complete', drawMs: +(performance.now() - t0).toFixed(2) })
+}
 
 self.onmessage = (e: MessageEvent) => {
     const msg = e.data
@@ -108,13 +83,16 @@ self.onmessage = (e: MessageEvent) => {
     }
 
     if (msg.type === 'draw') {
-        const now = performance.now()
-        if (now - lastDraw < FRAME_BUDGET_MS) return
-
-        lastDraw = now
-        const t0 = performance.now()
-        draw(msg)
-        const drawMs = +(performance.now() - t0).toFixed(2)
-        self.postMessage({ type: 'draw_complete', drawMs })
+        const wait = FRAME_BUDGET_MS - (performance.now() - lastDraw)
+        if (wait <= 0 && !timer) return run(msg)
+        pending = msg // newest request wins
+        if (!timer) {
+            timer = setTimeout(() => {
+                timer = null
+                const next = pending
+                pending = null
+                if (next) run(next)
+            }, Math.max(0, wait))
+        }
     }
 }

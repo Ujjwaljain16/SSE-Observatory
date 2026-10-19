@@ -1,39 +1,27 @@
-// delegates drawing to a webgl worker for 10k+ events
-// retains tooltip and click logic on the main thread since only x-coordinates are needed
+// Bottom timeline: one bar per buffered event. Drawing happens on an OffscreenCanvas in a worker when the
+// browser supports it, otherwise on the main thread. Hover/click only need x-coordinates, so they stay here.
 
 import { useRef, useEffect, useState, useCallback } from 'react'
 import type { EventMessage, Theme } from '../types'
-import { workerRegistry } from '../utils/workerRegistry'
-
-const WORKER_KEY = 'timeline-worker'
+import { typeCode, colorFor, barHeightFraction } from '../utils/timelinePalette'
 
 interface EventTimelineProps {
     theme: Theme
     events: EventMessage[]
     currentEventIndex: number
     onSeek: (index: number) => void
-    maxEvents: number
+    maxEvents?: number
     onDrawMs?: (ms: number) => void  // for PerfOverlay
 }
 
-
+/** One byte per event: low nibble = type code, bit 4 = selected. */
 function encodeSlots(events: EventMessage[], currentIndex: number): Uint8Array {
     const slots = new Uint8Array(events.length)
     for (let i = 0; i < events.length; i++) {
-        const e = events[i]
-        let typeBits = 0
-        if (e.type === 'error') typeBits = 1
-        else if (e.type === 'ping') typeBits = 2
-        else if (e.parsedType === 'update' || e.type === 'update') typeBits = 3
-
-        let flagBits = 0
-        if (i === currentIndex) flagBits |= 0x10  // bit4 = selected
-
-        slots[i] = typeBits | flagBits
+        slots[i] = typeCode(events[i]) | (i === currentIndex ? 0x10 : 0)
     }
     return slots
 }
-
 
 function drawSync(
     ctx: CanvasRenderingContext2D,
@@ -44,141 +32,109 @@ function drawSync(
     isDark: boolean
 ) {
     ctx.clearRect(0, 0, width, height)
-    if (events.length === 0) return
-
     const n = events.length
+    if (n === 0) return
     const gap = 1
     const slotW = width / n
 
-    const COLORS_DARK = { default: '#475569', error: '#ef4444', ping: '#f59e0b', update: '#0ea5e9', selected: '#6366f1' }
-    const COLORS_LIGHT = { default: '#cbd5e1', error: '#f87171', ping: '#fbbf24', update: '#38bdf8', selected: '#818cf8' }
-    const C = isDark ? COLORS_DARK : COLORS_LIGHT
-
     for (let i = 0; i < n; i++) {
-        const e = events[i]
-        const visualIndex = (n - 1) - i
-        const x = visualIndex * slotW
-        const w = Math.max(1, slotW - gap)
-
-        const isSelected = i === currentIndex
-        let color = C.default
-        if (e.type === 'error') color = C.error
-        else if (e.type === 'ping') color = C.ping
-        else if (e.parsedType === 'update') color = C.update
-        if (isSelected) color = C.selected
-
-        let h = height * 0.6
-        if (e.type === 'error') h = height * 0.8
-        if (isSelected) h = height * 0.9
-        const y = (height - h) / 2
-
-        ctx.fillStyle = color
+        const code = typeCode(events[i])
+        const selected = i === currentIndex
+        const barH = height * barHeightFraction(code, selected)
+        const x = (n - 1 - i) * slotW // oldest on the left, newest on the right
+        ctx.fillStyle = colorFor(code, isDark, selected)
         ctx.beginPath()
-        if (ctx.roundRect) ctx.roundRect(x, y, w, h, 2)
-        else ctx.rect(x, y, w, h)
+        if (ctx.roundRect) ctx.roundRect(x, (height - barH) / 2, Math.max(1, slotW - gap), barH, 2)
+        else ctx.rect(x, (height - barH) / 2, Math.max(1, slotW - gap), barH)
         ctx.fill()
     }
 }
 
-export const EventTimeline = ({
-    theme,
-    events,
-    currentEventIndex,
-    onSeek,
-    maxEvents,
-    onDrawMs,
-}: EventTimelineProps) => {
-    const canvasRef = useRef<HTMLCanvasElement>(null)
-    const containerRef = useRef<HTMLDivElement>(null)
+export const EventTimeline = ({ theme, events, currentEventIndex, onSeek, onDrawMs }: EventTimelineProps) => {
+    const hostRef = useRef<HTMLDivElement>(null)
+    const canvasRef = useRef<HTMLCanvasElement | null>(null)
+    const workerRef = useRef<Worker | null>(null)
+    const onDrawMsRef = useRef(onDrawMs)
+    onDrawMsRef.current = onDrawMs
+    // bumped whenever the canvas (re)appears or the host is resized, so the draw effect runs again
+    const [surfaceVersion, setSurfaceVersion] = useState(0)
+
     const [isHovering, setIsHovering] = useState(false)
     const [hoverIndex, setHoverIndex] = useState<number | null>(null)
-    const workerRef = useRef<Worker | null>(null)
-    const offscreenActiveRef = useRef(false)
-
     const isDark = theme === 'dark'
 
-
+    // The canvas is created (and owned) by this effect. A canvas whose control has been transferred to a worker
+    // can never be transferred or drawn on again, so every mount — including React StrictMode's second one in
+    // development — needs a fresh element rather than reusing one from JSX.
     useEffect(() => {
-        const canvas = canvasRef.current
-        if (!canvas || typeof Worker === 'undefined') return
-        if (!('transferControlToOffscreen' in canvas)) return
+        const host = hostRef.current
+        if (!host) return
+        const canvas = document.createElement('canvas')
+        canvas.className = 'block w-full h-full'
+        host.appendChild(canvas)
+        canvasRef.current = canvas
 
-        try {
-            const worker = workerRegistry.create(WORKER_KEY, () =>
-                new Worker(new URL('../workers/timelineWorker.ts', import.meta.url), { type: 'module' })
-            )
-            workerRef.current = worker
-
-            const offscreen = canvas.transferControlToOffscreen()
-            worker.postMessage({ type: 'init', canvas: offscreen }, [offscreen])
-            offscreenActiveRef.current = true
-
-            worker.onmessage = (e: MessageEvent) => {
-                if (e.data.type === 'draw_complete' && onDrawMs) {
-                    onDrawMs(e.data.drawMs)
+        let worker: Worker | null = null
+        if (typeof Worker !== 'undefined' && 'transferControlToOffscreen' in canvas) {
+            try {
+                worker = new Worker(new URL('../workers/timelineWorker.ts', import.meta.url), { type: 'module' })
+                worker.onmessage = (e: MessageEvent) => {
+                    if (e.data?.type === 'draw_complete') onDrawMsRef.current?.(e.data.drawMs)
                 }
+                const offscreen = canvas.transferControlToOffscreen()
+                worker.postMessage({ type: 'init', canvas: offscreen }, [offscreen])
+            } catch {
+                worker?.terminate()
+                worker = null
             }
-        } catch {
-            offscreenActiveRef.current = false
         }
+        workerRef.current = worker
+
+        const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => setSurfaceVersion((v) => v + 1)) : null
+        observer?.observe(host)
+        setSurfaceVersion((v) => v + 1)
 
         return () => {
-            offscreenActiveRef.current = false
+            observer?.disconnect()
+            worker?.terminate()
             workerRef.current = null
-            workerRegistry.release(WORKER_KEY)
+            canvasRef.current = null
+            canvas.remove()
         }
     }, [])
 
-
     useEffect(() => {
-        const container = containerRef.current
-        if (!container) return
-
-        const { width, height } = container.getBoundingClientRect()
+        const host = hostRef.current
+        const canvas = canvasRef.current
+        if (!host || !canvas) return
+        const { width, height } = host.getBoundingClientRect()
         const dpr = window.devicePixelRatio || 1
 
-        if (offscreenActiveRef.current && workerRef.current) {
+        const worker = workerRef.current
+        if (worker) {
             const slots = encodeSlots(events, currentEventIndex)
-            workerRef.current.postMessage({
-                type: 'draw',
-                slots,
-                currentIndex: currentEventIndex,
-                isDark,
-                width,
-                height,
-                dpr,
-            }, [slots.buffer])
-        } else {
-            // guard context creation since transferring to offscreen permanently locks the canvas element
-            const canvas = canvasRef.current
-            if (!canvas) return
-            let ctx: CanvasRenderingContext2D | null = null
-            try {
-                ctx = canvas.getContext('2d')
-            } catch {
-                return
-            }
-            if (!ctx) return
-
-            canvas.width = Math.round(width * dpr)
-            canvas.height = Math.round(height * dpr)
-            canvas.style.width = `${width}px`
-            canvas.style.height = `${height}px`
-            ctx.scale(dpr, dpr)
-
-            const t0 = performance.now()
-            drawSync(ctx, events, currentEventIndex, width, height, isDark)
-            onDrawMs?.(+(performance.now() - t0).toFixed(2))
-
-            ctx.setTransform(1, 0, 0, 1, 0, 0)
+            worker.postMessage({ type: 'draw', slots, currentIndex: currentEventIndex, isDark, width, height, dpr }, [slots.buffer])
+            return
         }
-    }, [events, isDark, maxEvents, currentEventIndex])
 
+        let ctx: CanvasRenderingContext2D | null = null
+        try { ctx = canvas.getContext('2d') } catch { return }
+        if (!ctx) return
+        canvas.width = Math.round(width * dpr)
+        canvas.height = Math.round(height * dpr)
+        canvas.style.width = `${width}px`
+        canvas.style.height = `${height}px`
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+        const t0 = performance.now()
+        drawSync(ctx, events, currentEventIndex, width, height, isDark)
+        onDrawMsRef.current?.(+(performance.now() - t0).toFixed(2))
+        ctx.setTransform(1, 0, 0, 1, 0, 0)
+    }, [events, isDark, currentEventIndex, surfaceVersion])
 
     const handleMouseMove = useCallback((e: React.MouseEvent) => {
-        const container = containerRef.current
-        if (!container || events.length === 0) return
-        const rect = container.getBoundingClientRect()
+        const host = hostRef.current
+        if (!host || events.length === 0) return
+        const rect = host.getBoundingClientRect()
         const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
         const visualIndex = Math.floor(pct * events.length)
         const index = (events.length - 1) - visualIndex
@@ -196,26 +152,28 @@ export const EventTimeline = ({
             backdrop-blur-md border-t z-40 transition-all duration-300
             ${isDark ? 'bg-slate-900/80 border-slate-700/50' : 'bg-white/80 border-slate-200/50'}
         `}>
-
             {isHovering && hoverIndex !== null && events[hoverIndex] && (
                 <div
                     className="absolute bottom-full mb-2 -translate-x-1/2 px-3 py-1.5 rounded-lg text-xs font-mono bg-black/80 text-white pointer-events-none"
                     style={{ left: `${((events.length - 1 - hoverIndex) / events.length) * 100}%` }}
                 >
-                    {events[hoverIndex].type}
-                    <span className="opacity-50 ml-2">#{events[hoverIndex].id}</span>
+                    {events[hoverIndex].parsedType ?? events[hoverIndex].type}
+                    <span className="opacity-50 ml-2">{events[hoverIndex].timestamp}</span>
                 </div>
             )}
 
             <div
-                ref={containerRef}
+                ref={hostRef}
+                role="slider"
+                aria-label="Event timeline"
+                aria-valuemin={0}
+                aria-valuemax={Math.max(0, events.length - 1)}
+                aria-valuenow={currentEventIndex}
                 className="w-full h-full cursor-crosshair relative"
                 onMouseMove={handleMouseMove}
                 onMouseLeave={() => setIsHovering(false)}
                 onClick={handleClick}
-            >
-                <canvas ref={canvasRef} className="block w-full h-full" />
-            </div>
+            />
         </div>
     )
 }
