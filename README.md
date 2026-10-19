@@ -166,3 +166,19 @@ The testing strategy is heavily optimized for pipeline resilience, memory leaks,
 ## 11. License
 
 This project is licensed under the MIT License.
+## 12. Deployment & Security Configuration
+
+The built-in proxy (`/api/sse`) relays browser requests to third-party SSE endpoints, so it is **closed by default in production**:
+
+| Variable | Purpose |
+|---|---|
+| `ALLOWED_HOSTS` | Comma-separated hostnames (`*.example.com` allowed) the proxy may relay to. Required in production unless `PROXY_OPEN=1`. |
+| `PROXY_OPEN=1` | Allow any *public* host. Private, loopback, link-local, CGNAT and cloud-metadata addresses are always blocked (checked after DNS resolution; the connection is pinned to the validated IP). |
+| `PROXY_ALLOWED_ORIGINS` | Extra browser origins allowed to use the proxy (the app's own origin is always allowed). |
+| `ALLOW_PRIVATE_TARGETS=1` | Self-hosting only: allow private-network targets. |
+| `MAX_STREAM_SECONDS`, `MAX_STREAM_MB`, `MAX_CONCURRENT_STREAMS` | Per-stream duration/byte caps and per-instance concurrency cap. Vercel Hobby streams are capped at 55 s; the browser reconnects automatically. |
+| `ENABLE_MOCK_API=1` | Enable the mock replay API in production (sessions are private, expire after 1 h; attach KV via `KV_REST_API_URL` for multi-instance deployments). |
+| `HOST`, `PORT`, `TRUST_PROXY`, `RATE_LIMIT_MAX` | Express server settings (`HOST=0.0.0.0` in containers; set `TRUST_PROXY` behind a load balancer). |
+| `VITE_SENTRY_DSN` / `SENTRY_DSN` | Optional error reporting; disabled unless set. Session replay is not used. |
+
+See `.env.example` for the full list.

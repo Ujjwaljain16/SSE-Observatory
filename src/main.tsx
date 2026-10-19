@@ -1,15 +1,15 @@
 import * as Sentry from '@sentry/react'
 
-Sentry.init({
-  dsn: "https://examplePublicKey@o0.ingest.sentry.io/0",
-  integrations: [
-    Sentry.browserTracingIntegration(),
-    Sentry.replayIntegration(),
-  ],
-  tracesSampleRate: 0.05,
-  replaysSessionSampleRate: 0.01,
-  replaysOnErrorSampleRate: 1.0,
-})
+// Telemetry is opt-in: nothing is initialised unless a DSN is provided at build time.
+// Session replay is intentionally not enabled — this tool displays tokens and event payloads.
+const sentryDsn = import.meta.env.VITE_SENTRY_DSN
+if (sentryDsn) {
+  Sentry.init({
+    dsn: sentryDsn,
+    integrations: [Sentry.browserTracingIntegration()],
+    tracesSampleRate: 0.05,
+  })
+}
 
 import './index.css'
 import React from 'react'

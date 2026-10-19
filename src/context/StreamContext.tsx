@@ -81,6 +81,8 @@ interface StreamContextValue {
     mockSpeed: number
     isMockLooping: boolean
     mockTotalEvents: number
+    mockUploadError: string | null
+    mockStreamUrl: string | null
     handleMockUpload: (event: React.ChangeEvent<HTMLInputElement>) => void
     toggleMockServer: () => Promise<string | null>
     setMockSpeed: (speed: number) => void

@@ -9,6 +9,8 @@ interface UseMockServerReturn {
     totalEvents: number
     uploadError: string | null
     sseRecordData: string | null
+    /** Full URL of the running mock stream (includes the session id), or null when stopped. */
+    mockStreamUrl: string | null
     setFileName: (name: string | null) => void
     setIsUploading: (val: boolean) => void
     setIsServerRunning: (val: boolean) => void
@@ -29,6 +31,8 @@ export const useMockServer = (): UseMockServerReturn => {
     const [isLooping, setIsLooping] = useState(false)
     const [totalEvents, setTotalEvents] = useState<number>(0)
     const [uploadError, setUploadError] = useState<string | null>(null)
+    const [mockStreamUrl, setMockStreamUrl] = useState<string | null>(null)
+    const sessionIdRef = useRef<string | null>(null)
 
     // We store the raw JSON to send when clicking play
     const sseRecordDataRef = useRef<string | null>(null)
@@ -63,14 +67,14 @@ export const useMockServer = (): UseMockServerReturn => {
     const toggleServer = useCallback(async (): Promise<string | null> => {
         if (isServerRunning) {
             try {
-                await fetch('/api/mock/session', {
-                    method: 'POST',
-                    body: JSON.stringify({ events: [] })
-                })
-                setIsServerRunning(false)
+                const id = sessionIdRef.current
+                if (id) await fetch(`/api/mock/session?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
             } catch (e) {
                 console.error(e)
             }
+            sessionIdRef.current = null
+            setMockStreamUrl(null)
+            setIsServerRunning(false)
             return null
         }
 
@@ -84,10 +88,13 @@ export const useMockServer = (): UseMockServerReturn => {
                 body: sseRecordDataRef.current
             })
             if (res.ok) {
+                const { sessionId } = await res.json()
+                sessionIdRef.current = sessionId
                 setIsServerRunning(true)
-                // Build the stream URL including the current speed and loop settings
-                const speedMultiplier = speedMs > 0 ? (1000 / speedMs) : 1
-                const streamUrl = `/api/mock/stream?speed=${speedMultiplier.toFixed(2)}&loop=${isLooping}`
+                // speedMs is a playback multiplier (0.5x / 1x / 2x)
+                const speed = speedMs > 0 ? speedMs : 1
+                const streamUrl = `/api/mock/stream?session=${sessionId}&speed=${speed}&loop=${isLooping}`
+                setMockStreamUrl(`${window.location.origin}${streamUrl}`)
                 return streamUrl
             } else {
                 const err = await res.text()
@@ -111,6 +118,7 @@ export const useMockServer = (): UseMockServerReturn => {
         totalEvents,
         uploadError,
         sseRecordData: sseRecordDataRef.current,
+        mockStreamUrl,
         setFileName,
         setIsUploading,
         setIsServerRunning,

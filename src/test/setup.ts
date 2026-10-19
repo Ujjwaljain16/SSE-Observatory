@@ -1,8 +1,8 @@
 import '@testing-library/jest-dom'
 import 'fake-indexeddb/auto'
 
-// Mock canvas for JSDOM
-HTMLCanvasElement.prototype.getContext = () => {
+// Mock canvas for JSDOM (skipped in node-environment test files)
+if (typeof HTMLCanvasElement !== 'undefined') HTMLCanvasElement.prototype.getContext = () => {
     return {
         fillRect: () => { },
         clearRect: () => { },

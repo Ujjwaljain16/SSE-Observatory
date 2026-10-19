@@ -1,43 +1,31 @@
-# Stage 1: Build the Vite React Frontend
-FROM node:20-alpine AS builder
-
+# Stage 1: build the Vite React frontend
+FROM node:22-alpine AS builder
 WORKDIR /app
-
-# Copy package files
 COPY package*.json ./
-
-# Install all dependencies (including devDependencies needed for Vite build)
 RUN npm ci
-
-# Copy the rest of the source code
 COPY . .
-
-# Build the frontend assets to /app/dist
 RUN npm run build
 
-# Stage 2: Setup the Production Node.js Backend
-FROM node:20-alpine AS runner
-
+# Stage 2: production backend (proxy + static frontend)
+FROM node:22-alpine AS runner
 WORKDIR /app
 
-# Set environment variables
-ENV NODE_ENV=production
-ENV PORT=3000
+ENV NODE_ENV=production \
+    PORT=3000 \
+    HOST=0.0.0.0
 
-# Copy package files
 COPY package*.json ./
+RUN npm ci --omit=dev && npm cache clean --force
 
-# Install only production dependencies (express, cors, helmet, @sentry/node)
-RUN npm ci --omit=dev
-
-# Copy the Express backend entry point
 COPY server.js ./
-
-# Copy the built Vite static assets from the builder stage
+COPY lib ./lib
 COPY --from=builder /app/dist ./dist
 
-# Expose the API and static server port
+# Run as the unprivileged user shipped with the node image
+USER node
 EXPOSE 3000
 
-# Start the server
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+    CMD wget -qO- http://127.0.0.1:3000/healthz || exit 1
+
 CMD ["node", "server.js"]

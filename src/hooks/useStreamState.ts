@@ -217,6 +217,8 @@ export function useStreamState() {
         speedMs: mockSpeed,
         isLooping: isMockLooping,
         totalEvents: mockTotalEvents,
+        uploadError: mockUploadError,
+        mockStreamUrl,
         handleFileUpload: handleMockUpload,
         toggleServer: toggleMockServer,
         setSpeedMs: setMockSpeed,
@@ -296,7 +298,7 @@ export function useStreamState() {
         // Profile form fields (for UIContext parallel)
         url, setUrl, bearerToken, setBearerToken, profileName, setProfileName,
         // Mock
-        mockFileName, isMockUploading, isMockRunning, mockSpeed, isMockLooping, mockTotalEvents,
+        mockFileName, isMockUploading, isMockRunning, mockSpeed, isMockLooping, mockTotalEvents, mockUploadError, mockStreamUrl,
         handleMockUpload, toggleMockServer, setMockSpeed, setIsMockLooping,
         // Correlation Tracing
         traces, activeTraceId, setActiveTraceId,
@@ -318,7 +320,7 @@ export function useStreamState() {
         streams, mergedEvents, addStream, removeStream, connectStream, disconnectStream, clearStreamEvents,
         profiles, activeProfileTab, setActiveProfileTab, saveProfile, loadProfile, deleteProfile,
         url, bearerToken, profileName,
-        mockFileName, isMockUploading, isMockRunning, mockSpeed, isMockLooping, mockTotalEvents,
+        mockFileName, isMockUploading, isMockRunning, mockSpeed, isMockLooping, mockTotalEvents, mockUploadError, mockStreamUrl,
         handleMockUpload, toggleMockServer, setMockSpeed, setIsMockLooping,
         traces, activeTraceId, setActiveTraceId, getEventChain, getTraceForEvent, correlationField, traceCount, clearTraces,
         patternRules, patternAlerts, activePatternAlerts, addPatternRule, removePatternRule, togglePatternRule, dismissPatternAlert, clearPatternAlerts,

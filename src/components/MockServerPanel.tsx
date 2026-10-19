@@ -9,6 +9,8 @@ interface MockServerPanelProps {
     speedMs: number
     isLooping: boolean
     totalEvents: number
+    uploadError: string | null
+    streamUrl: string | null
     onFileUpload: (event: React.ChangeEvent<HTMLInputElement>) => void
     onToggleServer: () => Promise<string | null>
     onSetSpeed: (speed: number) => void
@@ -23,6 +25,8 @@ export const MockServerPanel = ({
     speedMs,
     isLooping,
     totalEvents,
+    uploadError,
+    streamUrl,
     onFileUpload,
     onToggleServer,
     onSetSpeed,
@@ -30,7 +34,7 @@ export const MockServerPanel = ({
 }: MockServerPanelProps) => {
     const isDark = theme === 'dark'
 
-    const mockUrl = `http://localhost:3001/api/mock/stream?speed=${speedMs}&loop=${isLooping}`
+    const mockUrl = streamUrl ?? `${window.location.origin}/api/mock/stream?session=<start the server to get a session id>&speed=${speedMs}&loop=${isLooping}`
     const curlCommand = `curl -N "${mockUrl}"`
 
     return (
@@ -89,6 +93,12 @@ export const MockServerPanel = ({
                     <input type="file" accept=".sse-record,.json" className="hidden" onChange={onFileUpload} />
                 </label>
             </div>
+
+            {uploadError && (
+                <div role="alert" className="mb-4 px-4 py-3 rounded-lg text-sm bg-red-500/10 border border-red-500/30 text-red-400">
+                    {uploadError}
+                </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
@@ -182,7 +192,7 @@ export const MockServerPanel = ({
                     {isServerRunning && (
                         <div className="mt-4 flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
                             <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                            <span className="text-xs font-bold text-emerald-500">Broadcasting locally on port 3001</span>
+                            <span className="text-xs font-bold text-emerald-500">Replaying — session is private to this URL</span>
                         </div>
                     )}
                 </div>
