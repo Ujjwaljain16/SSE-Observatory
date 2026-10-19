@@ -143,8 +143,8 @@ export function useStreamState() {
         setRegexPattern,
     } = useCustomFilters(playbackEvents)
 
-    const { query, setQuery, error: queryError } = useQueryParser(playbackEvents)
-    const { searchQuery, setSearchQuery } = useEventSearch(playbackEvents)
+    const { query, setQuery, error: queryError } = useQueryParser()
+    const { searchQuery, setSearchQuery } = useEventSearch()
 
 
     // The filter engine mirrors the live buffer by event identity (works after the ring buffer is full)

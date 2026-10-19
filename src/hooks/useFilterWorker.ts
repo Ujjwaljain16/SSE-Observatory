@@ -112,7 +112,7 @@ export function useFilterWorker(
             workerRef.current = null
             workerRegistry.release(WORKER_KEY)
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+         
     }, [inline, maxEvents])
 
     // --- filter parameters (debounced, only changed parts are re-sent) -------------------------

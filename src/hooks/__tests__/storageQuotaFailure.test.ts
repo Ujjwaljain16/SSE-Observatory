@@ -87,6 +87,6 @@ describe('useEventStorage - Quota Failure & Initialization', () => {
         expect(console.warn).toHaveBeenCalledWith('[useEventStorage] Flush failed:', quotaError)
 
         // App is still running fine but IDB is disabled
-        expect(result.current.idbAvailable).toBe(false)
+        await waitFor(() => expect(result.current.idbAvailable).toBe(false))
     })
 })

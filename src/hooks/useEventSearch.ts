@@ -1,25 +1,7 @@
-import { useState, useMemo } from 'react'
-import type { EventMessage } from '../types'
+import { useState } from 'react'
 
-export const useEventSearch = (events: EventMessage[]) => {
+/** Free-text search box state; matching is done by the filter engine. */
+export const useEventSearch = () => {
     const [searchQuery, setSearchQuery] = useState('')
-
-    const searchedEvents = useMemo(() => {
-        if (!searchQuery.trim()) return events
-
-        const query = searchQuery.toLowerCase()
-        return events.filter(event => {
-            if (event.data.toLowerCase().includes(query)) return true
-            if (event.parsedType?.toLowerCase().includes(query)) return true
-            if (event.type.toLowerCase().includes(query)) return true
-            if (event.timestamp.toLowerCase().includes(query)) return true
-            return false
-        })
-    }, [events, searchQuery])
-
-    return {
-        searchQuery,
-        setSearchQuery,
-        searchedEvents
-    }
+    return { searchQuery, setSearchQuery }
 }
