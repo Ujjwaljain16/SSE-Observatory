@@ -33,7 +33,7 @@
     "verify": "npm run lint && npm run typecheck && npm run test:coverage && npm run build"
   },
   "dependencies": {
-    "@sentry/node": "^10.42.0",
+    "@sentry/node": "^11.8.0",
     "@vercel/kv": "^1.0.1",
     "compression": "^1.8.1",
     "cors": "^2.8.6",
