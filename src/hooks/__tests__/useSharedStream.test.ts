@@ -94,6 +94,28 @@ describe('useSharedStream (SharedWorker transport)', () => {
         expect(result.current.events[0]._searchIndex).toBe('{"type":"order","n":1}')
     })
 
+    it('still delivers events when animation frames never fire (hidden tab or pane)', async () => {
+        vi.stubGlobal('requestAnimationFrame', () => 0)
+        vi.stubGlobal('cancelAnimationFrame', () => undefined)
+        try {
+            const { result } = setup()
+            sse('a', 1); sse('b', 2)
+            await waitFor(() => expect(data(result)).toEqual(['b', 'a']), { timeout: 1000 })
+        } finally {
+            vi.unstubAllGlobals()
+        }
+    })
+
+    it('spreads a large burst over several flushes instead of one long task', async () => {
+        const { result } = setup(5000)
+        const N = 3000
+        act(() => { for (let i = 1; i <= N; i++) mockPort.onmessage?.({ data: { type: 'event', key: KEY, payload: { event: 'message', data: 'e' + i, id: '', raw: '', arrivalTime: i, seq: i } } } as MessageEvent) })
+        await waitFor(() => expect(result.current.events).toHaveLength(N), { timeout: 5000 })
+        expect(result.current.events[0].data).toBe('e' + N)
+        expect(result.current.events[N - 1].data).toBe('e1')
+        expect(result.current.receivedCount).toBe(N)
+    })
+
     it('respects the ring buffer size', async () => {
         const { result } = setup(5)
         for (let i = 1; i <= 12; i++) sse(`e${i}`, i)
