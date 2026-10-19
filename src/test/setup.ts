@@ -1,5 +1,6 @@
 import '@testing-library/jest-dom'
 import 'fake-indexeddb/auto'
+import { createInterceptorRunner } from '../workers/interceptorCore'
 
 // Mock canvas for JSDOM (skipped in node-environment test files)
 if (typeof HTMLCanvasElement !== 'undefined') HTMLCanvasElement.prototype.getContext = () => {
@@ -33,38 +34,28 @@ if (typeof HTMLCanvasElement !== 'undefined') HTMLCanvasElement.prototype.getCon
     } as any
 }
 
-// Mock Web Worker for JSDOM
+// Mock Web Worker for JSDOM. Interceptor requests run through the REAL interceptor core (the same code the
+// production worker uses — minus the global-scope lockdown, which is tested separately in a fresh realm).
 class MockWorker {
     onmessage: any
     onerror: any
-    constructor(_stringUrl: string | URL, _options?: any) { }
-    postMessage(msg: any) {
-        // Evaluate the interceptor message asynchronously to mimic worker isolation
-        setTimeout(() => {
-            if (!this.onmessage) return
-            try {
-                if (msg.code !== undefined && msg.event !== undefined) {
-                    const { code, event } = msg
-                    // Replicate the interceptorWorker.ts security wrap
-                    const fn = new Function('event', `
-                        const window = undefined;
-                        const document = undefined;
-                        const fetch = undefined;
-                        const localStorage = undefined;
-                        ${code}
-                    `)
-                    Promise.resolve(fn(event)).then(res => {
-                        this.onmessage({ data: { result: res, error: null } })
-                    }).catch(err => {
-                        this.onmessage({ data: { result: event, error: err.message } })
-                    })
-                }
-            } catch (err: any) {
-                this.onmessage({ data: { result: msg.event, error: err.message } })
-            }
-        }, 5)
+    terminated = false
+    private run = createInterceptorRunner({
+        compile: Function as never,
+        ctx: { JSON, atob, btoa, Math, Date, console },
+        stringify: (v) => JSON.stringify(v),
+    })
+    constructor(_stringUrl: string | URL, _options?: any) {
+        setTimeout(() => { if (!this.terminated) this.onmessage?.({ data: { type: 'ready' } }) }, 0)
     }
-    terminate() { }
+    postMessage(msg: any) {
+        if (!msg || msg.code === undefined || msg.event === undefined) return
+        setTimeout(() => {
+            if (this.terminated) return
+            this.onmessage?.({ data: this.run(msg) })
+        }, 1)
+    }
+    terminate() { this.terminated = true }
 }
 (globalThis as any).Worker = MockWorker
 if (typeof window !== 'undefined') {

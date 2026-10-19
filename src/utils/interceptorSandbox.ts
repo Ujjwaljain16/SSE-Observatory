@@ -1,146 +1,144 @@
 /**
- * interceptorSandbox.ts — Safe execution environment for user-defined interceptors.
+ * interceptorSandbox.ts — runs user-defined interceptors in a small pool of isolated workers.
  *
- * ARCHITECTURE:
- * Each interceptor execution spins up a fresh dedicated Worker (interceptorWorker.ts).
- * The worker compiles and runs the user code, then is terminated.
- *
- * Security properties (vs the previous new Function() on main thread approach):
- *   ✓  Off-main-thread: UI never blocked by user code
- *   ✓  Worker has no window/document/localStorage — globals shadowed to undefined
- *   ✓  Synchronous infinite loops: Worker.terminate() genuinely kills them
- *      (Promise.race alone cannot kill synchronous code on the same thread)
- *   ✓  Network exfiltration: fetch is shadowed to undefined inside the worker code
- *   ✓  Crashes are isolated — uncaught errors in the worker don't propagate to main
- *
- * Performance trade-off:
- *   Creating a new Worker per event is expensive (~2-5ms overhead). To mitigate
- *   this, we use a small pool of 2 reusable workers (POOL_SIZE) that are recycled
- *   between runs. If a worker must be terminated (timeout), a fresh one is spawned
- *   to replace it.
+ *  - Off the main thread: slow or hostile code can never block the UI.
+ *  - Each worker locks its global scope down before it reports "ready" (see interceptorWorker.ts).
+ *  - A job gets TIMEOUT_MS of *execution* time (the clock starts when a ready worker picks it up, so worker start-up
+ *    cannot cause false timeouts). On timeout the worker is terminated — the only way to stop a synchronous infinite
+ *    loop — and replaced.
+ *  - The pool has a fixed size; extra jobs wait in a queue. Nothing is spawned per event and nothing is leaked.
  */
 
 import type { EventMessage } from '../types'
+import { findForbiddenSyntax } from './sandboxHarden'
 
-const TIMEOUT_MS = 100   // Kill the worker if it takes longer than 100ms
-const POOL_SIZE = 2       // Reusable worker pool size
+export const TIMEOUT_MS = 100
+const POOL_SIZE = 2
 
-type WorkerEntry = { worker: Worker; busy: boolean }
+export interface InterceptorResult { result: EventMessage | null; error: string | null }
 
-class InterceptorWorkerPool {
-    private pool: WorkerEntry[] = []
+interface Job {
+    id: number
+    code: string
+    event: EventMessage
+    resolve: (r: InterceptorResult) => void
+    timer?: ReturnType<typeof setTimeout>
+}
 
-    private createWorker(): WorkerEntry {
-        const worker = new Worker(
-            new URL('../workers/interceptorWorker.ts', import.meta.url),
-            { type: 'module' }
-        )
-        const entry: WorkerEntry = { worker, busy: false }
-        return entry
-    }
+interface Slot {
+    worker: Worker | null
+    ready: boolean
+    job: Job | null
+}
 
-    private acquire(): WorkerEntry {
-        const idle = this.pool.find(e => !e.busy)
-        if (idle) {
-            idle.busy = true
-            return idle
-        }
-        // Pool exhausted — create an extra worker (will not be returned to pool after use)
-        const entry = this.createWorker()
-        entry.busy = true
-        return entry
-    }
+export class InterceptorWorkerPool {
+    private slots: Slot[] = []
+    private queue: Job[] = []
+    private nextId = 1
+    private disposed = false
 
-    private release(entry: WorkerEntry) {
-        entry.busy = false
-    }
-
-    private terminate(entry: WorkerEntry) {
-        entry.worker.terminate()
-        // Replace the terminated entry with a fresh worker
-        const idx = this.pool.indexOf(entry)
-        if (idx !== -1) {
-            this.pool[idx] = this.createWorker()
+    constructor(size = POOL_SIZE, private readonly timeoutMs = TIMEOUT_MS) {
+        for (let i = 0; i < size; i++) {
+            const slot: Slot = { worker: null, ready: false, job: null }
+            this.slots.push(slot)
+            this.spawn(slot)
         }
     }
 
-    async run(code: string, event: EventMessage): Promise<{ result: EventMessage | null; error: string | null }> {
-        const entry = this.acquire()
+    private spawn(slot: Slot) {
+        if (this.disposed) return
+        const worker = new Worker(new URL('../workers/interceptorWorker.ts', import.meta.url), { type: 'module' })
+        slot.worker = worker
+        slot.ready = false
+        slot.job = null
 
+        worker.onmessage = (e: MessageEvent) => {
+            if (slot.worker !== worker) return
+            const msg = e.data
+            if (msg?.type === 'ready') {
+                slot.ready = true
+                this.pump()
+                return
+            }
+            const job = slot.job
+            if (!job || msg?.id !== job.id) return
+            clearTimeout(job.timer)
+            slot.job = null
+            job.resolve({ result: msg.result ?? null, error: msg.error ?? null })
+            this.pump()
+        }
+        worker.onerror = (e: ErrorEvent) => {
+            if (slot.worker !== worker) return
+            const job = slot.job
+            worker.terminate()
+            if (job) {
+                clearTimeout(job.timer)
+                job.resolve({ result: job.event, error: e.message || 'Interceptor worker crashed' })
+            }
+            this.spawn(slot)
+        }
+    }
+
+    private pump() {
+        for (const slot of this.slots) {
+            if (this.queue.length === 0) return
+            if (!slot.ready || slot.job || !slot.worker) continue
+            const job = this.queue.shift()!
+            slot.job = job
+            job.timer = setTimeout(() => this.kill(slot, job), this.timeoutMs)
+            slot.worker.postMessage({ id: job.id, code: job.code, event: job.event })
+        }
+    }
+
+    private kill(slot: Slot, job: Job) {
+        if (slot.job !== job) return
+        slot.worker?.terminate()
+        job.resolve({ result: job.event, error: `Interceptor exceeded ${this.timeoutMs}ms — killed` })
+        this.spawn(slot)
+    }
+
+    run(code: string, event: EventMessage): Promise<InterceptorResult> {
+        if (this.disposed) return Promise.resolve({ result: event, error: 'Interceptor pool was disposed' })
         return new Promise((resolve) => {
-            const killTimer = setTimeout(() => {
-                // Genuine kill — terminates even synchronous infinite loops
-                this.terminate(entry)
-                resolve({ result: event, error: `Interceptor exceeded ${TIMEOUT_MS}ms — killed` })
-            }, TIMEOUT_MS)
-
-            entry.worker.onmessage = (e) => {
-                clearTimeout(killTimer)
-                this.release(entry)
-                resolve(e.data)
-            }
-
-            entry.worker.onerror = (e) => {
-                clearTimeout(killTimer)
-                this.release(entry)
-                resolve({ result: event, error: e.message ?? 'Worker error' })
-            }
-
-            entry.worker.postMessage({ code, event })
+            this.queue.push({ id: this.nextId++, code, event, resolve })
+            this.pump()
         })
     }
 
-    initialise() {
-        if (this.pool.length === 0) {
-            for (let i = 0; i < POOL_SIZE; i++) {
-                this.pool.push(this.createWorker())
-            }
-        }
-    }
-
     dispose() {
-        for (const entry of this.pool) {
-            entry.worker.terminate()
+        this.disposed = true
+        for (const slot of this.slots) {
+            if (slot.job) { clearTimeout(slot.job.timer); slot.job.resolve({ result: slot.job.event, error: 'Interceptor pool was disposed' }) }
+            slot.worker?.terminate()
+            slot.worker = null
+            slot.job = null
         }
-        this.pool = []
+        for (const job of this.queue) job.resolve({ result: job.event, error: 'Interceptor pool was disposed' })
+        this.queue = []
+        this.slots = []
     }
 }
 
 let _pool: InterceptorWorkerPool | null = null
+const getPool = () => (_pool ??= new InterceptorWorkerPool())
 
-function getPool(): InterceptorWorkerPool {
-    if (!_pool) {
-        _pool = new InterceptorWorkerPool()
-        _pool.initialise()
-    }
-    return _pool
-}
-
-export const compileInterceptor = (
-    code: string
-): { fn: true | null; error: string | null } => {
+/** Syntax check for instant feedback in the editor. Compiles only — nothing is executed. */
+export const compileInterceptor = (code: string): { fn: true | null; error: string | null } => {
+    const forbidden = findForbiddenSyntax(code)
+    if (forbidden) return { fn: null, error: forbidden }
     try {
-
         new Function('event', 'ctx', `"use strict";\n${code}`)
         return { fn: true, error: null }
-    } catch (e: any) {
-        return { fn: null, error: e.message }
+    } catch (e) {
+        return { fn: null, error: (e as Error).message }
     }
 }
 
-export const runInterceptorWithTimeout = async (
-    code: string,
-    event: EventMessage
-): Promise<{ result: EventMessage | null; error: string | null }> => {
-    return getPool().run(code, event)
-}
+export const runInterceptorWithTimeout = (code: string, event: EventMessage): Promise<InterceptorResult> =>
+    getPool().run(code, event)
 
 export const applyInterceptorChain = async (
-    interceptors: Array<{
-        id: string
-        code: string
-        enabled: boolean
-    }>,
+    interceptors: Array<{ id: string; code: string; enabled: boolean }>,
     event: EventMessage
 ): Promise<{ event: EventMessage | null; errors: Record<string, string> }> => {
     let current: EventMessage | null = event
@@ -148,18 +146,10 @@ export const applyInterceptorChain = async (
 
     for (const { id, code, enabled } of interceptors) {
         if (!enabled || current === null) continue
-
         const { result, error } = await runInterceptorWithTimeout(code, current)
-        if (error) {
-            errors[id] = error
-            // Don't drop on error — pass current state unchanged
-        } else {
-            current = result
-        }
-
-        if (current === null) break
+        if (error) errors[id] = error // an erroring interceptor passes the event through unchanged
+        else current = result
     }
-
     return { event: current, errors }
 }
 

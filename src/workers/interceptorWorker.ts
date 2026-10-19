@@ -1,67 +1,42 @@
-// runs user-provided javascript to modify streaming events securely
-// isolates execution to prevent malicious code from accessing dom or storage
-// masks global apis like fetch to prevent external network calls
+// Runs user-written interceptor code in isolation.
 //
-// message in  (main -> worker): { code, event }
-// message out (worker -> main): { result, error }
+//   pool → worker:  { id, code, event }
+//   worker → pool:  { type: 'ready' }   once, after the sandbox is locked down
+//                   { id, result, error } per request
+//
+// Isolation: everything this file needs is captured first; then the global scope is stripped down to pure
+// language intrinsics and every route to eval/Function is closed (see utils/sandboxHarden.ts). The code then
+// has no network, storage, timers or messaging, so the only thing it can do is compute a result.
+// Runaway code (infinite loops) is stopped by the pool, which terminates this worker after a short deadline.
 
 /// <reference lib="webworker" />
 
-import type { EventMessage } from '../types'
+import { hardenGlobal } from '../utils/sandboxHarden'
+import { createInterceptorRunner, type RunnerDeps } from './interceptorCore'
 
+// --- capture what we need before the global scope is stripped ------------------------------------
+const post = self.postMessage.bind(self) as (message: unknown) => void
+const JSONRef = JSON
+const atobRef = atob
+const btoaRef = btoa
+const log = (kind: 'log' | 'warn') => (...args: unknown[]) => console[kind]('[interceptor]', ...args)
 
-// explicit allowed sandbox context for user scripts
-// limits available runtime functions to safe built-ins
 const SAFE_CTX = Object.freeze({
-    JSON: {
-        parse: JSON.parse.bind(JSON),
-        stringify: JSON.stringify.bind(JSON),
-    },
-    atob: (s: string) => atob(s),
-    btoa: (s: string) => btoa(s),
+    JSON: Object.freeze({ parse: JSONRef.parse.bind(JSONRef), stringify: JSONRef.stringify.bind(JSONRef) }),
+    atob: (s: string) => atobRef(s),
+    btoa: (s: string) => btoaRef(s),
     Math,
     Date,
-    console: {
-        log: (...args: unknown[]) => console.log('[interceptor]', ...args),
-        warn: (...args: unknown[]) => console.warn('[interceptor]', ...args),
-    },
-    Number, String, Boolean, Array, Object,
+    console: Object.freeze({ log: log('log'), warn: log('warn') }),
 })
 
-self.onmessage = (e: MessageEvent<{ code: string; event: EventMessage }>) => {
-    const { code, event } = e.data
+const run = createInterceptorRunner({
+    compile: Function as unknown as RunnerDeps['compile'],
+    ctx: SAFE_CTX,
+    stringify: (v) => JSONRef.stringify(v),
+})
 
-    try {
-        // redefine dangerous globals as undefined in the function scope closure
-        // forces the user script to execute within the restricted sandbox
+self.addEventListener('message', (e) => post(run((e as MessageEvent).data)))
 
-        const fn = new Function(
-            'event', 'ctx',
-            // shadow restricted globals to isolate sandbox
-            `"use strict";
-const fetch = undefined;
-const XMLHttpRequest = undefined;
-const WebSocket = undefined;
-const indexedDB = undefined;
-const caches = undefined;
-const importScripts = undefined;
-const window = undefined;
-const document = undefined;
-const localStorage = undefined;
-const sessionStorage = undefined;
-const location = undefined;
-const navigator = undefined;
-const origin = undefined;
-${code}`
-        ) as (event: EventMessage, ctx: typeof SAFE_CTX) => EventMessage | null
-
-        const result = fn(event, SAFE_CTX)
-        self.postMessage({ result: result ?? null, error: null })
-    } catch (err: any) {
-        // stringify error manually because structured clone fails on custom error prototypes
-        self.postMessage({
-            result: event,
-            error: err instanceof Error ? err.message : String(err)
-        })
-    }
-}
+hardenGlobal(self as unknown as Record<string, unknown>)
+post({ type: 'ready' })
