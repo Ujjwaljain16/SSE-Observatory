@@ -38,7 +38,7 @@ describe('Event Ingestion Pipeline - Invariants & Causality', () => {
             generateEvents(20, 1160)
         ]
 
-        let pipelineOutput: EventMessage[] = []
+        const pipelineOutput: EventMessage[] = []
 
         // Ingest
         for (const batch of batches) {
@@ -61,7 +61,7 @@ describe('Event Ingestion Pipeline - Invariants & Causality', () => {
         // Process sequentially
         const uniqueIds = new Set(deserialized.map(e => e.id))
 
-        let pipelineOutput: EventMessage[] = []
+        const pipelineOutput: EventMessage[] = []
         pipelineOutput.push(...deserialized)
 
         expect(uniqueIds.size).toBe(1000)
@@ -76,7 +76,7 @@ describe('Event Ingestion Pipeline - Invariants & Causality', () => {
         const outputLarge = runFilter(totalEvents, query)
 
         // Scenario 2: Micro batches
-        let outputMicro: EventMessage[] = []
+        const outputMicro: EventMessage[] = []
         for (let i = 0; i < 1000; i += 10) {
             const batch = totalEvents.slice(i, i + 10)
             outputMicro.push(...runFilter(batch, query))
@@ -96,7 +96,7 @@ describe('Event Ingestion Pipeline - Invariants & Causality', () => {
         const streamT1 = events.slice(30, 60)
         const streamT2 = events.slice(60, 100)
 
-        let output: EventMessage[] = []
+        const output: EventMessage[] = []
 
         // T0: No filters
         output.push(...runFilter(streamT0, ''))

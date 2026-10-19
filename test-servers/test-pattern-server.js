@@ -64,7 +64,7 @@ const server = http.createServer((req, res) => {
         // Sends events normally, then silent for 10s, then resumes
         res.writeHead(200, headers)
         let seq = 0
-        let iv = setInterval(() => {
+        const iv = setInterval(() => {
             seq++
             sse(res, { seq, phase: 'active', type: 'heartbeat', ts: Date.now() }, 'message')
             if (seq >= 5) {
@@ -73,7 +73,7 @@ const server = http.createServer((req, res) => {
                 // 10s gap
                 setTimeout(() => {
                     console.log('[gap-test] Resuming...')
-                    let iv2 = setInterval(() => {
+                    const iv2 = setInterval(() => {
                         seq++
                         sse(res, { seq, phase: 'resumed', type: 'heartbeat', ts: Date.now() }, 'message')
                         if (seq >= 15) { clearInterval(iv2); res.end() }
