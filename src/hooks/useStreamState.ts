@@ -28,10 +28,11 @@ import { useCorrelationTracker } from './useCorrelationTracker'
 import { usePatternDetector } from './usePatternDetector'
 
 import type { PerfContextValue } from '../context/PerfContext'
+import type { EventMessage } from '../types'
 
 const MAX_EVENTS = 1000
 
-export function useStreamState() {
+export function useStreamState({ capturePreview = false }: { capturePreview?: boolean } = {}) {
 
     const {
         interceptors,
@@ -60,21 +61,33 @@ export function useStreamState() {
         transformed: string | undefined
     } | undefined>()
 
-    const updatePreview = useCallback((raw: string, transformed: string | undefined) => {
-        setLastEventPreview({ raw, transformed })
-    }, [])
+    // The preview is only for the open editor panel, so it is captured only then, at most ~3x per second, and the
+    // (potentially large) JSON strings are produced from the latest sample at that moment, not for every event.
+    const capturePreviewRef = useRef(capturePreview)
+    capturePreviewRef.current = capturePreview
+    const previewSample = useRef<{ raw: EventMessage; transformed: EventMessage | null } | null>(null)
+    const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+    useEffect(() => () => { if (previewTimer.current) clearTimeout(previewTimer.current) }, [])
 
-    const applyInterceptorsWithPreview = useCallback(async (event: any) => {
+    const applyInterceptorsWithPreview = useCallback(async (event: EventMessage) => {
         const result = await applyInterceptors(event)
-        updatePreview(
-            JSON.stringify(event, null, 2),
-            result ? JSON.stringify(result, null, 2) : undefined
-        )
+        if (capturePreviewRef.current) {
+            previewSample.current = { raw: event, transformed: result }
+            if (!previewTimer.current) {
+                previewTimer.current = setTimeout(() => {
+                    previewTimer.current = null
+                    const sample = previewSample.current
+                    if (!sample) return
+                    const show = (e: EventMessage) => { try { return JSON.stringify(e, null, 2) } catch { return String(e) } }
+                    setLastEventPreview({ raw: show(sample.raw), transformed: sample.transformed ? show(sample.transformed) : undefined })
+                }, 300)
+            }
+        }
         return result
-    }, [applyInterceptors, updatePreview])
+    }, [applyInterceptors])
 
     // Stable ref so useSharedStream's onmessage always calls the current interceptor
-    const interceptorRef = useRef<((e: any) => Promise<any>) | undefined>(undefined)
+    const interceptorRef = useRef<((e: EventMessage) => Promise<EventMessage | null>) | undefined>(undefined)
     useEffect(() => {
         interceptorRef.current = hasActiveInterceptors ? applyInterceptorsWithPreview : undefined
     }, [applyInterceptorsWithPreview, hasActiveInterceptors])

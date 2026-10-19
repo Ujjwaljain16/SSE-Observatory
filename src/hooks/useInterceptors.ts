@@ -113,14 +113,13 @@ export const useInterceptors = (): UseInterceptorsReturn => {
 
         const { event: result, errors } = await applyInterceptorChain(enabled, event)
 
-        // Reflect any runtime errors back into interceptor state for the UI
+        // Reflect runtime errors in the UI only when something actually changed, so a failing interceptor does not
+        // re-render the whole app for every single event.
         if (Object.keys(errors).length > 0) {
-            setInterceptors(prev => prev.map(i => {
-                if (errors[i.id]) {
-                    return { ...i, lastError: errors[i.id] }
-                }
-                return i
-            }))
+            setInterceptors(prev => {
+                if (!prev.some(i => errors[i.id] !== undefined && i.lastError !== errors[i.id])) return prev
+                return prev.map(i => (errors[i.id] !== undefined && i.lastError !== errors[i.id] ? { ...i, lastError: errors[i.id] } : i))
+            })
         }
 
         return result

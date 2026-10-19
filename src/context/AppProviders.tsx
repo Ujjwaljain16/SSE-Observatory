@@ -24,7 +24,7 @@ export function AppProviders({ children }: Props) {
     const [showSchema, setShowSchema] = useState(false)
     const [showInterceptors, setShowInterceptors] = useState(false)
 
-    const { streamValue, perfValue } = useStreamState()
+    const { streamValue, perfValue } = useStreamState({ capturePreview: showInterceptors })
 
     // The connection form lives in UIContext too. Depend on the individual fields: streamValue itself changes with
     // every event batch and would re-render every UI consumer each time.
