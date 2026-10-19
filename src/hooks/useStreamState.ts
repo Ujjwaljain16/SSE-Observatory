@@ -232,23 +232,15 @@ export function useStreamState() {
     } = usePatternDetector(allEvents)
 
 
-    // The filter worker processes *all* events, so filteredEvents contains the full filtered history.
-    // If the stream is paused, we must freeze the visible list to only show events up to the pause point.
-    // We do this by finding the cutoff index in filteredEvents using arrivalTime.
+    // The filter engine sees every buffered event; while the playhead is in the past (or paused), only
+    // events at or before the playhead are visible. Membership is by id, so ties in arrivalTime and
+    // eviction from the ring buffer cannot leak newer events into the paused view.
     const visibleFilteredEvents = useMemo(() => {
-        if (!isPaused && currentEventIndex === 0) return filteredEvents
-        if (allEvents.length === 0 || filteredEvents.length === 0) return filteredEvents
-
-        const targetEvent = allEvents[currentEventIndex]
-        if (!targetEvent) return filteredEvents
-
-        // Events are newest-first. Find the first filtered event that is older or equal to targetEvent.
-        const cutoffIndex = filteredEvents.findIndex(e => (e.arrivalTime ?? 0) <= (targetEvent.arrivalTime ?? 0))
-        if (cutoffIndex === -1) return [] // all filtered events are newer than the pause point
-        return filteredEvents.slice(cutoffIndex)
-    }, [filteredEvents, isPaused, currentEventIndex, allEvents])
-
-
+        if (currentEventIndex === 0) return filteredEvents
+        const visible = new Set<string>()
+        for (const e of playbackEvents) visible.add(e.id)
+        return filteredEvents.filter((e) => visible.has(e.id))
+    }, [filteredEvents, currentEventIndex, playbackEvents])
 
     // perfValue updates on every filter run — isolated from streamValue so
     // StreamContext consumers are NOT re-rendered by filter metric changes

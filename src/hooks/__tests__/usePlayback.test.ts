@@ -197,4 +197,37 @@ describe('usePlayback', () => {
         act(() => { result.current.stepForward() }) // index 1 (ID 8)
         expect(result.current.displayedEvents[0].id).toBe('8')
     })
+
+    it('a paused view does not drift while a FULL ring buffer keeps sliding', () => {
+        const CAP = 6
+        const ev = (n: number): EventMessage => ({ id: 'n' + n, timestamp: 't', type: 'message', data: '', raw: '' })
+        let buf = [5, 4, 3, 2, 1, 0].map(ev) // full: length stays CAP from here on
+        const { result, rerender } = renderHook(({ evs }) => usePlayback(evs), { initialProps: { evs: buf } })
+
+        act(() => { result.current.seekTo(3) }) // anchor on n2
+        expect(result.current.displayedEvents[0].id).toBe('n2')
+
+        for (let n = 6; n <= 7; n++) { // 2 new events; n0 and n1 fall off, length unchanged
+            buf = [ev(n), ...buf].slice(0, CAP)
+            rerender({ evs: buf })
+            expect(buf).toHaveLength(CAP)
+            expect(result.current.displayedEvents[0].id).toBe('n2') // still the same event
+        }
+        expect(result.current.currentEventIndex).toBe(CAP - 1) // n2 is now the oldest retained event
+
+        buf = [ev(8), ...buf].slice(0, CAP) // n2 itself is evicted → clamp to oldest retained
+        rerender({ evs: buf })
+        expect(result.current.currentEventIndex).toBe(CAP - 1)
+        expect(result.current.displayedEvents[0].id).toBe('n3')
+    })
+
+    it('pausing an empty stream hides everything that arrives, until Go Live', () => {
+        const ev = (n: number): EventMessage => ({ id: 'n' + n, timestamp: 't', type: 'message', data: '', raw: '' })
+        const { result, rerender } = renderHook(({ evs }) => usePlayback(evs), { initialProps: { evs: [] as EventMessage[] } })
+        act(() => { result.current.togglePause() })
+        rerender({ evs: [ev(1), ev(0)] })
+        expect(result.current.displayedEvents).toHaveLength(0)
+        act(() => { result.current.goLive() })
+        expect(result.current.displayedEvents).toHaveLength(2)
+    })
 })
