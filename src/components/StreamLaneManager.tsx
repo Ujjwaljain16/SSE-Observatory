@@ -6,7 +6,7 @@ import { Plus, Trash2, Play, Square, Wifi, WifiOff, Circle } from 'lucide-react'
 interface StreamLaneManagerProps {
     theme: Theme
     streams: StreamInstance[]
-    onAddStream: (name: string, url: string) => string
+    onAddStream: (name: string, url: string, token?: string) => string
     onRemoveStream: (id: string) => void
     onConnectStream: (id: string) => void
     onDisconnectStream: (id: string) => void
@@ -25,13 +25,15 @@ export const StreamLaneManager = ({
     const isDark = theme === 'dark'
     const [newName, setNewName] = useState('')
     const [newUrl, setNewUrl] = useState('')
+    const [newToken, setNewToken] = useState('')
 
     const handleAdd = () => {
         if (!newUrl.trim()) return
         const name = newName.trim() || `Stream ${streams.length + 1}`
-        onAddStream(name, newUrl.trim())
+        onAddStream(name, newUrl.trim(), newToken.trim() || undefined)
         setNewName('')
         setNewUrl('')
+        setNewToken('')
     }
 
     return (
@@ -59,12 +61,13 @@ export const StreamLaneManager = ({
             </div>
 
 
-            <div className={`flex gap-2 mb-5 p-3 rounded-xl border ${isDark ? 'border-slate-700 bg-slate-800/40' : 'border-slate-200 bg-slate-50'}`}>
+            <div className={`flex flex-wrap gap-2 mb-5 p-3 rounded-xl border ${isDark ? 'border-slate-700 bg-slate-800/40' : 'border-slate-200 bg-slate-50'}`}>
                 <input
                     type="text"
                     value={newName}
                     onChange={e => setNewName(e.target.value)}
                     placeholder="Stream name (e.g. auth-service)"
+                    aria-label="Stream name"
                     className={`flex-[1] px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 ${isDark
                         ? 'bg-slate-700 border-slate-600 text-white placeholder-slate-500'
                         : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400'
@@ -76,7 +79,21 @@ export const StreamLaneManager = ({
                     onChange={e => setNewUrl(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && handleAdd()}
                     placeholder="https://api.example.com/stream"
+                    aria-label="Stream URL"
                     className={`flex-[2] px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 ${isDark
+                        ? 'bg-slate-700 border-slate-600 text-white placeholder-slate-500'
+                        : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400'
+                        }`}
+                />
+                <input
+                    type="password"
+                    autoComplete="off"
+                    value={newToken}
+                    onChange={e => setNewToken(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleAdd()}
+                    placeholder="Bearer token (optional)"
+                    aria-label="Bearer token (optional)"
+                    className={`flex-[1] px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 ${isDark
                         ? 'bg-slate-700 border-slate-600 text-white placeholder-slate-500'
                         : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400'
                         }`}
@@ -143,7 +160,7 @@ export const StreamLaneManager = ({
                                     <button
                                         onClick={() => onDisconnectStream(stream.id)}
                                         className="p-1.5 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-all"
-                                        title="Disconnect"
+                                        aria-label="Disconnect" title="Disconnect"
                                     >
                                         <span key="disc-icon"><Square className="w-3.5 h-3.5" /></span>
                                     </button>
@@ -152,7 +169,7 @@ export const StreamLaneManager = ({
                                         onClick={() => onConnectStream(stream.id)}
                                         disabled={stream.isLoading}
                                         className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 disabled:opacity-50 transition-all"
-                                        title="Connect"
+                                        aria-label="Connect" title="Connect"
                                     >
                                         <span key="conn-icon">
                                             {stream.isLoading
@@ -165,14 +182,14 @@ export const StreamLaneManager = ({
                                 <button
                                     onClick={() => onClearStreamEvents(stream.id)}
                                     className={`p-1.5 rounded-lg transition-all ${isDark ? 'text-slate-400 hover:bg-slate-700' : 'text-slate-500 hover:bg-slate-200'}`}
-                                    title="Clear events"
+                                    aria-label="Clear events" title="Clear events"
                                 >
                                     <Trash2 className="w-3.5 h-3.5" />
                                 </button>
                                 <button
                                     onClick={() => onRemoveStream(stream.id)}
                                     className="p-1.5 rounded-lg text-red-400/60 hover:text-red-400 hover:bg-red-500/10 transition-all"
-                                    title="Remove stream"
+                                    aria-label="Remove stream" title="Remove stream"
                                 >
                                     <Trash2 className="w-3.5 h-3.5" />
                                 </button>
