@@ -147,30 +147,18 @@ export function useStreamState() {
     const { searchQuery, setSearchQuery } = useEventSearch(playbackEvents)
 
 
+    // The filter engine mirrors the live buffer by event identity (works after the ring buffer is full)
     const {
         filteredEvents,
         filterExecMs,
         isWorkerReady: isFilterWorkerReady,
-        addEventToWorker,
         clearWorker,
-    } = useFilterWorker(playbackEvents, {
+    } = useFilterWorker(allEvents, {
         query,
         queryError: queryError ?? null,
         searchQuery,
         customFilters,
-    })
-
-    // Forward new events to filter worker incrementally (handles batch catchup)
-    const prevLengthRef = useRef(0)
-    useEffect(() => {
-        const current = allEvents.length
-        const newCount = current - prevLengthRef.current
-        prevLengthRef.current = current
-        if (newCount <= 0 || allEvents.length === 0) return
-        for (let i = newCount - 1; i >= 0; i--) {
-            addEventToWorker(allEvents[i])
-        }
-    }, [allEvents, addEventToWorker])
+    }, MAX_EVENTS)
 
     const clearEvents = useCallback(() => {
         clearEventsBase()
