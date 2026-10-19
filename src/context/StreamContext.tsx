@@ -64,7 +64,7 @@ interface StreamContextValue {
     idbAvailable: boolean
     totalStoredCount: number
     /** Every stored event, newest first. */
-    loadHistory: () => Promise<EventMessage[]>
+    loadHistory: (limit?: number) => Promise<EventMessage[]>
     /** Replaces the viewer contents with the stored history; resolves to the number of events loaded. */
     showHistory: () => Promise<number>
     clearStorage: () => Promise<void>

@@ -67,6 +67,18 @@ describe('useFilterWorker (inline engine)', () => {
         expect(ids(result)).toEqual(['e20', 'e19'])
     })
 
+    it('a replacement that OVERLAPS the old buffer (history load) is mirrored exactly, when the epoch changes', () => {
+        const live = [5, 4, 3, 2, 1].map(mk) // newest first
+        // history contains events that are also in the live buffer, in different positions, plus older ones
+        const history = [mk(5), mk(3), mk(0), mk(-1), mk(-2), mk(-3)]
+        const { result, rerender } = renderHook(({ events, epoch }) => useFilterWorker(events, base, 100, epoch), { initialProps: { events: live, epoch: 0 } })
+        flush()
+        expect(ids(result)).toEqual(['e5', 'e4', 'e3', 'e2', 'e1'])
+        rerender({ events: history, epoch: 1 })
+        flush()
+        expect(ids(result)).toEqual(history.map((e) => e.id)) // not a mix of old and new
+    })
+
     it('ignores an invalid query (the error is shown elsewhere) instead of hiding everything', () => {
         const buf = [2, 1].map(mk)
         const { result } = renderHook(() => useFilterWorker(buf, { ...base, query: 'level ==', queryError: 'Unexpected end' }, 100))

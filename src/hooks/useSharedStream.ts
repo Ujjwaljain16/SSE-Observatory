@@ -31,6 +31,8 @@ export interface StreamStatus {
 export interface UseStreamReturn {
     connected: boolean
     events: EventMessage[]
+    /** Changes whenever the buffer is cleared or replaced; incremental consumers must resync when it does. */
+    epoch: number
     /** Human-readable problem or note (reconnecting, failed, ended); '' when all is well. */
     error: string
     /** True only while the first connection attempt is in flight. */
@@ -185,6 +187,7 @@ export function useSharedStream(
     return {
         connected: phase === 'open',
         events: ingest.events,
+        epoch: ingest.epoch,
         error: phase === 'reconnecting' || phase === 'failed' || phase === 'ended' ? message : '',
         isLoading: phase === 'connecting',
         reconnecting: phase === 'reconnecting',

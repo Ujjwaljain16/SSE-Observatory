@@ -80,11 +80,17 @@ describe('streamProxy', () => {
         expect(r.body).not.toContain('xxxx')
     })
 
-    it('reports upstream HTTP errors instead of masquerading them as streams', async () => {
-        upstreamHandler = (_req, res) => { res.writeHead(404, sseHead); res.end('nope') }
-        const r = await get(portOf(proxy), target())
-        expect(r.status).toBe(502)
-        expect(r.body).toContain('404')
+    it('passes target client errors (401/403/404) through and maps target failures to 502', async () => {
+        for (const status of [401, 403, 404]) {
+            upstreamHandler = (_req, res) => { res.writeHead(status, sseHead); res.end('nope') }
+            const r = await get(portOf(proxy), target())
+            expect(r.status).toBe(status)
+            expect(r.body).toContain(String(status))
+        }
+        upstreamHandler = (_req, res) => { res.writeHead(503, sseHead); res.end('busy') }
+        expect((await get(portOf(proxy), target())).status).toBe(502)
+        upstreamHandler = (_req, res) => { res.writeHead(302, { Location: 'http://127.0.0.1:1/' }); res.end() }
+        expect((await get(portOf(proxy), target())).status).toBe(502) // redirects are never followed
     })
 
     it('never injects keep-alive comments into the middle of an event', async () => {

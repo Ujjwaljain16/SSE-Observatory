@@ -58,12 +58,13 @@ export function extractCorrelation(event: EventMessage): { id: string; field: st
     return null
 }
 
-export function useCorrelationTracker(events: EventMessage[]) {
+export function useCorrelationTracker(events: EventMessage[], epoch = 0) {
     const tracesRef = useRef<Map<string, TraceEntry>>(new Map())
     const [traces, setTraces] = useState<Map<string, TraceEntry>>(new Map())
     const [activeTraceId, setActiveTraceId] = useState<string | null>(null)
     const eventTraceMapRef = useRef<Map<string, string>>(new Map()) // eventId → traceId
     const lastIdRef = useRef<string | null>(null)
+    const epochRef = useRef(epoch)
 
     const reset = useCallback(() => {
         tracesRef.current.clear()
@@ -79,7 +80,9 @@ export function useCorrelationTracker(events: EventMessage[]) {
         }
         const last = lastIdRef.current
         let replaced = false
-        if (last !== null && !events.some((e) => e.id === last)) { replaced = true; reset() }
+        const epochChanged = epochRef.current !== epoch
+        epochRef.current = epoch
+        if (epochChanged || (last !== null && !events.some((e) => e.id === last))) { replaced = true; reset() }
 
         const fresh = newEventsSince(events, replaced ? null : last)
         lastIdRef.current = events[0].id
@@ -122,7 +125,7 @@ export function useCorrelationTracker(events: EventMessage[]) {
             changed = true
         }
         if (changed) setTraces(new Map(tracesRef.current))
-    }, [events, reset])
+    }, [events, epoch, reset])
 
     const getEventChain = useCallback((traceId: string): EventMessage[] => tracesRef.current.get(traceId)?.events ?? [], [])
 

@@ -78,6 +78,17 @@ describe('useCorrelationTracker', () => {
         expect(result.current.traceCount).toBe(0)
     })
 
+    it('an overlapping replacement with a new epoch rebuilds the traces from scratch', () => {
+        const shared = ev({ traceId: 'S' }, 1)
+        const only = ev({ traceId: 'OLD' }, 0)
+        const first = [shared, only]
+        const { result, rerender } = renderHook(({ e, epoch }) => useCorrelationTracker(e, epoch), { initialProps: { e: first, epoch: 0 } })
+        expect([...result.current.traces.keys()].sort()).toEqual(['OLD', 'S'])
+        const second = [ev({ traceId: 'NEW' }, 5), shared]
+        rerender({ e: second, epoch: 1 })
+        expect([...result.current.traces.keys()].sort()).toEqual(['NEW', 'S'])
+    })
+
     it('reports the most common correlation field', () => {
         const buf = [ev({ requestId: 'r1' }), ev({ requestId: 'r2' }), ev({ traceId: 't1' })]
         const { result } = renderHook(() => useCorrelationTracker(buf))

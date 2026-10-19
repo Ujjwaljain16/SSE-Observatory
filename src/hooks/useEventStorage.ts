@@ -10,8 +10,8 @@ interface UseEventStorageReturn {
     idbAvailable: boolean
     totalStoredCount: number
     saveEvent: (event: EventMessage) => void
-    /** Every stored event, newest first (capped at MAX_STORED_EVENTS). Resolves to [] when storage is unavailable. */
-    loadHistory: () => Promise<EventMessage[]>
+    /** Stored events, newest first: all of them (up to MAX_STORED_EVENTS) or only the newest `limit`. Resolves to [] when storage is unavailable. */
+    loadHistory: (limit?: number) => Promise<EventMessage[]>
     clearStorage: () => Promise<void>
 }
 
@@ -92,12 +92,12 @@ export const useEventStorage = (): UseEventStorageReturn => {
         if (writeQueueRef.current.length >= FLUSH_BATCH_SIZE) void flush()
     }, [idbAvailable, flush])
 
-    const loadHistory = useCallback(async (): Promise<EventMessage[]> => {
+    const loadHistory = useCallback(async (limit: number = MAX_STORED_EVENTS): Promise<EventMessage[]> => {
         const db = dbRef.current
         if (!db || !idbAvailable) return []
         try {
             await flush() // include what is still queued
-            return await readAllNewestFirst(db, MAX_STORED_EVENTS)
+            return await readAllNewestFirst(db, Math.min(limit, MAX_STORED_EVENTS))
         } catch (e) {
             console.warn('[useEventStorage] loadHistory failed:', e)
             return []

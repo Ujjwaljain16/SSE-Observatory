@@ -47,7 +47,8 @@ interface UseFilterWorkerResult {
 export function useFilterWorker(
     events: EventMessage[],
     params: FilterParams,
-    maxEvents: number = DEFAULT_MAX_EVENTS
+    maxEvents: number = DEFAULT_MAX_EVENTS,
+    epoch = 0
 ): UseFilterWorkerResult {
     const [filteredEvents, setFilteredEvents] = useState<EventMessage[]>([])
     const [filterExecMs, setFilterExecMs] = useState(0)
@@ -57,6 +58,7 @@ export function useFilterWorker(
     const workerRef = useRef<Worker | null>(null)
     const engineRef = useRef<FilterEngine | null>(null)
     const lastIdRef = useRef<string | null>(null)
+    const epochRef = useRef(epoch)
     const sentRef = useRef<{ query: string; search: string; filters: CustomFilter[] | null }>({ query: '\0', search: '\0', filters: null })
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const paramsRef = useRef(params)
@@ -162,9 +164,12 @@ export function useFilterWorker(
             return
         }
 
-        const last = lastIdRef.current
-        // The buffer was replaced (reconnect, history load) or a whole buffer arrived at once: start from scratch.
-        if (last !== null && !events.some((e) => e.id === last)) sink.clear()
+        // The buffer was cleared/replaced (reconnect, history load), or a whole buffer arrived at once: start from scratch.
+        // (The epoch catches replacements that overlap the old contents, which identity tracking alone cannot see.)
+        const replaced = epochRef.current !== epoch
+        epochRef.current = epoch
+        const last = replaced ? null : lastIdRef.current
+        if (replaced || (last !== null && !events.some((e) => e.id === last))) sink.clear()
 
         const fresh = newEventsSince(events, last)
         if (fresh.length === 0) return

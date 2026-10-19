@@ -32,6 +32,9 @@ export function useEventIngest({ maxEvents, applyInterceptors, onEventPersist }:
     const [droppedCount, setDroppedCount] = useState(0)
     // Total events accepted since the last clear. Unlike events.length it keeps growing once the ring buffer is full.
     const [receivedCount, setReceivedCount] = useState(0)
+    // Bumped whenever the buffer is cleared or replaced wholesale. Consumers that mirror the buffer incrementally
+    // (by event identity) must start over when it changes: a replacement can overlap the old contents.
+    const [epoch, setEpoch] = useState(0)
 
     const queue = useRef<IncomingSSE[]>([])
     const scheduled = useRef<{ raf?: number; timer?: ReturnType<typeof setTimeout> } | null>(null)
@@ -135,6 +138,7 @@ export function useEventIngest({ maxEvents, applyInterceptors, onEventPersist }:
         droppedRef.current = 0
         setDroppedCount(0)
         setReceivedCount(0)
+        setEpoch((e) => e + 1)
         setEvents([])
     }, [])
 
@@ -143,10 +147,11 @@ export function useEventIngest({ maxEvents, applyInterceptors, onEventPersist }:
         generation.current++
         queue.current = []
         cancelScheduled()
+        setEpoch((e) => e + 1)
         setEvents(next.slice(0, maxRef.current))
     }, [])
 
     useEffect(() => () => { generation.current++; cancelScheduled() }, [])
 
-    return { events, push, clear, replace, droppedCount, receivedCount }
+    return { events, epoch, push, clear, replace, droppedCount, receivedCount }
 }

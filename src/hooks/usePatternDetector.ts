@@ -26,11 +26,12 @@ const DEFAULT_RULES: PatternRule[] = [
 
 let ruleCounter = 0
 
-export function usePatternDetector(events: EventMessage[]) {
+export function usePatternDetector(events: EventMessage[], epoch = 0) {
     const [rules, setRules] = useState<PatternRule[]>(DEFAULT_RULES)
     const [alerts, setAlerts] = useState<PatternAlert[]>([])
     const engine = useRef(new PatternEngine())
     const lastIdRef = useRef<string | null>(null)
+    const epochRef = useRef(epoch)
 
     useEffect(() => {
         if (events.length === 0) {
@@ -39,13 +40,18 @@ export function usePatternDetector(events: EventMessage[]) {
             return
         }
         // Buffer replaced (reconnect, history load): previous rule state no longer describes it.
-        if (lastIdRef.current !== null && !events.some((e) => e.id === lastIdRef.current)) engine.current.reset()
+        const epochChanged = epochRef.current !== epoch
+        epochRef.current = epoch
+        if (epochChanged || (lastIdRef.current !== null && !events.some((e) => e.id === lastIdRef.current))) {
+            engine.current.reset()
+            if (epochChanged) lastIdRef.current = null
+        }
 
         const fresh = newEventsSince(events, lastIdRef.current)
         lastIdRef.current = events[0].id
         const raised = engine.current.process(fresh, rules, () => newEventsSince(events, null))
         if (raised.length > 0) setAlerts((prev) => [...raised.reverse(), ...prev].slice(0, MAX_ALERTS))
-    }, [events, rules])
+    }, [events, epoch, rules])
 
     const addRule = useCallback((rule: Omit<PatternRule, 'id'>) => {
         const id = `rule-${Date.now()}-${ruleCounter++}`

@@ -98,6 +98,7 @@ export function useStreamState({ capturePreview = false }: { capturePreview?: bo
     const {
         connected,
         events: allEvents,
+        epoch: bufferEpoch,
         error: connectionError,
         isLoading,
         reconnecting,
@@ -168,11 +169,11 @@ export function useStreamState({ capturePreview = false }: { capturePreview?: bo
         queryError: queryError ?? null,
         searchQuery,
         customFilters,
-    }, MAX_EVENTS)
+    }, MAX_EVENTS, bufferEpoch)
 
     // Load everything stored in IndexedDB (newest first) into the viewer. Works offline.
     const showHistory = useCallback(async (): Promise<number> => {
-        const stored = await loadHistory()
+        const stored = await loadHistory(MAX_EVENTS) // only what fits in the viewer: reading all 100k events takes seconds
         if (stored.length > 0) replaceEvents(stored)
         return stored.length
     }, [loadHistory, replaceEvents])
@@ -235,7 +236,7 @@ export function useStreamState({ capturePreview = false }: { capturePreview?: bo
     const {
         traces, activeTraceId, setActiveTraceId,
         getEventChain, getTraceForEvent, correlationField, traceCount, clearTraces,
-    } = useCorrelationTracker(allEvents)
+    } = useCorrelationTracker(allEvents, bufferEpoch)
 
 
     const {
@@ -247,7 +248,7 @@ export function useStreamState({ capturePreview = false }: { capturePreview?: bo
         toggleRule: togglePatternRule,
         dismissAlert: dismissPatternAlert,
         clearAlerts: clearPatternAlerts,
-    } = usePatternDetector(allEvents)
+    } = usePatternDetector(allEvents, bufferEpoch)
 
 
     // The filter engine sees every buffered event; while the playhead is in the past (or paused), only
