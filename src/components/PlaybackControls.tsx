@@ -43,7 +43,7 @@ export const PlaybackControls = ({
                     ? 'hover:bg-slate-800 text-slate-400 disabled:opacity-30'
                     : 'hover:bg-slate-100 text-slate-600 disabled:opacity-30'
                     }`}
-                title="Previous Event"
+                aria-label="Previous Event" title="Previous Event"
             >
                 <SkipBack className="w-5 h-5" />
             </button>
@@ -58,7 +58,7 @@ export const PlaybackControls = ({
                         : 'bg-slate-200 hover:bg-slate-300 text-slate-700 shadow-inner'
                     }
                 `}
-                title={isPaused ? "Resume Stream" : "Pause Stream"}
+                aria-label={isPaused ? "Resume Stream" : "Pause Stream"} title={isPaused ? "Resume Stream" : "Pause Stream"}
             >
                 {isPaused ? <Play className="w-6 h-6 fill-current" /> : <Pause className="w-6 h-6 fill-current" />}
             </button>
@@ -71,7 +71,7 @@ export const PlaybackControls = ({
                     ? 'hover:bg-slate-800 text-slate-400 disabled:opacity-30'
                     : 'hover:bg-slate-100 text-slate-600 disabled:opacity-30'
                     }`}
-                title="Next Event"
+                aria-label="Next Event" title="Next Event"
             >
                 <SkipForward className="w-5 h-5" />
             </button>

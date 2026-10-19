@@ -90,14 +90,14 @@ export const StoragePanel = ({
                         onClick={() => run('load', async () => setLastLoaded(await onLoadHistory()))}
                         disabled={busy !== null || totalStoredCount === 0}
                         className={btn('indigo')}
-                        title="Show the stored events in the viewer (newest first). Works offline."
+                        aria-label="Show the stored events in the viewer (newest first). Works offline." title="Show the stored events in the viewer (newest first). Works offline."
                     >
                         <History className="w-3 h-3" />
                         {busy === 'load' ? 'Loading…' : lastLoaded !== null ? `Loaded ${lastLoaded.toLocaleString()} — reload` : 'Load history'}
                     </button>
 
                     <button onClick={() => run('export', onExportAll)} disabled={busy !== null || totalStoredCount === 0} className={btn('neutral')}
-                        title="Download everything stored as a replayable .sse-record file">
+                        aria-label="Download everything stored as a replayable .sse-record file" title="Download everything stored as a replayable .sse-record file">
                         <Download className="w-3 h-3" />
                         {busy === 'export' ? 'Exporting…' : 'Export all'}
                     </button>
