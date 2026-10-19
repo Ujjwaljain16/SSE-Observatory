@@ -50,9 +50,8 @@ export function useStreamState() {
         idbAvailable,
         totalStoredCount,
         saveEvent,
-        loadBefore,
         clearStorage,
-        replayFromStorage,
+        loadHistory,
     } = useEventStorage()
 
     // Live preview for the InterceptorEditor panel
@@ -93,6 +92,7 @@ export function useStreamState() {
         connect: connectBase,
         disconnect,
         clearEvents: clearEventsBase,
+        replaceEvents,
     } = useSharedStream(
         MAX_EVENTS,
         hasActiveInterceptors ? (e => interceptorRef.current?.(e) ?? Promise.resolve(e)) : undefined,
@@ -161,6 +161,13 @@ export function useStreamState() {
         searchQuery,
         customFilters,
     }, MAX_EVENTS)
+
+    // Load everything stored in IndexedDB (newest first) into the viewer. Works offline.
+    const showHistory = useCallback(async (): Promise<number> => {
+        const stored = await loadHistory()
+        if (stored.length > 0) replaceEvents(stored)
+        return stored.length
+    }, [loadHistory, replaceEvents])
 
     const clearEvents = useCallback(() => {
         clearEventsBase()
@@ -272,7 +279,7 @@ export function useStreamState() {
         interceptors, addInterceptor, removeInterceptor, renameInterceptor, updateInterceptorCode,
         toggleInterceptor, reorderInterceptors, hasActiveInterceptors, lastEventPreview,
         // Storage
-        idbAvailable, totalStoredCount, loadBefore, clearStorage, replayFromStorage,
+        idbAvailable, totalStoredCount, loadHistory, showHistory, clearStorage,
         // Multi-stream
         streams, mergedEvents, addStream, removeStream, connectStream, disconnectStream, clearStreamEvents,
         // Profiles
@@ -298,7 +305,7 @@ export function useStreamState() {
         getUniqueValuesForField, toggleRegexMode, setRegexPattern,
         interceptors, addInterceptor, removeInterceptor, renameInterceptor, updateInterceptorCode,
         toggleInterceptor, reorderInterceptors, hasActiveInterceptors, lastEventPreview,
-        idbAvailable, totalStoredCount, loadBefore, clearStorage, replayFromStorage,
+        idbAvailable, totalStoredCount, loadHistory, showHistory, clearStorage,
         streams, mergedEvents, addStream, removeStream, connectStream, disconnectStream, clearStreamEvents,
         profiles, activeProfileTab, setActiveProfileTab, saveProfile, loadProfile, deleteProfile,
         url, bearerToken, profileName,

@@ -59,7 +59,7 @@ export function AppLayout() {
         getUniqueValuesForField, toggleRegexMode, setRegexPattern,
         interceptors, addInterceptor, removeInterceptor, renameInterceptor, updateInterceptorCode,
         toggleInterceptor, reorderInterceptors, lastEventPreview,
-        idbAvailable, totalStoredCount, loadBefore, clearStorage, replayFromStorage,
+        idbAvailable, totalStoredCount, loadHistory, showHistory, clearStorage,
         streams, mergedEvents, addStream, removeStream, connectStream, disconnectStream, clearStreamEvents,
         profiles, activeProfileTab, setActiveProfileTab, saveProfile, loadProfile, deleteProfile,
         mockFileName, isMockUploading, isMockRunning, mockSpeed, isMockLooping, mockTotalEvents, mockUploadError, mockStreamUrl,
@@ -345,15 +345,11 @@ export function AppLayout() {
                                         totalStoredCount={totalStoredCount}
                                         ramBufferCount={allEvents.length}
                                         maxRamBuffer={MAX_EVENTS}
-                                        onLoadMore={async () => loadBefore(allEvents.length > 0 ? allEvents[allEvents.length - 1].arrivalTime ?? null : null)}
+                                        onLoadHistory={showHistory}
                                         onClearStorage={clearStorage}
                                         onExportAll={async () => {
-                                            const evs = await replayFromStorage()
+                                            const evs = await loadHistory() // newest first, as createRecording expects
                                             if (evs.length > 0) exportEvents(evs, { format: 'record' })
-                                        }}
-                                        onReplayFromStorage={async () => {
-                                            const evs = await replayFromStorage()
-                                            console.log('[AppLayout] Replay from storage:', evs.length, 'events')
                                         }}
                                     />
                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 mt-4">

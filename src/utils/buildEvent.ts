@@ -15,6 +15,9 @@ export interface IncomingSSE {
     seq?: number
 }
 
+let localSeq = 0
+export const nextSeq = () => ++localSeq
+
 const timeFormat = new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 
 /** crypto.randomUUID exists only in secure contexts; fall back so plain-HTTP self-hosting keeps working. */
@@ -35,6 +38,7 @@ export function buildEvent(p: IncomingSSE, extra: Partial<EventMessage> = {}): E
         id: uuid(),
         timestamp: timeFormat.format(new Date(p.arrivalTime)),
         arrivalTime: p.arrivalTime,
+        seq: nextSeq(),
         type: p.event || 'message',
         data: p.data,
         raw: p.raw,
@@ -52,6 +56,7 @@ export function buildEvent(p: IncomingSSE, extra: Partial<EventMessage> = {}): E
 
 /** Adds the lowercase search index; call after interceptors have had their say. */
 export function finalizeEvent(event: EventMessage): EventMessage {
+    event.seq ??= nextSeq() // an interceptor may have returned a fresh object
     event._searchIndex = (typeof event.data === 'string' ? event.data : JSON.stringify(event.data)).toLowerCase()
     return event
 }

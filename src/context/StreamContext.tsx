@@ -60,9 +60,11 @@ interface StreamContextValue {
 
     idbAvailable: boolean
     totalStoredCount: number
-    loadBefore: (cursor?: number | null) => Promise<EventMessage[]>
+    /** Every stored event, newest first. */
+    loadHistory: () => Promise<EventMessage[]>
+    /** Replaces the viewer contents with the stored history; resolves to the number of events loaded. */
+    showHistory: () => Promise<number>
     clearStorage: () => Promise<void>
-    replayFromStorage: () => Promise<EventMessage[]>
 
     streams: StreamInstance[]
     mergedEvents: EventMessage[]

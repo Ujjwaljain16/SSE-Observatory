@@ -12,6 +12,7 @@ vi.mock('../../utils/idbUtils', () => ({
     deleteOldest: vi.fn(),
     clearStore: vi.fn(),
     getAllAfter: vi.fn(),
+    readAllNewestFirst: vi.fn(),
 }))
 
 describe('useEventStorage - Quota Failure & Initialization', () => {
