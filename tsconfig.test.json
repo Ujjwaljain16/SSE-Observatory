@@ -1,0 +1,6 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "types": ["vitest/globals", "node"], "noUnusedLocals": false, "noUnusedParameters": false, "allowJs": true, "checkJs": false },
+  "include": ["src", "lib", "e2e", "playwright.config.ts", "vitest.config.ts"],
+  "exclude": []
+}
