@@ -1,7 +1,9 @@
 {
   "version": 2,
   "functions": {
-    "api/sse/index.js": { "maxDuration": 60 }
+    "api/sse/index.js": {
+      "maxDuration": 60
+    }
   },
   "rewrites": [
     {
@@ -12,5 +14,6 @@
       "source": "/((?!api/|docs/|assets/|favicon.ico).*)",
       "destination": "/index.html"
     }
-  ]
+  ],
+  "installCommand": "npm ci --include=dev"
 }

@@ -59,7 +59,7 @@ describe('Vite Proxy & Architecture Simulation', () => {
     it('receives chunks incrementally (streaming works natively)', async () => {
         return new Promise<void>((resolve, reject) => {
             let chunksReceived = 0
-            let start = Date.now()
+            const start = Date.now()
             let firstChunkTime = 0
 
             const req = http.request(mockServerUrl, (res) => {

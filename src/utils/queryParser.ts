@@ -120,7 +120,9 @@ export class QueryParser {
             const targetValue = node.right
 
             switch (node.operator) {
+                // eslint-disable-next-line eqeqeq -- loose equality is the DSL's documented string/number semantics
                 case '==': return fieldValue == targetValue
+                // eslint-disable-next-line eqeqeq
                 case '!=': return fieldValue != targetValue
                 case '>': return Number(fieldValue) > Number(targetValue)
                 case '<': return Number(fieldValue) < Number(targetValue)

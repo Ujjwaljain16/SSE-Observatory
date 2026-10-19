@@ -70,7 +70,7 @@ export const usePlayback = (
     }
 
     const seekTo = useCallback((index: number) => {
-        let newIndex = Math.max(0, Math.min(index, allEvents.length - 1))
+        const newIndex = Math.max(0, Math.min(index, allEvents.length - 1))
         setCurrentEventIndex(newIndex)
         setIsPaused(true) // Seerking implies pausing live updates
         stopReplay()
