@@ -88,6 +88,8 @@ export function useStreamState() {
         events: allEvents,
         error: connectionError,
         isLoading,
+        reconnecting,
+        droppedCount,
         connect: connectBase,
         disconnect,
         clearEvents: clearEventsBase,
@@ -253,7 +255,7 @@ export function useStreamState() {
     // streamValue only changes on user actions / connection events
     const streamValue = useMemo(() => ({
         // Connection
-        connected, isLoading, connectionError, connectionTime,
+        connected, isLoading, reconnecting, droppedCount, connectionError, connectionTime,
         connect, disconnect,
         useProxy, setUseProxy,
         // Events
@@ -287,7 +289,7 @@ export function useStreamState() {
         patternRules, patternAlerts, activePatternAlerts,
         addPatternRule, removePatternRule, togglePatternRule, dismissPatternAlert, clearPatternAlerts,
     }), [
-        connected, isLoading, connectionError, connectionTime, connect, disconnect, useProxy,
+        connected, isLoading, reconnecting, droppedCount, connectionError, connectionTime, connect, disconnect, useProxy,
         allEvents, visibleFilteredEvents, clearEvents, copiedId, copyToClipboard,
         isPaused, currentEventIndex, togglePause, seekTo, stepForward, stepBackward, goLive,
         searchQuery, setSearchQuery, query, setQuery, queryError,

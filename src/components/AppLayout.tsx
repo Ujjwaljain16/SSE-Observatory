@@ -48,7 +48,7 @@ export function AppLayout() {
     } = useUIContext()
 
     const {
-        connected, isLoading, connectionError, connectionTime,
+        connected, isLoading, reconnecting, connectionError, connectionTime,
         connect, disconnect,
         allEvents, filteredEvents, clearEvents, copiedId, copyToClipboard,
         isPaused, currentEventIndex, togglePause, seekTo, stepForward, stepBackward, goLive,
@@ -202,6 +202,7 @@ export function AppLayout() {
                             bearerToken={bearerToken}
                             profileName={profileName}
                             connected={connected}
+                            reconnecting={reconnecting}
                             isLoading={isLoading}
                             error={connectionError}
                             connectionTime={connectionTime}

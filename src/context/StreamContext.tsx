@@ -8,6 +8,10 @@ import type { PatternRule, PatternAlert } from '../hooks/usePatternDetector'
 interface StreamContextValue {
     connected: boolean
     isLoading: boolean
+    /** Stream is down and retrying with backoff. */
+    reconnecting: boolean
+    /** Messages dropped because the page could not keep up with the stream. */
+    droppedCount: number
     connectionError: string
     connectionTime: number
     connect: (url: string, token?: string) => void

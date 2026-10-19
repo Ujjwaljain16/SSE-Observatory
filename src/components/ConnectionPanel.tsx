@@ -11,6 +11,7 @@ interface ConnectionPanelProps {
     bearerToken: string
     profileName: string
     connected: boolean
+    reconnecting?: boolean
     isLoading: boolean
     error: string
     connectionTime: number
@@ -32,6 +33,7 @@ export const ConnectionPanel = ({
     bearerToken,
     profileName,
     connected,
+    reconnecting = false,
     isLoading,
     error,
     connectionTime,
@@ -47,6 +49,8 @@ export const ConnectionPanel = ({
     onProxyToggle
 }: ConnectionPanelProps) => {
     const isDark = theme === 'dark'
+    // The stream is "in use" while connected, connecting, or waiting to retry: the form is locked and the button cancels.
+    const busy = connected || reconnecting || isLoading
 
     return (
         <div className={`
@@ -82,7 +86,7 @@ export const ConnectionPanel = ({
                         onChange={(e) => onUrlChange(e.target.value)}
                         placeholder="https://api.example.com/sse"
                         data-testid="url-input"
-                        disabled={connected || isLoading}
+                        disabled={busy}
                         className={`
                             w-full pl-12 pr-4 py-3 rounded-xl border-2 font-medium text-sm
                             focus:outline-none transition-all duration-300
@@ -90,10 +94,10 @@ export const ConnectionPanel = ({
                                 ? 'bg-slate-800/80 border-slate-600/50 text-white placeholder-slate-500 focus:border-sky-500 focus:bg-slate-800'
                                 : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:bg-white'
                             }
-                            ${(connected || isLoading) ? 'opacity-60 cursor-not-allowed' : ''}
+                            ${busy ? 'opacity-60 cursor-not-allowed' : ''}
                         `}
                         onKeyDown={(e) => {
-                            if (e.key === 'Enter' && !connected && !isLoading) {
+                            if (e.key === 'Enter' && !busy) {
                                 onConnect()
                             }
                         }}
@@ -110,7 +114,7 @@ export const ConnectionPanel = ({
                         onChange={(e) => onTokenChange(e.target.value)}
                         placeholder="Bearer token (optional)"
                         data-testid="token-input"
-                        disabled={connected || isLoading}
+                        disabled={busy}
                         className={`
                             w-full pl-12 pr-4 py-3 rounded-xl border-2 font-medium text-sm
                             focus:outline-none transition-all duration-300
@@ -118,29 +122,29 @@ export const ConnectionPanel = ({
                                 ? 'bg-slate-800/80 border-slate-600/50 text-white placeholder-slate-500 focus:border-sky-500 focus:bg-slate-800'
                                 : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:bg-white'
                             }
-                            ${(connected || isLoading) ? 'opacity-60 cursor-not-allowed' : ''}
+                            ${busy ? 'opacity-60 cursor-not-allowed' : ''}
                         `}
                     />
                 </div>
 
                 <div className="flex gap-2 w-full lg:w-auto">
                     <button
-                        onClick={connected ? onDisconnect : onConnect}
+                        onClick={busy ? onDisconnect : onConnect}
                         data-testid="connect-button"
-                        disabled={isLoading || (!connected && !url.trim())}
+                        disabled={!busy && !url.trim()}
                         className={`
                             flex-1 lg:flex-none lg:w-32 px-4 py-3 rounded-xl font-bold text-sm transition-all duration-300
                             flex items-center justify-center gap-2 hover:scale-[1.02]
-                            ${(isLoading || (!connected && !url.trim()))
+                            ${(!busy && !url.trim())
                                 ? isDark ? 'bg-slate-700 text-slate-400 opacity-50 cursor-not-allowed' : 'bg-slate-200 text-slate-500 opacity-50 cursor-not-allowed'
-                                : connected
+                                : busy
                                     ? 'bg-gradient-to-r from-red-500 to-rose-500 text-white shadow-lg shadow-red-500/30'
                                     : 'bg-gradient-to-r from-sky-600 via-blue-600 to-cyan-600 text-white shadow-lg shadow-blue-500/30'
                             }
                         `}
                     >
                         <span className="flex items-center justify-center gap-2">
-                            {isLoading ? (
+                            {isLoading || reconnecting ? (
                                 <Loader2 className="w-4 h-4 animate-spin" />
                             ) : connected ? (
                                 <Square className="w-4 h-4" />
@@ -148,11 +152,11 @@ export const ConnectionPanel = ({
                                 <Play className="w-4 h-4" />
                             )}
                             <span className="whitespace-nowrap">
-                                {isLoading ? '...' : connected ? 'Stop' : 'Connect'}
+                                {isLoading ? 'Cancel' : busy ? 'Stop' : 'Connect'}
                             </span>
                         </span>
                     </button>
-                    {(!connected && !isLoading) && (
+                    {!busy && (
                         <div className="relative group">
                             <button
                                 onClick={onSaveProfile}
@@ -223,14 +227,14 @@ export const ConnectionPanel = ({
 
                     {!error && (
                         <div className="flex items-center gap-2">
-                            <div className={`w-2.5 h-2.5 rounded-full ${connected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse' : isLoading ? 'bg-amber-400 animate-pulse' : 'bg-slate-400'}`} />
+                            <div className={`w-2.5 h-2.5 rounded-full ${connected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse' : (isLoading || reconnecting) ? 'bg-amber-400 animate-pulse' : 'bg-slate-400'}`} />
                             <span
                                 data-testid="connection-status"
                                 className={`text-sm font-semibold ${connected ? 'text-emerald-600 dark:text-emerald-400' : isDark ? 'text-slate-400' : 'text-slate-500'}`}
                             >
                                 {connected ? (
                                     <span>Connected to <span className="text-slate-700 dark:text-slate-300 font-mono ml-1">{(() => { try { return new URL(url).hostname } catch { return 'Endpoint' } })()}</span></span>
-                                ) : isLoading ? 'Connecting...' : 'Disconnected'}
+                                ) : isLoading ? 'Connecting...' : reconnecting ? 'Reconnecting...' : 'Disconnected'}
                             </span>
                         </div>
                     )}
