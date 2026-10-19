@@ -67,7 +67,15 @@ export function PatternPanel({
 
     const submitDraft = () => {
         if (!draft.name.trim()) return
-        onAddRule(draft)
+        if (addKind === 'sequence') {
+            const pattern = (draft.pattern as string[]).map((p) => p.trim()).filter(Boolean)
+            if (pattern.length === 0) return
+            onAddRule({ ...draft, pattern })
+        } else {
+            const count = Math.max(1, parseInt(String(draft.count), 10) || 5)
+            const windowMs = Math.max(1, parseInt(String(draft.windowMs), 10) || 10_000)
+            onAddRule({ ...draft, count, windowMs, eventType: String(draft.eventType).trim() || '*' })
+        }
         setAddKind(null)
     }
 
@@ -109,7 +117,7 @@ export function PatternPanel({
                                         <span className={`text-sm font-medium ${text}`}>{alert.ruleName}</span>
                                         <span className={`text-xs ${muted}`}>·</span>
                                         <span className={`text-xs font-mono ${muted}`}>
-                                            {alert.events.length} events
+                                            {alert.eventCount} events
                                         </span>
                                     </div>
                                     <div className="flex items-center gap-1">
@@ -141,9 +149,9 @@ export function PatternPanel({
                                                 <span className="truncate opacity-60">{e.id}</span>
                                             </div>
                                         ))}
-                                        {alert.events.length > 8 && (
+                                        {alert.eventCount > 8 && (
                                             <div className={`text-xs ${muted}`}>
-                                                +{alert.events.length - 8} more events
+                                                +{alert.eventCount - 8} more events
                                             </div>
                                         )}
                                     </div>
@@ -214,14 +222,14 @@ export function PatternPanel({
                                     className={inputCls}
                                     placeholder="Count"
                                     value={draft.count}
-                                    onChange={e => setDraft({ ...draft, count: parseInt(e.target.value) || 3 })}
+                                    onChange={e => setDraft({ ...draft, count: e.target.value })}
                                 />
                                 <input
                                     type="number"
                                     className={inputCls}
                                     placeholder="Window (ms)"
                                     value={draft.windowMs}
-                                    onChange={e => setDraft({ ...draft, windowMs: parseInt(e.target.value) || 10000 })}
+                                    onChange={e => setDraft({ ...draft, windowMs: e.target.value })}
                                 />
                             </div>
                         )}
@@ -236,7 +244,7 @@ export function PatternPanel({
                             </button>
                             <button
                                 onClick={submitDraft}
-                                disabled={!draft.name.trim()}
+                                disabled={!draft.name.trim() || (addKind === 'sequence' && !(draft.pattern as string[]).some((p) => p.trim()))}
                                 className="px-3 py-1.5 text-xs rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white transition-colors"
                             >
                                 Add Rule
