@@ -46,6 +46,8 @@ export interface UseStreamReturn {
     maxEvents: number
     /** Messages dropped because the page could not keep up. */
     droppedCount: number
+    /** Events accepted since the last clear (keeps counting after the ring buffer is full). */
+    receivedCount: number
 }
 export type UseEventStreamReturn = UseStreamReturn
 
@@ -193,5 +195,6 @@ export function useSharedStream(
         replaceEvents: ingest.replace,
         maxEvents,
         droppedCount: ingest.droppedCount,
+        receivedCount: ingest.receivedCount,
     }
 }

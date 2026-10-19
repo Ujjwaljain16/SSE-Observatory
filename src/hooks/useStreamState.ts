@@ -89,6 +89,7 @@ export function useStreamState() {
         isLoading,
         reconnecting,
         droppedCount,
+        receivedCount,
         connect: connectBase,
         disconnect,
         clearEvents: clearEventsBase,
@@ -106,15 +107,9 @@ export function useStreamState() {
     const isSharedWorkerActive = typeof SharedWorker !== 'undefined'
 
 
-    const [connectionTime, setConnectionTime] = useState(0)
-    useEffect(() => {
-        let interval: number
-        if (connected) {
-            setConnectionTime(0)
-            interval = window.setInterval(() => setConnectionTime(prev => prev + 1), 1000)
-        }
-        return () => clearInterval(interval)
-    }, [connected])
+    // Only the moment the connection opened is kept here; the ticking clock lives in the component that shows it.
+    const [connectedAt, setConnectedAt] = useState<number | null>(null)
+    useEffect(() => { setConnectedAt(connected ? Date.now() : null) }, [connected])
 
 
     const {
@@ -191,9 +186,10 @@ export function useStreamState() {
     const [url, setUrl] = useState('')
     const [bearerToken, setBearerToken] = useState('')
 
-    const saveProfile = useCallback(() => {
+    // The token is only stored when the user ticks "remember token"; credentials stay out of localStorage by default.
+    const saveProfile = useCallback((rememberToken = false) => {
         if (!profileName.trim() || !url.trim()) return
-        saveProfileHook(profileName, url, bearerToken)
+        saveProfileHook(profileName.trim(), url.trim(), rememberToken ? bearerToken : '')
         setProfileName('')
     }, [profileName, url, bearerToken, saveProfileHook])
 
@@ -262,7 +258,7 @@ export function useStreamState() {
     // streamValue only changes on user actions / connection events
     const streamValue = useMemo(() => ({
         // Connection
-        connected, isLoading, reconnecting, droppedCount, connectionError, connectionTime,
+        connected, isLoading, reconnecting, droppedCount, receivedCount, connectionError, connectedAt,
         connect, disconnect,
         useProxy, setUseProxy,
         // Events
@@ -296,7 +292,7 @@ export function useStreamState() {
         patternRules, patternAlerts, activePatternAlerts,
         addPatternRule, removePatternRule, togglePatternRule, dismissPatternAlert, clearPatternAlerts,
     }), [
-        connected, isLoading, reconnecting, droppedCount, connectionError, connectionTime, connect, disconnect, useProxy,
+        connected, isLoading, reconnecting, droppedCount, receivedCount, connectionError, connectedAt, connect, disconnect, useProxy,
         allEvents, visibleFilteredEvents, clearEvents, copiedId, copyToClipboard,
         isPaused, currentEventIndex, togglePause, seekTo, stepForward, stepBackward, goLive,
         searchQuery, setSearchQuery, query, setQuery, queryError,

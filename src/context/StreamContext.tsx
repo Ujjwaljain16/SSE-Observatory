@@ -12,8 +12,11 @@ interface StreamContextValue {
     reconnecting: boolean
     /** Messages dropped because the page could not keep up with the stream. */
     droppedCount: number
+    /** Events accepted since the last clear; keeps counting after the ring buffer is full. */
+    receivedCount: number
     connectionError: string
-    connectionTime: number
+    /** Epoch ms when the current connection opened; null when not connected. */
+    connectedAt: number | null
     connect: (url: string, token?: string) => void
     disconnect: () => void
     useProxy: boolean
@@ -77,7 +80,7 @@ interface StreamContextValue {
     profiles: Profile[]
     activeProfileTab: string | null
     setActiveProfileTab: (name: string | null) => void
-    saveProfile: () => void
+    saveProfile: (rememberToken?: boolean) => void
     loadProfile: (profile: Profile) => void
     deleteProfile: (name: string) => void
 

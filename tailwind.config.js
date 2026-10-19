@@ -1,4 +1,6 @@
 export default {
+  // The app owns the theme (see useTheme): a "dark" class on <html> drives every dark: variant.
+  darkMode: 'class',
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",

@@ -39,7 +39,8 @@ export const CustomFilters = ({
     toggleRegexMode,
     setRegexPattern
 }: CustomFiltersProps) => {
-    if (!connected) return null
+    // Keep the panel visible whenever filters exist or there are events to filter: active filters must never be hidden.
+    if (!connected && customFilters.length === 0 && eventsLength === 0) return null
 
     const isDark = theme === 'dark'
 

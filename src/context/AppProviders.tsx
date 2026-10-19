@@ -26,21 +26,19 @@ export function AppProviders({ children }: Props) {
 
     const { streamValue, perfValue } = useStreamState()
 
-    // expose stream connection fields through ui context for backward compatibility
+    // The connection form lives in UIContext too. Depend on the individual fields: streamValue itself changes with
+    // every event batch and would re-render every UI consumer each time.
+    const { url, setUrl, bearerToken, setBearerToken, profileName, setProfileName, useProxy, setUseProxy } = streamValue
     const uiValue = useMemo(() => ({
         appMode, setAppMode,
         showStats, setShowStats,
         showSchema, setShowSchema,
         showInterceptors, setShowInterceptors,
-        url: (streamValue as any).url as string ?? '',
-        setUrl: (streamValue as any).setUrl as (v: string) => void,
-        bearerToken: (streamValue as any).bearerToken as string ?? '',
-        setBearerToken: (streamValue as any).setBearerToken as (v: string) => void,
-        profileName: (streamValue as any).profileName as string ?? '',
-        setProfileName: (streamValue as any).setProfileName as (v: string) => void,
-        useProxy: (streamValue as any).useProxy as boolean,
-        setUseProxy: (streamValue as any).setUseProxy as (v: boolean) => void,
-    }), [appMode, showStats, showSchema, showInterceptors, streamValue])
+        url, setUrl,
+        bearerToken, setBearerToken,
+        profileName, setProfileName,
+        useProxy, setUseProxy,
+    }), [appMode, showStats, showSchema, showInterceptors, url, setUrl, bearerToken, setBearerToken, profileName, setProfileName, useProxy, setUseProxy])
 
     return (
         <ThemeContext.Provider value={themeValue}>

@@ -26,6 +26,8 @@ export interface IngestOptions {
 export function useEventIngest({ maxEvents, applyInterceptors, onEventPersist }: IngestOptions) {
     const [events, setEvents] = useState<EventMessage[]>([])
     const [droppedCount, setDroppedCount] = useState(0)
+    // Total events accepted since the last clear. Unlike events.length it keeps growing once the ring buffer is full.
+    const [receivedCount, setReceivedCount] = useState(0)
 
     const queue = useRef<IncomingSSE[]>([])
     const scheduled = useRef<{ raf?: number; timer?: ReturnType<typeof setTimeout> } | null>(null)
@@ -61,6 +63,7 @@ export function useEventIngest({ maxEvents, applyInterceptors, onEventPersist }:
                 }
                 if (gen !== generation.current) return // cleared or reconnected while we were awaiting
                 if (accepted.length > 0) {
+                    setReceivedCount((c) => c + accepted.length)
                     setEvents((prev) => {
                         const max = maxRef.current
                         const merged = new Array<EventMessage>(Math.min(max, accepted.length + prev.length))
@@ -117,6 +120,7 @@ export function useEventIngest({ maxEvents, applyInterceptors, onEventPersist }:
         cancelScheduled()
         droppedRef.current = 0
         setDroppedCount(0)
+        setReceivedCount(0)
         setEvents([])
     }, [])
 
@@ -130,5 +134,5 @@ export function useEventIngest({ maxEvents, applyInterceptors, onEventPersist }:
 
     useEffect(() => () => { generation.current++; cancelScheduled() }, [])
 
-    return { events, push, clear, replace, droppedCount }
+    return { events, push, clear, replace, droppedCount, receivedCount }
 }

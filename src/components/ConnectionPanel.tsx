@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import type { Theme } from '../types'
 import { formatTime } from '../utils/eventUtils'
 import {
@@ -14,12 +15,13 @@ interface ConnectionPanelProps {
     reconnecting?: boolean
     isLoading: boolean
     error: string
-    connectionTime: number
+    /** Epoch ms when the current connection opened (null while not connected). */
+    connectedAt: number | null
     eventsLength: number
     onUrlChange: (url: string) => void
     onTokenChange: (token: string) => void
     onProfileNameChange: (name: string) => void
-    onSaveProfile: () => void
+    onSaveProfile: (rememberToken: boolean) => void
     onConnect: () => void
     onDisconnect: () => void
     onClearEvents: () => void
@@ -36,7 +38,7 @@ export const ConnectionPanel = ({
     reconnecting = false,
     isLoading,
     error,
-    connectionTime,
+    connectedAt,
     eventsLength,
     onUrlChange,
     onTokenChange,
@@ -51,6 +53,18 @@ export const ConnectionPanel = ({
     const isDark = theme === 'dark'
     // The stream is "in use" while connected, connecting, or waiting to retry: the form is locked and the button cancels.
     const busy = connected || reconnecting || isLoading
+    const [saveOpen, setSaveOpen] = useState(false)
+    const [rememberToken, setRememberToken] = useState(false)
+
+    // Elapsed time ticks locally so the rest of the app does not re-render every second.
+    const [now, setNow] = useState(() => Date.now())
+    useEffect(() => {
+        if (connectedAt === null) return
+        setNow(Date.now())
+        const t = setInterval(() => setNow(Date.now()), 1000)
+        return () => clearInterval(t)
+    }, [connectedAt])
+    const connectionTime = connectedAt === null ? 0 : Math.max(0, Math.floor((now - connectedAt) / 1000))
 
     return (
         <div className={`
@@ -157,10 +171,13 @@ export const ConnectionPanel = ({
                         </span>
                     </button>
                     {!busy && (
-                        <div className="relative group">
+                        <div className="relative">
                             <button
-                                onClick={onSaveProfile}
+                                onClick={() => setSaveOpen((o) => !o)}
                                 disabled={!url.trim()}
+                                aria-label="Save profile"
+                                aria-expanded={saveOpen}
+                                aria-haspopup="dialog"
                                 className={`
                                     w-12 h-12 flex items-center justify-center rounded-xl transition-all duration-300
                                     ${!url.trim()
@@ -172,18 +189,43 @@ export const ConnectionPanel = ({
                             >
                                 <Save className="w-5 h-5" />
                             </button>
-                            <div className="absolute right-0 top-14 hidden group-hover:flex items-center gap-2 p-2 rounded-lg border shadow-xl bg-white dark:bg-slate-800 dark:border-slate-700 z-10 w-64">
-                                <input
-                                    type="text"
-                                    value={profileName}
-                                    onChange={(e) => onProfileNameChange(e.target.value)}
-                                    placeholder="Profile Name"
-                                    className="flex-1 px-3 py-1.5 text-sm rounded bg-slate-100 dark:bg-slate-900 text-slate-900 dark:text-white border-0 focus:ring-2 focus:ring-sky-500"
-                                />
-                                <button onClick={onSaveProfile} className="p-1.5 text-sky-600 dark:text-sky-400 hover:bg-sky-50 hover:dark:bg-sky-900/30 rounded">
-                                    <Check className="w-4 h-4" />
-                                </button>
-                            </div>
+                            {saveOpen && (
+                                <form
+                                    role="dialog"
+                                    aria-label="Save profile"
+                                    onSubmit={(e) => {
+                                        e.preventDefault()
+                                        if (!profileName.trim()) return
+                                        onSaveProfile(rememberToken)
+                                        setSaveOpen(false)
+                                    }}
+                                    onKeyDown={(e) => { if (e.key === 'Escape') setSaveOpen(false) }}
+                                    className="absolute right-0 top-14 flex flex-col gap-2 p-3 rounded-lg border shadow-xl bg-white dark:bg-slate-800 dark:border-slate-700 z-10 w-72"
+                                >
+                                    <input
+                                        autoFocus
+                                        type="text"
+                                        value={profileName}
+                                        onChange={(e) => onProfileNameChange(e.target.value)}
+                                        placeholder="Profile name"
+                                        aria-label="Profile name"
+                                        className="px-3 py-1.5 text-sm rounded bg-slate-100 dark:bg-slate-900 text-slate-900 dark:text-white border-0 focus:ring-2 focus:ring-sky-500"
+                                    />
+                                    {bearerToken && (
+                                        <label className="flex items-start gap-2 text-xs text-slate-600 dark:text-slate-400">
+                                            <input type="checkbox" checked={rememberToken} onChange={(e) => setRememberToken(e.target.checked)} className="mt-0.5" />
+                                            <span>Also store the token in this browser (plain text in localStorage). Leave off to keep it out of storage.</span>
+                                        </label>
+                                    )}
+                                    <button
+                                        type="submit"
+                                        disabled={!profileName.trim()}
+                                        className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-50"
+                                    >
+                                        <Check className="w-4 h-4" /> Save
+                                    </button>
+                                </form>
+                            )}
                         </div>
                     )}
                 </div>

@@ -25,7 +25,7 @@ import { InterceptorEditor } from './InterceptorEditor'
 import { StoragePanel } from './StoragePanel'
 import { TracePanel } from './TracePanel'
 import { PatternPanel } from './PatternPanel'
-import { PerfOverlay, useEventsPerSec } from './PerfOverlay'
+import { PerfOverlay } from './PerfOverlay'
 import { exportEvents, getEventStats } from '../utils/exportUtils'
 
 import {
@@ -48,7 +48,7 @@ export function AppLayout() {
     } = useUIContext()
 
     const {
-        connected, isLoading, reconnecting, connectionError, connectionTime,
+        connected, isLoading, reconnecting, receivedCount, connectionError, connectedAt,
         connect, disconnect,
         allEvents, filteredEvents, clearEvents, copiedId, copyToClipboard,
         isPaused, currentEventIndex, togglePause, seekTo, stepForward, stepBackward, goLive,
@@ -75,7 +75,6 @@ export function AppLayout() {
 
     const [showPatterns, setShowPatterns] = useState(false)
     const [timelineDrawMs, setTimelineDrawMs] = useState(0)
-    const eventsPerSec = useEventsPerSec(allEvents.length)
 
     // global intercept for idb quota exhaustion to degraded gracefully
     const [quotaError, setQuotaError] = useState(false)
@@ -205,7 +204,7 @@ export function AppLayout() {
                             reconnecting={reconnecting}
                             isLoading={isLoading}
                             error={connectionError}
-                            connectionTime={connectionTime}
+                            connectedAt={connectedAt}
                             eventsLength={allEvents.length}
                             onUrlChange={setUrl}
                             onTokenChange={setBearerToken}
@@ -499,7 +498,7 @@ export function AppLayout() {
             <PerfOverlay
                 filterExecMs={filterExecMs}
                 timelineDrawMs={timelineDrawMs}
-                eventsPerSec={eventsPerSec}
+                totalReceived={receivedCount}
                 isFilterWorkerReady={isFilterWorkerReady}
                 isSharedWorkerActive={isSharedWorkerActive}
                 totalEvents={allEvents.length}
