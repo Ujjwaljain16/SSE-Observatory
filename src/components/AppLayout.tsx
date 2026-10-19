@@ -438,7 +438,6 @@ export function AppLayout() {
                             onToggleFilterValue={toggleFilterValue}
                             onClearFilterValues={clearFilterValues}
                             getUniqueValuesForField={getUniqueValuesForField}
-                            onError={msg => console.log(msg)}
                             toggleRegexMode={toggleRegexMode}
                             setRegexPattern={setRegexPattern}
                         />

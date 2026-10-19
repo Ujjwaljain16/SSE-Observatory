@@ -1,3 +1,4 @@
+import { memo, useState } from 'react'
 import type { Theme, CustomFilter } from '../types'
 import {
     SlidersHorizontal, Plus, Target, Tag,
@@ -17,12 +18,11 @@ interface CustomFiltersProps {
     onToggleFilterValue: (field: string, value: string) => void
     onClearFilterValues: (field: string) => void
     getUniqueValuesForField: (field: string) => string[]
-    onError: (error: string) => void
     toggleRegexMode?: (field: string) => void
     setRegexPattern?: (field: string, pattern: string) => void
 }
 
-export const CustomFilters = ({
+export const CustomFilters = memo(function CustomFilters({
     theme,
     connected,
     customFilters,
@@ -35,21 +35,17 @@ export const CustomFilters = ({
     onToggleFilterValue,
     onClearFilterValues,
     getUniqueValuesForField,
-    onError,
     toggleRegexMode,
     setRegexPattern
-}: CustomFiltersProps) => {
+}: CustomFiltersProps) {
+    const [addError, setAddError] = useState('')
     // Keep the panel visible whenever filters exist or there are events to filter: active filters must never be hidden.
     if (!connected && customFilters.length === 0 && eventsLength === 0) return null
 
     const isDark = theme === 'dark'
 
     const handleAddFilter = () => {
-        const error = onAddCustomFilter()
-        if (error) {
-            onError(error)
-            setTimeout(() => onError(''), 2000)
-        }
+        setAddError(onAddCustomFilter() ?? '')
     }
 
     return (
@@ -114,7 +110,7 @@ export const CustomFilters = ({
                     <input
                         type="text"
                         value={newFilterField}
-                        onChange={(e) => onNewFilterFieldChange(e.target.value)}
+                        onChange={(e) => { setAddError(''); onNewFilterFieldChange(e.target.value) }}
                         placeholder="Field path (e.g. type, data.userId, data.status)"
                         onKeyDown={(e) => e.key === 'Enter' && handleAddFilter()}
                         className={`
@@ -143,6 +139,8 @@ export const CustomFilters = ({
                 </button>
             </div>
 
+
+            {addError && <p role="alert" className="text-xs text-red-400 -mt-3 mb-4">{addError}</p>}
 
             {customFilters.length === 0 ? (
                 <div className={`
@@ -310,4 +308,4 @@ export const CustomFilters = ({
             )}
         </div>
     )
-}
+})
