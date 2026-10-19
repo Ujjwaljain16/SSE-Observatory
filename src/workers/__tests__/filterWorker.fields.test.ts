@@ -17,7 +17,7 @@ describe('filterWorker custom field filters', () => {
         id: `e${i}`, type: i % 3 === 0 ? 'error' : 'message', timestamp: 't', raw: '',
         data: JSON.stringify({ level: i % 2 ? 'error' : 'info', user: { id: i } }),
     })
-    const lastIds = () => (post.mock.calls.at(-1)![0].events as { id: string }[]).map(e => e.id).sort()
+    const lastIds = () => (post.mock.calls[post.mock.calls.length - 1][0].events as { id: string }[]).map(e => e.id).sort()
 
     it('filters on data.* values (payload is a JSON string)', () => {
         onMsg({ data: { type: 'ADD_EVENTS', events: [1, 2, 3, 4].map(mk) } })
