@@ -1,205 +1,159 @@
-// manages SSE connections across tabs using a SharedWorker
-// ensures only one connection exists per stream and multiplexes events to all ports
+// Owns the SSE connections for every open tab: ONE connection per (url + token), multiplexed to all tabs.
 //
-// message protocol (tab -> worker port):
-//   { type: 'connect', url, token? }
-//   { type: 'disconnect' }
-//   { type: 'ping' }
+// tab → worker:  { type: 'connect', url, token?, useProxy? } | { type: 'disconnect' } | { type: 'ping' }
+// worker → tab:  { type: 'status', phase, attempt?, delayMs?, reason?, status? }
+//                { type: 'event', payload }           payload: IncomingSSE (with a monotonic seq)
+//                { type: 'catchup', events }          last events of a connection a tab joined late
 //
-// message protocol (worker -> tab):
-//   { type: 'connected' }
-//   { type: 'event', payload }
-//   { type: 'error', message }
-//   { type: 'catchup', events }
-//   { type: 'disconnected' }
+// Connection lifecycle (reconnect, backoff, Last-Event-ID resume) lives in SSEClient; this file only
+// does the multi-tab bookkeeping.
 
 /// <reference lib="webworker" />
 
-import { obtainSSEProxyTicket } from '../utils/sseProxyUrl'
+import { SSEClient, type SSEClientOptions, type SSEPhase, type SSEPhaseInfo } from '../utils/sseClient'
+import { buildSSERequest } from '../utils/sseProxyUrl'
+import type { IncomingSSE } from '../utils/buildEvent'
 
-const MAX_BUFFER = 50          // buffer events so late joiners can replay recent activity
-const HEARTBEAT_MS = 30_000    // keeps worker alive while tabs remain open
-const ZOMBIE_TIMEOUT_MS = 60_000  // drop connection if all tabs crash without disconnecting
+const MAX_BUFFER = 50                // recent events kept so a late-joining tab can catch up
+const SWEEP_MS = 15_000              // how often silent tabs are looked for
+const PORT_TIMEOUT_MS = 75_000       // a tab that stayed silent this long (ping interval is 30 s) is considered gone
+const IDLE_GRACE_MS = 5_000          // keep a connection this long after its last tab left (quick reloads)
+
+interface StatusMessage { type: 'status'; key: string; phase: SSEPhase; attempt?: number; delayMs?: number; reason?: string; status?: number }
 
 interface Connection {
-    eventSource: EventSource | null
-    ports: MessagePort[]
-    buffer: any[]      // last MAX_BUFFER events
-    lastPing: number   // epoch ms
-    zombieTimer: number | null  // window.setTimeout handle
+    key: string
+    client: SSEClient
+    ports: Set<MessagePort>
+    buffer: IncomingSSE[]
+    status: StatusMessage
+    idleTimer: ReturnType<typeof setTimeout> | null
 }
 
-// connectionKey → Connection
+interface PortState { key: string | null; lastSeen: number }
+
 const connections = new Map<string, Connection>()
+const portState = new Map<MessagePort, PortState>()
+let seq = 0
 
-// test-only utility to reset connection state between tests
+let clientFactory = (opts: SSEClientOptions): SSEClient => new SSEClient(opts)
+
+// test-only hooks
+export function _setClientFactoryForTesting(f: typeof clientFactory) { clientFactory = f }
 export function _clearConnectionsForTesting() {
-    for (const conn of connections.values()) {
-        if (conn.zombieTimer) clearTimeout(conn.zombieTimer)
-        conn.eventSource?.close()
-    }
+    for (const c of connections.values()) { if (c.idleTimer) clearTimeout(c.idleTimer); c.client.stop() }
     connections.clear()
+    portState.clear()
+    seq = 0
 }
+export function _sweepForTesting(now: number) { sweep(now) }
 
+const makeKey = (url: string, token?: string) => `${url}::${token ?? ''}`
 
-function makeKey(url: string, token?: string): string {
-    return `${url}::${token ?? ''}`
+function send(port: MessagePort, msg: unknown) {
+    try { port.postMessage(msg) } catch { /* port is gone; the sweeper removes it */ }
 }
-
 function broadcast(conn: Connection, msg: unknown) {
-    for (const port of conn.ports) {
-        try { port.postMessage(msg) } catch { /* port may have closed */ }
-    }
+    for (const port of conn.ports) send(port, msg)
 }
 
-function removePort(key: string, port: MessagePort) {
-    const conn = connections.get(key)
-    if (!conn) return
-    conn.ports = conn.ports.filter(p => p !== port)
-    if (conn.ports.length === 0) {
-        // start zombie timer to close connection if no tabs reconnect
-        conn.zombieTimer = setTimeout(() => {
-            conn.eventSource?.close()
-            conn.eventSource = null
-            connections.delete(key)
-            console.log(`[SharedSSEWorker] Zombie cleanup: ${key}`)
-        }, ZOMBIE_TIMEOUT_MS) as unknown as number
+function openConnection(key: string, url: string, token: string | undefined, useProxy: boolean): Connection {
+    const conn: Connection = {
+        key,
+        ports: new Set(),
+        buffer: [],
+        status: { type: 'status', key, phase: 'connecting', attempt: 0 },
+        idleTimer: null,
+        client: undefined as unknown as SSEClient,
     }
-}
-
-function resetZombieTimer(conn: Connection) {
-    if (conn.zombieTimer) {
-        clearTimeout(conn.zombieTimer)
-        conn.zombieTimer = null
-    }
-}
-
-async function openConnection(key: string, url: string, token?: string, useProxy = true): Promise<Connection> {
-    let conn = connections.get(key)
-
-    if (conn) {
-        resetZombieTimer(conn)
-        if (conn.eventSource && conn.eventSource.readyState !== EventSource.CLOSED) {
-            return conn
-        }
-        // clear buffer on dead connections to avoid pushing stale events on reconnect
-        conn.buffer = []
-        if (conn.eventSource) conn.eventSource.close()
-    } else {
-        conn = {
-            eventSource: null,
-            ports: [],
-            buffer: [],
-            lastPing: Date.now(),
-            zombieTimer: null,
-        }
-        connections.set(key, conn)
-    }
-
-    try {
-        const finalUrl = useProxy ? await obtainSSEProxyTicket(url, token) : url
-        const es = new EventSource(finalUrl)
-        conn.eventSource = es
-
-        es.onopen = () => broadcast(conn, { type: 'connected' })
-
-        es.onmessage = (evt) => {
-            const payload = { raw: evt.data, arrivalTime: Date.now() }
+    conn.client = clientFactory({
+        request: () => buildSSERequest(url, token, useProxy),
+        onMessage: (m) => {
+            const payload: IncomingSSE = { event: m.event, data: m.data, id: m.id, raw: m.raw, arrivalTime: Date.now(), seq: ++seq }
             conn.buffer.push(payload)
             if (conn.buffer.length > MAX_BUFFER) conn.buffer.shift()
-            broadcast(conn, { type: 'event', payload })
-        }
-
-        // Catch custom 'error' events sent by our proxy (not just network errors)
-        es.addEventListener('error', (evt: any) => {
-            if (evt.data) {
-                broadcast(conn, { type: 'error', message: evt.data })
-            } else if (es.readyState === EventSource.CLOSED) {
-                broadcast(conn, { type: 'error', message: 'Stream closed' })
-            }
-        })
-
-        es.addEventListener('end', () => {
-            broadcast(conn, { type: 'disconnected' })
-            es.close()
-            conn.eventSource = null
-        })
-    } catch (err: any) {
-        broadcast(conn, { type: 'error', message: 'Failed to negotiate secure SSE proxy ticket' })
-        connections.delete(key)
-        throw err
-    }
-
+            broadcast(conn, { type: 'event', key, payload })
+        },
+        onPhase: (phase: SSEPhase, info: SSEPhaseInfo) => {
+            conn.status = { type: 'status', key, phase, ...info }
+            broadcast(conn, conn.status)
+        },
+    })
+    connections.set(key, conn)
+    conn.client.start()
     return conn
 }
 
-// garbage collect stale connections where tabs vanished without proper disconnect
-setInterval(() => {
-    const now = Date.now()
-    for (const [key, conn] of connections) {
-        // skip zombie connections waiting for a potential reconnect
-        if (conn.ports.length === 0) continue
-        if (now - conn.lastPing > ZOMBIE_TIMEOUT_MS) {
-            console.log(`[SharedSSEWorker] Stale connection closed: ${key}`)
-            conn.eventSource?.close()
-            connections.delete(key)
+function leave(port: MessagePort) {
+    const st = portState.get(port)
+    if (!st?.key) return
+    const conn = connections.get(st.key)
+    st.key = null
+    if (!conn) return
+    conn.ports.delete(port)
+    if (conn.ports.size === 0 && !conn.idleTimer) {
+        conn.idleTimer = setTimeout(() => {
+            if (conn.ports.size === 0) {
+                conn.client.stop()
+                connections.delete(conn.key)
+            }
+        }, IDLE_GRACE_MS)
+    }
+}
+
+function join(port: MessagePort, url: string, token: string | undefined, useProxy: boolean) {
+    const key = makeKey(url, token)
+    const st = portState.get(port)!
+    if (st.key && st.key !== key) leave(port)  // switching streams must not leave the old subscription behind
+    st.key = key
+
+    let conn = connections.get(key)
+    if (!conn) conn = openConnection(key, url, token, useProxy)
+    if (conn.idleTimer) { clearTimeout(conn.idleTimer); conn.idleTimer = null }
+    conn.ports.add(port)
+
+    // Explicit (re)connect after the stream ended or failed → start it again.
+    if (!conn.client.isRunning) {
+        conn.buffer = []
+        conn.status = { type: 'status', key, phase: 'connecting', attempt: 0 }
+        conn.client.start()
+    }
+
+    send(port, conn.status)
+    if (conn.buffer.length > 0) send(port, { type: 'catchup', key, events: conn.buffer })
+}
+
+function sweep(now: number) {
+    for (const [port, st] of portState) {
+        if (now - st.lastSeen > PORT_TIMEOUT_MS) {
+            leave(port)
+            portState.delete(port)
         }
     }
-}, HEARTBEAT_MS)
+}
 
+setInterval(() => sweep(Date.now()), SWEEP_MS)
 
-    // accept new tab connections and route messages
-    ; (self as unknown as SharedWorkerGlobalScope).onconnect = (connectEvent: MessageEvent) => {
-        const port: MessagePort = connectEvent.ports[0]
-        port.start()
+;(self as unknown as SharedWorkerGlobalScope).onconnect = (connectEvent: MessageEvent) => {
+    const port: MessagePort = connectEvent.ports[0]
+    portState.set(port, { key: null, lastSeen: Date.now() })
+    port.start()
 
-        let myKey: string | null = null
+    port.onmessage = (e: MessageEvent) => {
+        const msg = e.data
+        const st = portState.get(port)
+        if (!msg || typeof msg.type !== 'string' || !st) return
+        st.lastSeen = Date.now()
 
-        port.onmessage = (e: MessageEvent) => {
-            const msg = e.data
-
-            if (msg.type === 'connect') {
-                myKey = makeKey(msg.url, msg.token)
-
-                openConnection(myKey, msg.url, msg.token, msg.useProxy)
-                    .then(conn => {
-                        if (!conn.ports.includes(port)) {
-                            conn.ports.push(port)
-                        }
-                        resetZombieTimer(conn)
-                        conn.lastPing = Date.now()
-
-                        if (conn.buffer.length > 0) {
-                            port.postMessage({ type: 'catchup', events: conn.buffer })
-                        }
-
-                        if (conn.eventSource?.readyState === EventSource.OPEN) {
-                            port.postMessage({ type: 'connected' })
-                        }
-                    })
-                    .catch(err => {
-                        port.postMessage({ type: 'error', message: err.message })
-                    })
+        switch (msg.type) {
+            case 'connect':
+                if (typeof msg.url === 'string' && msg.url) join(port, msg.url, msg.token || undefined, msg.useProxy !== false)
                 return
-            }
-
-            if (msg.type === 'ping') {
-                if (myKey) {
-                    const conn = connections.get(myKey)
-                    if (conn) conn.lastPing = Date.now()
-                }
+            case 'disconnect':
+                leave(port)
                 return
-            }
-
-            if (msg.type === 'disconnect') {
-                if (myKey) {
-                    removePort(myKey, port)
-                }
+            case 'ping':
                 return
-            }
         }
-
-        port.addEventListener('close', () => {
-            if (myKey) removePort(myKey!, port)
-        })
     }
+}

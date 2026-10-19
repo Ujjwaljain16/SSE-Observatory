@@ -46,6 +46,11 @@ export const getParsedData = (event: EventMessage): unknown => {
     }
 }
 
+/** Lets the code that already parsed a payload (e.g. to read its type) share the result with the field reader. */
+export const cacheParsedData = (event: EventMessage, value: unknown): void => {
+    parseCache.set(event, value === undefined ? NOT_JSON : value)
+}
+
 const ROOT_FIELDS = new Set(['id', 'type', 'timestamp', 'parsedType', 'streamId', 'streamColor', 'arrivalTime'])
 const hasOwn = (o: object, k: string) => Object.prototype.hasOwnProperty.call(o, k)
 

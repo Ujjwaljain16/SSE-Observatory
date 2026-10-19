@@ -1,7 +1,9 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import type { EventMessage } from '../types'
-import { obtainSSEProxyTicket } from '../utils/sseProxyUrl'
-
+import { SSEClient } from '../utils/sseClient'
+import { buildSSERequest } from '../utils/sseProxyUrl'
+import { buildEvent, finalizeEvent } from '../utils/buildEvent'
+import { describeStatus } from './useSharedStream'
 
 // 6 distinct, accessible colors for stream lanes
 export const STREAM_COLORS = [
@@ -23,7 +25,6 @@ export interface StreamInstance {
     connected: boolean
     isLoading: boolean
     error: string
-    eventSource: EventSource | null
 }
 
 interface UseMultiStreamReturn {
@@ -42,116 +43,99 @@ const MERGED_VIEW_LIMIT = 5000
 
 let streamCounter = 0
 
+/** Newest-first merge of per-stream buffers, ordered by arrival time, capped for rendering. */
+export function mergeStreamEvents(streams: Pick<StreamInstance, 'events'>[], limit = MERGED_VIEW_LIMIT): EventMessage[] {
+    const all: EventMessage[] = []
+    for (const s of streams) for (const e of s.events) all.push(e)
+    all.sort((a, b) => (b.arrivalTime ?? 0) - (a.arrivalTime ?? 0))
+    return all.length > limit ? all.slice(0, limit) : all
+}
+
 export const useMultiStream = (): UseMultiStreamReturn => {
     const [streams, setStreams] = useState<StreamInstance[]>([])
-    const eventSourcesRef = useRef<Map<string, EventSource>>(new Map())
-    const eventCountersRef = useRef<Map<string, number>>(new Map())
+    const streamsRef = useRef(streams)
+    streamsRef.current = streams
 
-    // Merge all stream events into a single chronological array
-    const mergedEvents: EventMessage[] = (() => {
-        const all: EventMessage[] = []
-        for (const stream of streams) {
-            all.push(...stream.events)
-        }
-        // Sort by arrivalTime (epoch ms). This is insertion-time corrected by
-        // the actual arrival, not by SSE sequence. For distributed services,
-        // this is more reliable than insertion order.
-        all.sort((a, b) => (a.arrivalTime ?? 0) - (b.arrivalTime ?? 0))
-        // Cap the merged view to avoid rendering too many DOM nodes
-        return all.slice(-MERGED_VIEW_LIMIT)
-    })()
+    const clientsRef = useRef<Map<string, SSEClient>>(new Map())
+    const pendingRef = useRef<Map<string, EventMessage[]>>(new Map()) // oldest → newest per stream
+    const frameRef = useRef<number | null>(null)
+
+    const mergedEvents = useMemo(() => mergeStreamEvents(streams), [streams])
 
     const updateStream = useCallback((id: string, patch: Partial<StreamInstance>) => {
-        setStreams(prev => prev.map(s => s.id === id ? { ...s, ...patch } : s))
+        setStreams(prev => prev.map(s => (s.id === id ? { ...s, ...patch } : s)))
+    }, [])
+
+    // One state update per animation frame, however many events arrived.
+    const flush = useCallback(() => {
+        frameRef.current = null
+        const pending = pendingRef.current
+        if (pending.size === 0) return
+        const batches = new Map(pending)
+        pending.clear()
+        setStreams(prev => prev.map(s => {
+            const batch = batches.get(s.id)
+            if (!batch || batch.length === 0) return s
+            const merged = [...batch].reverse().concat(s.events)
+            return { ...s, events: merged.length > PER_STREAM_LIMIT ? merged.slice(0, PER_STREAM_LIMIT) : merged }
+        }))
+    }, [])
+
+    const scheduleFlush = useCallback(() => {
+        if (frameRef.current !== null) return
+        frameRef.current = typeof requestAnimationFrame === 'function'
+            ? requestAnimationFrame(flush)
+            : (setTimeout(flush, 16) as unknown as number)
+    }, [flush])
+
+    const stopClient = useCallback((id: string) => {
+        clientsRef.current.get(id)?.stop()
+        clientsRef.current.delete(id)
+        pendingRef.current.delete(id)
     }, [])
 
     const connectStream = useCallback((id: string) => {
-        setStreams(prev => {
-            const stream = prev.find(s => s.id === id)
-            if (!stream || !stream.url || stream.connected) return prev
+        const stream = streamsRef.current.find(s => s.id === id)
+        if (!stream || !stream.url.trim()) return
+        stopClient(id)
 
-            // Close existing connection safely outside, technically this is still inside prev 
-            // but we can schedule the side effect using setTimeout to break out of React's pure render phase
-            setTimeout(async () => {
-                const existing = eventSourcesRef.current.get(id)
-                if (existing) existing.close()
-
-                try {
-                    const sseUrl = await obtainSSEProxyTicket(stream.url, stream.token)
-                    const es = new EventSource(sseUrl)
-                    eventSourcesRef.current.set(id, es)
-                    eventCountersRef.current.set(id, 0)
-
-                    es.onopen = () => {
-                        updateStream(id, { connected: true, isLoading: false, error: '' })
-                    }
-
-                    es.onmessage = (e) => {
-                        const counter = eventCountersRef.current.get(id) ?? 0
-                        eventCountersRef.current.set(id, counter + 1)
-
-                        let parsedType: string | undefined
-                        try {
-                            const parsed = JSON.parse(e.data)
-                            if (parsed && typeof parsed === 'object' && 'type' in parsed) {
-                                parsedType = String(parsed.type)
-                            }
-                        } catch { /* not JSON */ }
-
-                        const newEvent: EventMessage = {
-                            id: `${id}-${counter}`,
-                            timestamp: new Date().toLocaleTimeString('en-US', {
-                                hour: '2-digit', minute: '2-digit', second: '2-digit',
-                            }),
-                            arrivalTime: Date.now(),
-                            type: 'message',
-                            data: e.data,
-                            raw: JSON.stringify(e, null, 2),
-                            streamId: id,
-                            streamColor: stream.color,
-                            ...(parsedType && { parsedType }),
-                        }
-
-                        setStreams(current => current.map(s => {
-                            if (s.id !== id) return s
-                            const updated = [newEvent, ...s.events]
-                            return { ...s, events: updated.slice(0, PER_STREAM_LIMIT) }
-                        }))
-                    }
-
-                    es.onerror = () => {
-                        if (es.readyState === EventSource.CLOSED) {
-                            eventSourcesRef.current.delete(id)
-                            updateStream(id, { connected: false, isLoading: false, error: 'Connection closed' })
-                        } else {
-                            updateStream(id, { isLoading: false, error: 'Connection interrupted, reconnecting...' })
-                        }
-                    }
-                } catch (err) {
-                    updateStream(id, { connected: false, isLoading: false, error: 'Failed to negotiate secure SSE proxy ticket' })
-                }
-            }, 0)
-
-            return prev.map(s => s.id === id ? { ...s, isLoading: true, error: '' } : s)
+        const client = new SSEClient({
+            request: () => buildSSERequest(stream.url, stream.token, true),
+            onMessage: (m) => {
+                const event = finalizeEvent(buildEvent(
+                    { event: m.event, data: m.data, id: m.id, raw: m.raw, arrivalTime: Date.now() },
+                    { streamId: id, streamColor: stream.color }
+                ))
+                const list = pendingRef.current.get(id) ?? []
+                list.push(event)
+                pendingRef.current.set(id, list)
+                scheduleFlush()
+            },
+            onPhase: (phase, info) => {
+                const status = describeStatus(phase, info)
+                updateStream(id, {
+                    connected: status.phase === 'open',
+                    isLoading: status.phase === 'connecting',
+                    error: status.phase === 'reconnecting' || status.phase === 'failed' || status.phase === 'ended' ? status.message : '',
+                })
+            },
         })
-    }, [updateStream])
+        clientsRef.current.set(id, client)
+        updateStream(id, { isLoading: true, error: '' })
+        client.start()
+    }, [scheduleFlush, stopClient, updateStream])
 
     const disconnectStream = useCallback((id: string) => {
-        const es = eventSourcesRef.current.get(id)
-        if (es) {
-            es.close()
-            eventSourcesRef.current.delete(id)
-        }
-        updateStream(id, { connected: false, isLoading: false, eventSource: null })
-    }, [updateStream])
+        stopClient(id)
+        updateStream(id, { connected: false, isLoading: false, error: '' })
+    }, [stopClient, updateStream])
 
     const addStream = useCallback((name: string, url: string, token?: string): string => {
         const id = `stream-${++streamCounter}-${Date.now()}`
         const color = STREAM_COLORS[streamCounter % STREAM_COLORS.length]
         const newStream: StreamInstance = {
             id, name, url, color,
-            events: [], connected: false, isLoading: false,
-            error: '', eventSource: null,
+            events: [], connected: false, isLoading: false, error: '',
             ...(token && { token }),
         }
         setStreams(prev => [...prev, newStream])
@@ -159,19 +143,22 @@ export const useMultiStream = (): UseMultiStreamReturn => {
     }, [])
 
     const removeStream = useCallback((id: string) => {
-        disconnectStream(id)
+        stopClient(id)
         setStreams(prev => prev.filter(s => s.id !== id))
-    }, [disconnectStream])
+    }, [stopClient])
 
     const clearStreamEvents = useCallback((id: string) => {
+        pendingRef.current.delete(id)
         updateStream(id, { events: [] })
-        eventCountersRef.current.set(id, 0)
     }, [updateStream])
 
-    // Cleanup all EventSources on unmount
+    // Close everything on unmount
     useEffect(() => {
+        const clients = clientsRef.current
         return () => {
-            eventSourcesRef.current.forEach(es => es.close())
+            clients.forEach(c => c.stop())
+            clients.clear()
+            if (frameRef.current !== null && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(frameRef.current)
         }
     }, [])
 

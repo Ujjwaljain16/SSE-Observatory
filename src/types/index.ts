@@ -5,6 +5,8 @@ export interface EventMessage {
     data: string
     raw: string
     parsedType?: string | undefined
+    /** Server-sent event id (the SSE `id:` field) in effect when the event arrived. */
+    sseId?: string | undefined
     streamId?: string | undefined
     streamColor?: string | undefined
     arrivalTime?: number | undefined

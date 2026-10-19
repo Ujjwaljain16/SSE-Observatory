@@ -1,207 +1,169 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
-import { _clearConnectionsForTesting } from '../sharedSSEWorker'
+import type { SSEClientOptions } from '../../utils/sseClient'
 
-// Mock the SSE proxy ticket so openConnection resolves without network
-vi.mock('../../utils/sseProxyUrl', () => ({
-    obtainSSEProxyTicket: vi.fn(async (url: string) => url)
-}))
-
-// Deterministic async flush: drain microtasks then advance timers
-const flushWorker = async () => {
-    vi.runAllTicks()          // flush process.nextTick / Promise microtasks
-    await Promise.resolve()   // wait one more tick for async resolution
-    await vi.runAllTimersAsync() // advance any setTimeout/setInterval callbacks
+// The worker does multi-tab bookkeeping only; SSEClient (tested separately) is replaced by a controllable fake.
+class FakeClient {
+    static instances: FakeClient[] = []
+    running = false
+    started = 0
+    stopped = 0
+    constructor(public opts: SSEClientOptions) { FakeClient.instances.push(this) }
+    get isRunning() { return this.running }
+    start() { this.running = true; this.started++ }
+    stop() { this.running = false; this.stopped++ }
+    // helpers the tests use to play the server
+    emit(event: string, data: string, id = '') { this.opts.onMessage({ event, data, id, raw: `data: ${data}` }) }
+    phase(p: Parameters<NonNullable<SSEClientOptions['onPhase']>>[0], info: Parameters<NonNullable<SSEClientOptions['onPhase']>>[1] = { attempt: 0 }) {
+        if (p === 'ended' || p === 'failed') this.running = false
+        this.opts.onPhase?.(p, info)
+    }
 }
 
-describe('sharedSSEWorker.ts - Multi-tab Connection Logic', () => {
+type Mod = typeof import('../sharedSSEWorker')
 
-    let workerOnConnect: ((e: MessageEvent) => void)
+describe('sharedSSEWorker.ts - multi-tab bookkeeping', () => {
+    let mod: Mod
+    let onconnect: (e: MessageEvent) => void
 
     beforeAll(async () => {
-        // Must be a proper function constructor (not arrow fn) for `new EventSource(...)` to work
-        // Each instance needs addEventListener/close etc. for the worker to function
-        ; (global as any).EventSource = vi.fn(function (this: any) {
-            this.onopen = null
-            this.onmessage = null
-            this.onerror = null
-            this.readyState = 1 // OPEN
-            this.close = vi.fn()
-            this.addEventListener = vi.fn()
-            this.removeEventListener = vi.fn()
-            return this
-        })
-            ; (global as any).EventSource.CLOSED = 2
-            ; (global as any).EventSource.OPEN = 1
-
-        await import('../sharedSSEWorker')
-
-        workerOnConnect = (globalThis as any).onconnect ?? (globalThis as any).self?.onconnect
-        if (!workerOnConnect) throw new Error('sharedSSEWorker did not register onconnect on globalThis')
+        mod = await import('../sharedSSEWorker')
+        onconnect = (globalThis as unknown as { onconnect: (e: MessageEvent) => void }).onconnect
+        if (!onconnect) throw new Error('sharedSSEWorker did not register onconnect')
     })
 
     beforeEach(() => {
         vi.useFakeTimers()
-        // Clear accumulated connections from previous tests
-        _clearConnectionsForTesting()
-            // Reinstall constructor mock with fresh method stubs per test
-            ; (global as any).EventSource = vi.fn(function (this: any) {
-                this.onopen = null
-                this.onmessage = null
-                this.onerror = null
-                this.readyState = 1
-                this.close = vi.fn()
-                this.addEventListener = vi.fn()
-                this.removeEventListener = vi.fn()
-                return this
-            })
-            ; (global as any).EventSource.CLOSED = 2
-            ; (global as any).EventSource.OPEN = 1
+        mod._clearConnectionsForTesting()
+        FakeClient.instances = []
+        mod._setClientFactoryForTesting((opts) => new FakeClient(opts) as never)
     })
+    afterEach(() => { vi.useRealTimers() })
 
-    afterEach(() => {
-        vi.clearAllMocks()
-        vi.useRealTimers()
-    })
-
-    const createPort = () => ({
-        start: vi.fn(),
-        postMessage: vi.fn(),
-        onmessage: null as any,
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-    })
-
-    const connectTab = (port: ReturnType<typeof createPort>, url: string, token?: string) => {
-        workerOnConnect({ ports: [port] } as unknown as MessageEvent)
-        port.onmessage?.({ data: { type: 'connect', url, token } } as unknown as MessageEvent)
+    const newPort = () => {
+        const port = { start: vi.fn(), postMessage: vi.fn(), onmessage: null as ((e: MessageEvent) => void) | null }
+        onconnect({ ports: [port] } as unknown as MessageEvent)
+        const send = (data: unknown) => port.onmessage?.({ data } as MessageEvent)
+        const received = () => port.postMessage.mock.calls.map((c) => c[0])
+        return { port, send, received }
     }
+    const connect = (p: ReturnType<typeof newPort>, url = '/events', token?: string) => p.send({ type: 'connect', url, token, useProxy: true })
 
-    // Access the EventSource instance that the worker actually got — handlers are on 'this'
-    const getESInstance = (callIndex = 0) =>
-        vi.mocked(global.EventSource as any).mock.instances[callIndex] as any
-
-    it('should open new EventSource and broadcast connected', async () => {
-        const port = createPort()
-        connectTab(port, '/events')
-
-        await flushWorker()
-
-        expect(global.EventSource).toHaveBeenCalledWith('/events')
-
-        const es = getESInstance()
-        expect(es.onopen).not.toBeNull()
-        es.onopen()
-
-        expect(port.postMessage).toHaveBeenCalledWith(
-            expect.objectContaining({ type: 'connected' })
-        )
+    it('opens one client for the first tab and replays its status', () => {
+        const a = newPort()
+        connect(a)
+        expect(FakeClient.instances).toHaveLength(1)
+        expect(FakeClient.instances[0].started).toBe(1)
+        expect(a.received()[0]).toMatchObject({ type: 'status', phase: 'connecting' })
     })
 
-    it('should not open a second EventSource for the same URL+Token', async () => {
-        const port1 = createPort()
-        connectTab(port1, '/events', 'token1')
-        await flushWorker()
-
-        const es1 = getESInstance()
-        es1.readyState = 1 // OPEN
-        es1.onopen()
-
-        const port2 = createPort()
-        connectTab(port2, '/events', 'token1')
-        await flushWorker()
-
-        // Only one EventSource should be created
-        expect(global.EventSource).toHaveBeenCalledTimes(1)
-        // Second port gets 'connected' immediately (connection already open)
-        expect(port2.postMessage).toHaveBeenCalledWith(
-            expect.objectContaining({ type: 'connected' })
-        )
+    it('shares ONE connection between tabs with the same url+token, and a different token gets its own', () => {
+        const a = newPort(); const b = newPort(); const c = newPort()
+        connect(a, '/events', 't1')
+        connect(b, '/events', 't1')
+        expect(FakeClient.instances).toHaveLength(1)
+        connect(c, '/events', 't2')
+        expect(FakeClient.instances).toHaveLength(2)
     })
 
-    it('should multiplex events to all active ports', async () => {
-        const port1 = createPort()
-        const port2 = createPort()
-
-        connectTab(port1, '/events')
-        await flushWorker()
-
-        connectTab(port2, '/events')
-        await flushWorker()
-
-        const es = getESInstance()
-        expect(es.onmessage).not.toBeNull()
-        es.onmessage({ data: '{"test":true}' })
-
-        expect(port1.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'event' }))
-        expect(port2.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'event' }))
+    it('two tabs connecting in the same tick still create a single client (no duplicate streams)', () => {
+        const a = newPort(); const b = newPort()
+        connect(a); connect(b)
+        expect(FakeClient.instances).toHaveLength(1)
     })
 
-    it('should send catch-up buffer to late joiners', async () => {
-        const port1 = createPort()
-        connectTab(port1, '/events')
-        await flushWorker()
-
-        const es = getESInstance()
-        es.onmessage({ data: 'event1' })
-        es.onmessage({ data: 'event2' })
-        es.onmessage({ data: 'event3' })
-
-        const port2 = createPort()
-        connectTab(port2, '/events')
-        await flushWorker()
-
-        expect(port2.postMessage).toHaveBeenCalledWith(
-            expect.objectContaining({
-                type: 'catchup',
-                events: expect.arrayContaining([
-                    expect.objectContaining({ raw: 'event1' }),
-                    expect.objectContaining({ raw: 'event3' }),
-                ])
-            })
-        )
+    it('multiplexes events to every tab with increasing sequence numbers', () => {
+        const a = newPort(); const b = newPort()
+        connect(a); connect(b)
+        const client = FakeClient.instances[0]
+        client.emit('order', '{"x":1}', '7')
+        client.emit('message', 'two')
+        for (const p of [a, b]) {
+            const events = p.received().filter((m) => m.type === 'event').map((m) => m.payload)
+            expect(events.map((e) => [e.event, e.data, e.id])).toEqual([['order', '{"x":1}', '7'], ['message', 'two', '']])
+            expect(events[1].seq).toBeGreaterThan(events[0].seq)
+        }
     })
 
-    it('should initiate Zombie cleanup when all ports disconnect', async () => {
-        const port = createPort()
-        connectTab(port, '/events')
-        await flushWorker()
-
-        const es = getESInstance()
-        es.close = vi.fn() // Fresh mock so we only catch zombie-triggered close
-
-        port.onmessage?.({ data: { type: 'disconnect' } } as unknown as MessageEvent)
-        await flushWorker()
-
-        // Advance past ZOMBIE_TIMEOUT_MS (60s)
-        vi.advanceTimersByTime(65_000)
-        await vi.runAllTimersAsync()
-
-        expect(es.close).toHaveBeenCalled()
+    it('broadcasts phase changes (reconnecting, failed...) to all tabs', () => {
+        const a = newPort(); const b = newPort()
+        connect(a); connect(b)
+        FakeClient.instances[0].phase('reconnecting', { attempt: 2, delayMs: 4000, reason: 'HTTP 503' })
+        for (const p of [a, b]) {
+            expect(p.received().at(-1)).toMatchObject({ type: 'status', phase: 'reconnecting', attempt: 2, delayMs: 4000, reason: 'HTTP 503' })
+        }
     })
 
-    it('should not duplicate events during reconnect storm', async () => {
-        const port = createPort()
-        connectTab(port, '/events')
-        await flushWorker()
+    it('sends a catch-up buffer (max 50) to late joiners, in chronological order', () => {
+        const a = newPort()
+        connect(a)
+        for (let i = 1; i <= 60; i++) FakeClient.instances[0].emit('message', `e${i}`)
+        const b = newPort()
+        connect(b)
+        const catchup = b.received().find((m) => m.type === 'catchup')
+        expect(catchup.events).toHaveLength(50)
+        expect(catchup.events[0].data).toBe('e11')
+        expect(catchup.events[49].data).toBe('e60')
+    })
 
-        const es1 = getESInstance(0)
-        es1.onmessage({ data: 'event1' })
+    it('a tab that switches to another stream leaves the old one', () => {
+        const a = newPort()
+        connect(a, '/one')
+        connect(a, '/two')
+        const [one, two] = FakeClient.instances
+        expect(one).toBeDefined(); expect(two).toBeDefined()
+        vi.advanceTimersByTime(6000) // idle grace
+        expect(one.stopped).toBe(1)  // nobody is listening to /one any more
+        expect(two.stopped).toBe(0)
+        one.emit('message', 'late')
+        expect(a.received().filter((m) => m.type === 'event')).toHaveLength(0)
+    })
 
-        // Simulate stream error and tab reconnect
-        port.onmessage?.({ data: { type: 'disconnect' } } as unknown as MessageEvent)
-        await flushWorker()
-        _clearConnectionsForTesting()
+    it('closes a connection shortly after its last tab disconnects, but keeps it for quick reconnects', () => {
+        const a = newPort()
+        connect(a)
+        const client = FakeClient.instances[0]
+        a.send({ type: 'disconnect' })
+        vi.advanceTimersByTime(2000)
+        expect(client.stopped).toBe(0)
+        const b = newPort()
+        connect(b) // reload within the grace period reuses the same connection
+        vi.advanceTimersByTime(10_000)
+        expect(client.stopped).toBe(0)
+        expect(FakeClient.instances).toHaveLength(1)
+        b.send({ type: 'disconnect' })
+        vi.advanceTimersByTime(6000)
+        expect(client.stopped).toBe(1)
+    })
 
-        connectTab(port, '/events')
-        await flushWorker()
+    it('drops tabs that went silent (crashed/closed without telling us)', () => {
+        const a = newPort(); const b = newPort()
+        connect(a); connect(b)
+        const t0 = Date.now()
+        vi.setSystemTime(t0 + 30_000); b.send({ type: 'ping' })
+        mod._sweepForTesting(t0 + 80_000) // a: silent 80 s → gone; b: 50 s → alive
+        FakeClient.instances[0].emit('message', 'x')
+        expect(a.received().filter((m) => m.type === 'event')).toHaveLength(0)
+        expect(b.received().filter((m) => m.type === 'event')).toHaveLength(1)
+        mod._sweepForTesting(t0 + 200_000)
+        vi.advanceTimersByTime(6000)
+        expect(FakeClient.instances[0].stopped).toBe(1)
+    })
 
-        const instances = vi.mocked(global.EventSource as any).mock.instances
-        const es2 = instances[instances.length - 1] as any
-        es2?.onmessage?.({ data: 'event2' })
+    it('connect after the stream ended/failed restarts it with a clean buffer', () => {
+        const a = newPort()
+        connect(a)
+        const client = FakeClient.instances[0]
+        client.emit('message', 'old')
+        client.phase('failed', { attempt: 3, reason: 'HTTP 401' })
+        connect(a)
+        expect(client.started).toBe(2)
+        expect(a.received().at(-1)).toMatchObject({ type: 'status', phase: 'connecting' })
+        expect(a.received().filter((m) => m.type === 'catchup')).toHaveLength(0)
+    })
 
-        // event2 should be broadcast exactly once
-        expect(port.postMessage).toHaveBeenCalledWith(
-            expect.objectContaining({ type: 'event', payload: expect.objectContaining({ raw: 'event2' }) })
-        )
+    it('ignores malformed messages', () => {
+        const a = newPort()
+        a.send(null); a.send({}); a.send({ type: 'connect' }); a.send({ type: 'nope' })
+        expect(FakeClient.instances).toHaveLength(0)
     })
 })
