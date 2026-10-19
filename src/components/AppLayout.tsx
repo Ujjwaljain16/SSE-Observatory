@@ -62,7 +62,7 @@ export function AppLayout() {
         idbAvailable, totalStoredCount, loadBefore, clearStorage, replayFromStorage,
         streams, mergedEvents, addStream, removeStream, connectStream, disconnectStream, clearStreamEvents,
         profiles, activeProfileTab, setActiveProfileTab, saveProfile, loadProfile, deleteProfile,
-        mockFileName, isMockUploading, isMockRunning, mockSpeed, isMockLooping, mockTotalEvents,
+        mockFileName, isMockUploading, isMockRunning, mockSpeed, isMockLooping, mockTotalEvents, mockUploadError, mockStreamUrl,
         handleMockUpload, toggleMockServer, setMockSpeed, setIsMockLooping,
         // Correlation tracing
         activeTraceId, setActiveTraceId, getTraceForEvent, traces, traceCount,
@@ -149,6 +149,8 @@ export function AppLayout() {
                         speedMs={mockSpeed}
                         isLooping={isMockLooping}
                         totalEvents={mockTotalEvents}
+                        uploadError={mockUploadError}
+                        streamUrl={mockStreamUrl}
                         onFileUpload={handleMockUpload}
                         onToggleServer={toggleMockServer}
                         onSetSpeed={setMockSpeed}
