@@ -19,6 +19,8 @@ export interface BurstRule {
 }
 
 export type PatternRule = SequenceRule | BurstRule
+/** A rule before it gets an id (Omit on the union would drop the kind-specific fields). */
+export type NewPatternRule = Omit<SequenceRule, 'id'> | Omit<BurstRule, 'id'>
 
 export interface PatternAlert {
     id: string

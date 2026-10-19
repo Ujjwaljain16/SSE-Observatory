@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import type { Theme } from '../types'
-import type { PatternRule, PatternAlert, SequenceRule, BurstRule } from '../hooks/usePatternDetector'
+import type { PatternRule, PatternAlert, NewPatternRule } from '../hooks/usePatternDetector'
 import {
     AlertTriangle, Plus, X, Zap, Layers, ChevronDown, ChevronRight,
     ToggleLeft, ToggleRight, Bell, BellOff
@@ -12,7 +12,7 @@ interface PatternPanelProps {
     theme: Theme
     rules: PatternRule[]
     activeAlerts: PatternAlert[]
-    onAddRule: (rule: Omit<PatternRule, 'id'>) => void
+    onAddRule: (rule: NewPatternRule) => void
     onRemoveRule: (id: string) => void
     onToggleRule: (id: string) => void
     onDismissAlert: (id: string) => void
@@ -21,21 +21,17 @@ interface PatternPanelProps {
 
 
 
-const blankSequence: Omit<SequenceRule, 'id'> = {
-    kind: 'sequence',
-    name: '',
-    pattern: ['error', 'retry'],
-    enabled: true,
+/** The add-rule form. Numbers stay strings while typing and are validated on submit. */
+interface Draft {
+    name: string
+    pattern: string[]
+    eventType: string
+    count: string
+    windowMs: string
 }
 
-const blankBurst: Omit<BurstRule, 'id'> = {
-    kind: 'burst',
-    name: '',
-    eventType: 'error',
-    count: 5,
-    windowMs: 10_000,
-    enabled: true,
-}
+const blankSequence: Draft = { name: '', pattern: ['error', 'retry'], eventType: 'error', count: '5', windowMs: '10000' }
+const blankBurst: Draft = { name: '', pattern: ['error', 'retry'], eventType: 'error', count: '5', windowMs: '10000' }
 
 
 
@@ -51,7 +47,7 @@ export function PatternPanel({
 }: PatternPanelProps) {
     const isDark = theme === 'dark'
     const [addKind, setAddKind] = useState<'sequence' | 'burst' | null>(null)
-    const [draft, setDraft] = useState<any>({ ...blankBurst })
+    const [draft, setDraft] = useState<Draft>({ ...blankBurst })
     const [expandedAlert, setExpandedAlert] = useState<string | null>(null)
 
     const bg = isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'
@@ -68,13 +64,13 @@ export function PatternPanel({
     const submitDraft = () => {
         if (!draft.name.trim()) return
         if (addKind === 'sequence') {
-            const pattern = (draft.pattern as string[]).map((p) => p.trim()).filter(Boolean)
+            const pattern = draft.pattern.map((p) => p.trim()).filter(Boolean)
             if (pattern.length === 0) return
-            onAddRule({ ...draft, pattern })
+            onAddRule({ kind: 'sequence', name: draft.name.trim(), pattern, enabled: true })
         } else {
-            const count = Math.max(1, parseInt(String(draft.count), 10) || 5)
-            const windowMs = Math.max(1, parseInt(String(draft.windowMs), 10) || 10_000)
-            onAddRule({ ...draft, count, windowMs, eventType: String(draft.eventType).trim() || '*' })
+            const count = Math.max(1, parseInt(draft.count, 10) || 5)
+            const windowMs = Math.max(1, parseInt(draft.windowMs, 10) || 10_000)
+            onAddRule({ kind: 'burst', name: draft.name.trim(), count, windowMs, eventType: draft.eventType.trim() || '*', enabled: true })
         }
         setAddKind(null)
     }
@@ -204,7 +200,7 @@ export function PatternPanel({
                             <input
                                 className={inputCls}
                                 placeholder="Event types, comma-separated (e.g. payment_failed,retry_payment,retry_payment)"
-                                value={draft.pattern?.join(',')}
+                                value={draft.pattern.join(',')}
                                 onChange={e => setDraft({ ...draft, pattern: e.target.value.split(',').map((s: string) => s.trim()) })}
                             />
                         )}
@@ -244,7 +240,7 @@ export function PatternPanel({
                             </button>
                             <button
                                 onClick={submitDraft}
-                                disabled={!draft.name.trim() || (addKind === 'sequence' && !(draft.pattern as string[]).some((p) => p.trim()))}
+                                disabled={!draft.name.trim() || (addKind === 'sequence' && !draft.pattern.some((p) => p.trim()))}
                                 className="px-3 py-1.5 text-xs rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white transition-colors"
                             >
                                 Add Rule

@@ -12,9 +12,9 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import type { EventMessage } from '../types'
 import { newEventsSince } from '../utils/eventBuffer'
-import { PatternEngine, type PatternAlert, type PatternRule, type SequenceRule, type BurstRule } from '../utils/patternEngine'
+import { PatternEngine, type PatternAlert, type PatternRule, type NewPatternRule, type SequenceRule, type BurstRule } from '../utils/patternEngine'
 
-export type { PatternAlert, PatternRule, SequenceRule, BurstRule }
+export type { PatternAlert, PatternRule, NewPatternRule, SequenceRule, BurstRule }
 
 const MAX_ALERTS = 200
 
@@ -53,7 +53,7 @@ export function usePatternDetector(events: EventMessage[], epoch = 0) {
         if (raised.length > 0) setAlerts((prev) => [...raised.reverse(), ...prev].slice(0, MAX_ALERTS))
     }, [events, epoch, rules])
 
-    const addRule = useCallback((rule: Omit<PatternRule, 'id'>) => {
+    const addRule = useCallback((rule: NewPatternRule) => {
         const id = `rule-${Date.now()}-${ruleCounter++}`
         setRules((prev) => [...prev, { ...rule, id } as PatternRule])
     }, [])
