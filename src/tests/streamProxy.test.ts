@@ -28,6 +28,19 @@ function get(port: number, path: string, headers: Record<string, string> = {}, a
     })
 }
 
+function post(port: number, path: string, body: string, headers: Record<string, string> = { 'Content-Type': 'application/json' }): Promise<Result> {
+    return new Promise((resolve, reject) => {
+        const req = http.request({ host: '127.0.0.1', port, path, method: 'POST', headers }, (res) => {
+            let out = ''
+            res.setEncoding('utf8')
+            res.on('data', (c) => (out += c))
+            res.on('end', () => resolve({ status: res.statusCode ?? 0, headers: res.headers, body: out }))
+        })
+        req.on('error', reject)
+        req.end(body)
+    })
+}
+
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const devConfig = (over: object = {}) => ({ ...loadConfig({}), heartbeatMs: 30, ...over })
 
@@ -135,14 +148,31 @@ describe('streamProxy', () => {
         expect((await get(portOf(proxy), target())).status).toBe(200) // slot was released
     })
 
+    it('POST {url, token}: the token travels in the body, not the URL', async () => {
+        let seen: http.IncomingHttpHeaders = {}
+        upstreamHandler = (req, res) => { seen = req.headers; res.writeHead(200, sseHead); res.end('event: order\ndata: 1\n\n') }
+        const r = await post(portOf(proxy), '/api/sse', JSON.stringify({ url: `http://127.0.0.1:${portOf(upstream)}/s`, token: 'Bearer s3cret' }))
+        expect(r.status).toBe(200)
+        expect(r.body).toContain('event: order\ndata: 1')
+        expect(seen.authorization).toBe('Bearer s3cret')
+    })
+
+    it('POST validates content type, size and JSON', async () => {
+        expect((await post(portOf(proxy), '/api/sse', '{}', { 'Content-Type': 'text/plain' })).status).toBe(415)
+        expect((await post(portOf(proxy), '/api/sse', '{not json')).status).toBe(400)
+        expect((await post(portOf(proxy), '/api/sse', JSON.stringify({ url: 'x'.repeat(20000) }))).status).toBe(413)
+        expect((await post(portOf(proxy), '/api/sse', JSON.stringify({}))).status).toBe(400)
+        expect((await post(portOf(proxy), '/api/sse', JSON.stringify({ url: 'http://127.0.0.1:1/', token: 'a\r\nX: 1' }))).status).toBe(400)
+    })
+
     it('rejects header injection through auth', async () => {
         const r = await get(portOf(proxy), `${target()}&auth=${encodeURIComponent('x\r\nX-Evil: 1')}`)
         expect(r.status).toBe(400)
     })
 
-    it('only allows GET', async () => {
+    it('only allows GET and POST', async () => {
         const r = await new Promise<number>((resolve) => {
-            const req = http.request({ host: '127.0.0.1', port: portOf(proxy), path: target(), method: 'POST' }, (res) => { res.resume(); resolve(res.statusCode ?? 0) })
+            const req = http.request({ host: '127.0.0.1', port: portOf(proxy), path: target(), method: 'PUT' }, (res) => { res.resume(); resolve(res.statusCode ?? 0) })
             req.end()
         })
         expect(r).toBe(405)
