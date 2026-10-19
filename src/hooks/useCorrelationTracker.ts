@@ -1,13 +1,17 @@
 /**
- * Detects causal chains across SSE events by extracting correlation identifiers
- * from event payloads. Standard distributed tracing fields are checked automatically.
+ * Groups events into causal chains by a correlation identifier found in the payload.
  *
- * Correlation fields checked (in order of priority):
- * traceId, requestId, correlationId, transactionId, spanId, sessionId, userId
+ * Fields are checked in priority order, at the top level first and then one level down
+ * (e.g. data.meta.traceId, data.headers["x-request-id"]).
+ *
+ * Memory is bounded: at most MAX_TRACES traces are kept (least recently updated are evicted) and each trace keeps
+ * its newest MAX_EVENTS_PER_TRACE events.
  */
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import type { EventMessage } from '../types'
+import { getParsedData } from '../utils/eventUtils'
+import { newEventsSince } from '../utils/eventBuffer'
 
 export interface TraceEntry {
     id: string              // the correlation value
@@ -18,139 +22,131 @@ export interface TraceEntry {
     services: string[]      // distinct event types seen in this trace
 }
 
-// Priority-ordered list of fields to check
-const CORRELATION_KEYS = [
-    'traceId',
-    'requestId',
-    'correlationId',
-    'transactionId',
-    'spanId',
-    'sessionId',
-    'userId',
-    'x-trace-id',
-    'x-request-id',
+// Identifiers that group a *request chain*. Per-span ids (spanId) are unique per event, and user/session ids
+// group unrelated activity, so they are deliberately not used.
+export const CORRELATION_KEYS = [
+    'traceId', 'trace_id', 'trace-id', 'x-trace-id',
+    'requestId', 'request_id', 'request-id', 'x-request-id',
+    'correlationId', 'correlation_id', 'correlation-id', 'x-correlation-id',
+    'transactionId', 'transaction_id',
 ]
 
-/** Extract the first found correlation id + field from a parsed event payload */
-function extractCorrelation(event: EventMessage): { id: string; field: string } | null {
-    let data: any
-    if (typeof event.data === 'object' && event.data !== null) {
-        data = event.data
-    } else if (typeof event.data === 'string') {
-        try { data = JSON.parse(event.data) } catch { return null }
-    } else {
-        return null
-    }
+export const MAX_TRACES = 500
+export const MAX_EVENTS_PER_TRACE = 200
 
-    if (typeof data !== 'object' || data === null) return null
+const asId = (v: unknown): string | null => (typeof v === 'string' && v ? v : typeof v === 'number' ? String(v) : null)
 
-    // Check top-level fields first
+/** Extract the first found correlation id + field from an event payload */
+export function extractCorrelation(event: EventMessage): { id: string; field: string } | null {
+    const data = getParsedData(event)
+    if (data === null || typeof data !== 'object' || Array.isArray(data)) return null
+    const obj = data as Record<string, unknown>
+
     for (const key of CORRELATION_KEYS) {
-        if (data[key] && typeof data[key] === 'string') {
-            return { id: data[key], field: key }
-        }
+        const id = asId(Object.prototype.hasOwnProperty.call(obj, key) ? obj[key] : undefined)
+        if (id) return { id, field: key }
     }
-
-    // Check one level of nesting (e.g. data.meta.traceId, data.headers.x-request-id)
-    for (const topKey of Object.keys(data)) {
-        const sub = data[topKey]
-        if (sub && typeof sub === 'object') {
+    for (const topKey of Object.keys(obj)) {
+        const sub = obj[topKey]
+        if (sub && typeof sub === 'object' && !Array.isArray(sub)) {
             for (const key of CORRELATION_KEYS) {
-                if (sub[key] && typeof sub[key] === 'string') {
-                    return { id: sub[key], field: `${topKey}.${key}` }
-                }
+                const id = asId(Object.prototype.hasOwnProperty.call(sub, key) ? (sub as Record<string, unknown>)[key] : undefined)
+                if (id) return { id, field: `${topKey}.${key}` }
             }
         }
     }
-
     return null
 }
 
 export function useCorrelationTracker(events: EventMessage[]) {
-    // Map: correlationId → TraceEntry
     const tracesRef = useRef<Map<string, TraceEntry>>(new Map())
     const [traces, setTraces] = useState<Map<string, TraceEntry>>(new Map())
     const [activeTraceId, setActiveTraceId] = useState<string | null>(null)
-    // Map: eventId → correlationId  (for O(1) "which trace is this event in?")
-    const eventTraceMapRef = useRef<Map<string, string>>(new Map())
-    // Track the length we have already indexed to only process new events (O(n) total)
-    const prevLengthRef = useRef(0)
+    const eventTraceMapRef = useRef<Map<string, string>>(new Map()) // eventId → traceId
+    const lastIdRef = useRef<string | null>(null)
 
-    // Incrementally index only new events — never re-scans the full array
+    const reset = useCallback(() => {
+        tracesRef.current.clear()
+        eventTraceMapRef.current.clear()
+        lastIdRef.current = null
+    }, [])
+
+    // Only new events are examined, found by identity (the buffer length stops changing once it is full)
     useEffect(() => {
-        // Events are stored newest-first; new events arrive at the front.
-        // `events.slice(0, events.length - prevLengthRef.current)` gives the new ones.
-        const newCount = events.length - prevLengthRef.current
-        if (newCount <= 0) return
-        prevLengthRef.current = events.length
+        if (events.length === 0) {
+            if (lastIdRef.current !== null || tracesRef.current.size > 0) { reset(); setTraces(new Map()) }
+            return
+        }
+        const last = lastIdRef.current
+        let replaced = false
+        if (last !== null && !events.some((e) => e.id === last)) { replaced = true; reset() }
 
-        const newEvents = events.slice(0, newCount)
-        let changed = false
+        const fresh = newEventsSince(events, replaced ? null : last)
+        lastIdRef.current = events[0].id
+        let changed = replaced
 
-        for (const event of newEvents) {
+        for (const event of fresh) {
             const correlation = extractCorrelation(event)
             if (!correlation) continue
-
             const { id, field } = correlation
-            const existing = tracesRef.current.get(id)
             const arrival = event.arrivalTime ?? Date.now()
+            let trace = tracesRef.current.get(id)
 
-            if (existing) {
-                existing.events.push(event)
-                // Keep sorted oldest-first
-                existing.events.sort((a, b) => (a.arrivalTime ?? 0) - (b.arrivalTime ?? 0))
-                existing.lastSeen = Math.max(existing.lastSeen, arrival)
-                if (!existing.services.includes(event.type)) {
-                    existing.services.push(event.type)
+            if (trace) {
+                // Map preserves insertion order: re-insert to mark as most recently used
+                tracesRef.current.delete(id)
+                tracesRef.current.set(id, trace)
+                const list = trace.events
+                // arrival order is the norm; fall back to insertion for out-of-order (catch-up) events
+                let i = list.length
+                while (i > 0 && (list[i - 1].arrivalTime ?? 0) > arrival) i--
+                list.splice(i, 0, event)
+                if (list.length > MAX_EVENTS_PER_TRACE) {
+                    const dropped = list.splice(0, list.length - MAX_EVENTS_PER_TRACE)
+                    for (const d of dropped) eventTraceMapRef.current.delete(d.id)
                 }
+                trace.lastSeen = Math.max(trace.lastSeen, arrival)
+                trace.firstSeen = Math.min(trace.firstSeen, arrival)
+                if (!trace.services.includes(event.type)) trace.services.push(event.type)
             } else {
-                tracesRef.current.set(id, {
-                    id,
-                    field,
-                    events: [event],
-                    firstSeen: arrival,
-                    lastSeen: arrival,
-                    services: [event.type],
-                })
+                trace = { id, field, events: [event], firstSeen: arrival, lastSeen: arrival, services: [event.type] }
+                tracesRef.current.set(id, trace)
+                if (tracesRef.current.size > MAX_TRACES) {
+                    const oldestKey = tracesRef.current.keys().next().value as string
+                    const evicted = tracesRef.current.get(oldestKey)
+                    tracesRef.current.delete(oldestKey)
+                    for (const e of evicted?.events ?? []) eventTraceMapRef.current.delete(e.id)
+                }
             }
             eventTraceMapRef.current.set(event.id, id)
             changed = true
         }
-        if (changed) {
-            setTraces(new Map(tracesRef.current))
-        }
-    }, [events])
+        if (changed) setTraces(new Map(tracesRef.current))
+    }, [events, reset])
 
-    const getEventChain = useCallback((traceId: string): EventMessage[] => {
-        return tracesRef.current.get(traceId)?.events ?? []
-    }, [])
+    const getEventChain = useCallback((traceId: string): EventMessage[] => tracesRef.current.get(traceId)?.events ?? [], [])
 
     const getTraceForEvent = useCallback((event: EventMessage): TraceEntry | null => {
         const traceId = eventTraceMapRef.current.get(event.id)
-        if (!traceId) return null
-        return tracesRef.current.get(traceId) ?? null
+        return traceId ? tracesRef.current.get(traceId) ?? null : null
     }, [])
 
     const clearTraces = useCallback(() => {
-        tracesRef.current.clear()
-        eventTraceMapRef.current.clear()
-        prevLengthRef.current = 0
+        reset()
         setTraces(new Map())
         setActiveTraceId(null)
-    }, [])
+    }, [reset])
 
-    // Derived: which correlation field is most common (for UI hint)
+    // Which correlation field is most common (UI hint)
     const correlationField = useMemo(() => {
         const counts = new Map<string, number>()
-        for (const trace of tracesRef.current.values()) {
+        for (const trace of traces.values()) {
             const base = trace.field.split('.').pop() ?? trace.field
             counts.set(base, (counts.get(base) ?? 0) + trace.events.length)
         }
         let best = ''
         let bestCount = 0
-        for (const [field, count] of counts) {
-            if (count > bestCount) { best = field; bestCount = count }
-        }
+        for (const [field, count] of counts) if (count > bestCount) { best = field; bestCount = count }
         return best || 'traceId'
     }, [traces])
 
