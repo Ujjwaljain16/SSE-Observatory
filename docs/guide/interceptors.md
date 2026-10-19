@@ -1,63 +1,61 @@
 # JavaScript Interceptors
 
-The Interceptor Editor allows you to write custom JavaScript to mutate, transform, or filter incoming events immediately after they leave the SharedWorker Transport layer, but **before** they enter the Ring Buffer. 
+An interceptor is a small piece of JavaScript that runs on every incoming event **before** it enters the event buffer. Use it to unwrap payloads, rewrite fields, or drop noise. Interceptors run in order, and each one receives the output of the previous one.
 
-This enables infinite flexibility when dealing with obfuscated or wrapped payloads in raw production environments.
+## The contract
 
-## The Javascript Sandbox
+You write a function **body**, not a function declaration. Two variables are in scope:
 
-Inside the UI Interceptor panel, you define a single function named `intercept(event)`. 
+| Name | What it is |
+|---|---|
+| `event` | The incoming event (see below). |
+| `ctx` | A small, frozen toolbox: `ctx.JSON.parse/stringify`, `ctx.atob`, `ctx.btoa`, `ctx.Math`, `ctx.Date`, `ctx.console.log/warn`. |
 
-### The `event` Object
-The parameter passed to your function is the raw parsed event containing three core string fields:
+Your code must `return` one of:
+
+- the event (modified or not): the pipeline continues with it,
+- `null`: the event is dropped.
+
+Returning nothing (or anything else) is an error: the original event is kept and the error is shown on the interceptor.
 
 ```typescript
-interface RawEvent {
-  id: string;   // The Server-Sent Event ID
-  type: string; // The SSE Event type (defaults to 'message')
-  data: string; // The raw JSON payload as a string
+interface InterceptEvent {
+  id: string        // internal unique id
+  type: string      // SSE event name, "message" by default
+  data: string      // the raw payload, always a string
+  sseId?: string    // the server's `id:` field, if any
+  timestamp: string
 }
 ```
 
-## Common Use Cases
+If you return an object with a non-string `data`, it is serialised with `JSON.stringify` for you.
 
-### Unwrapping Deep Structures
-Backend loggers often wrap critical data inside opaque `_sys` or `_raw` tags.
+## Examples
+
+### Unwrap a nested payload
 
 ```javascript
-function intercept(event) {
-  if (event.type === 'obfuscated_wrapper') {
-    // Parse the data field 
-    const parsed = JSON.parse(event.data);
-    
-    // Elevate the nested hidden_payload to the top level 
-    const mapped = parsed.hidden_payload;
-    
-    // Return a new mutated event object
-    return { 
-      ...event, 
-      data: JSON.stringify(mapped), 
-      type: 'clean_payload' 
-    };
-  }
-  
-  // Return the event unmodified if it doesn't match
-  return event; 
+if (event.type === 'obfuscated_wrapper') {
+  const parsed = ctx.JSON.parse(event.data)
+  return { ...event, data: ctx.JSON.stringify(parsed.hidden_payload), type: 'clean_payload' }
 }
+return event
 ```
 
-### Dropping Noise (Filtering)
-If a stream outputs 10,000 metrics per second but you only care about `error` rates, you can drop the irrelevant events before they hit the memory store.
+### Drop noise
 
 ```javascript
-function intercept(event) {
-  // Returning null explicitly drops the event from the pipeline entirely
-  if (event.type === 'heartbeat') return null;
-  return event;
-}
+if (event.type === 'heartbeat') return null
+return event
 ```
 
-## Security & Execution Context
-The custom JavaScript is executed within a localized, sandboxed `eval()` scope running exclusively inside a segregated `WebWorker`. It does not have access to the `window`, `document`, or standard browser DOM APIs. 
+## Security and limits
 
-A rogue script containing an infinite `while(true)` loop will intentionally crash the Worker instance, forcing the UI to sever the `SharedWorker` transport and reboot the sandbox cleanly.
+Interceptors are user-written code, so they run in a locked-down dedicated Worker:
+
+- **No network or storage.** `fetch`, `XMLHttpRequest`, `WebSocket`, `importScripts`, `indexedDB`, `postMessage`, timers and similar globals are removed. `window` and `document` do not exist in a Worker.
+- **No escape routes.** `eval`, `Function` and the `constructor` chains that lead back to them are neutralised, and `import` is rejected.
+- **100 ms budget.** A call that runs longer than 100 ms (for example `while (true) {}`) gets the Worker killed; a fresh Worker is started and the event is kept unmodified. The interceptor shows "exceeded 100ms".
+- **Bounded pool.** A fixed number of Workers is shared by all interceptors; events queue rather than spawn more.
+
+This protects the page from accidents and from pasted snippets, but treat interceptor code like any code you run: only paste code you understand.

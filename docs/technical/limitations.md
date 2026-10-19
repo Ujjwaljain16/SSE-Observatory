@@ -1,20 +1,25 @@
 # Known Limitations
 
-While SSE Observatory is designed as an Enterprise-grade tool, relying entirely on User-Side Browser APIs introduces hard computational boundaries.
+## 1. The viewer shows the newest 1,000 events
 
-## 1. Frame Dropping at Scale 
-While the generic ring buffer and memory allocation correctly slice to an `N=5000` payload limitation asynchronously, the **DOM reconciliation algorithm of React 18 is blocking**. A stream receiving exactly `10,500` events per second will force the Virtualized Scroll view to drop rendering frames attempting to repaint the visible window.
+The in-memory buffer holds 1,000 events. Older events are in IndexedDB (up to 100,000) and can be loaded or exported, but they are not all visible at once. Very high rates are ingested in time-sliced batches and the list is virtualised, so the page stays responsive, but you will only ever see the latest window go by. Use filters, interceptors that drop noise, or the pause control to inspect a moment.
 
-**Mitigation:** Write a lightweight JS Sandbox `Interceptor` to proactively drop `null` events you do not explicitly need rendered, keeping the React layout tree manageable.
+## 2. Hosted deployments cap stream length
 
-## 2. Vercel Hobby Network Timeouts
-For instances deployed to Vercel targeting production metrics behind CORS protections, the `SharedWorker` connects via the `/api/sse` proxy endpoint. 
+On Vercel Hobby the proxy function is limited by the platform (the project config allows up to 60 s and streams are capped at 55 s). When the cap is reached the proxy ends the stream and the browser reconnects automatically, sending `Last-Event-ID` if the target supports it, so you may see a brief pause or a few missed events with targets that cannot resume. Self-host (Docker, or `node server.js` after `npm run build`) and raise `MAX_STREAM_SECONDS` for longer streams.
 
-The Vercel Serverless "Hobby" Tier enforces a hard `10 second` Execution Limit per function. If your stream persists past 10 seconds, Vercel will aggressively sever the HTTP connection throwing an `ECONNRESET` or `504 Protocol Error`.
+## 3. The proxy is deliberately restrictive
 
-**Mitigation:** The `useStreamState` Custom Hook gracefully catches severances, triggers an exponential backoff metric, and instantly requests a localized reconnect to hide the disconnection natively behind the React DOM. Your Event Timeline will just register brief 1 second pauses.
+In production it relays only to `ALLOWED_HOSTS` (or any public host when `PROXY_OPEN=1`), never to private, loopback, link-local or metadata addresses, and only for requests from the app's own origin. Targets that need cookies or custom request headers other than a bearer token are not supported. For local services, turn the proxy off and connect directly (the target must allow CORS), or self-host with `ALLOW_PRIVATE_TARGETS=1`.
 
-## 3. Infinite Sequence Patterns
-The sliding window `Pattern Detection` algorithm must continuously map across the in-memory Ring Buffer continuously via the `usePatternDetector` loop. Registering more than 5 explicit sequence workflow trackers simultaneously against a fast stream will throttle the Event Thread drastically as the algorithmic evaluation complexity scales inversely mapped to array volume.
+## 4. SharedWorker support varies
 
-**Mitigation:** Stick to explicit `Burst Constraints` which execute at `O(1)` against indexed dictionaries instead of traversing generic sequence pathways.
+Some browsers and embedded webviews do not provide a working SharedWorker. The app then runs the connection in the page itself; connections are not shared between tabs in that case.
+
+## 5. Interceptors are bounded
+
+An interceptor call is killed after 100 ms. Heavy transformations on very hot streams add up: keep interceptors small, or move the logic upstream.
+
+## 6. Mock sessions are ephemeral
+
+Mock replay sessions live in server memory (or KV when configured) for one hour. A server restart on a single-instance setup discards them; upload the recording again.

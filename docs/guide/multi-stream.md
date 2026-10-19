@@ -1,21 +1,23 @@
-# Multi-Stream Correlation
+# Multi-Stream
 
-Server-Sent Events are usually analyzed one connection at a time. The **SSE Observatory Multi-Stream** capability allows you to pipe up to 3 asynchronous event streams into the identical Global Timeline to detect race conditions spanning microservices.
+Multi-Stream mode connects several SSE endpoints at once and merges their events into one list, newest first, so you can see how services interleave.
 
 ## Setup
 
-1. Enable the **Multi-Stream** mode toggle switch located at the top of the interface. 
-2. Add endpoints using the `Stream Lanes` drawer. Enter the URL (e.g., `http://localhost:4003/stream-a`) and optionally provide an overriding `Bearer Token`.
-3. Give each stream a friendly label (e.g., `Payment Service`).
+1. Switch to **Multi-Stream** at the top of the page.
+2. In **Stream Lanes**, enter a name and URL (for example `http://localhost:4003/stream-a`), optionally a bearer token, and click **Add**.
+3. Press **Connect** on each lane. Each lane can be connected, disconnected, cleared or removed on its own; the header shows how many lanes are live.
 
-## Timeline Integration
+Every lane gets its own colour, and every event is tagged with its lane.
 
-Every event received natively binds to its origin lane via a randomized global ID algorithm powered by the background `SharedWorker`.
+## Ordering
 
-In the Global Timeline UI, streams receive distinct colors (`blue`, `emerald`, `indigo`). Because event timestamp evaluation executes directly via atomic `performance.now()`, intermixed streams are accurately ordered within `<1ms` deviations.
+Events are ordered by their arrival time in your browser, not by any clock on the servers, so two streams from different machines compare fairly. Arrival time is when the browser received an event; network latency between you and each server still applies.
 
-## Distributed Trace Detection
+## Finite streams
 
-Combining Multi-Stream Mode with the default OpenTelemetry parsers provides immediate architectural insight:
+A stream that sends `event: end` is treated as finished and the lane stops. A stream that simply closes is treated as a dropped connection and reconnects with exponential backoff, resuming from the last event id when the server supports `Last-Event-ID`.
 
-If Stream A emits a `create_order` event containing `"traceId": "t-1234"`, and exactly `300ms` later Stream B emits an `auth_failure` mapped to the identical `traceId` `"t-1234"`, the Observatory natively binds the sequence log together in the Trace Inspector automatically.
+## Correlating across streams
+
+If events in different lanes carry the same correlation id in their payload, they are grouped into one trace in the Trace panel. The fields checked, at the top level and one level down, are `traceId`, `requestId`, `correlationId` and `transactionId` (and their `snake_case`, `kebab-case` and `x-` header variants). `spanId`, `userId` and `sessionId` are intentionally not used: they identify a single span or group unrelated activity.

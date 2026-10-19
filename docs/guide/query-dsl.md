@@ -1,30 +1,37 @@
-# Query DSL Engine
+# Query DSL
 
-Deep JSON payloads render standard text search functionally useless. To accommodate Enterprise structures, SSE Observatory leverages an Abstract Syntax Tree (AST) custom parser capable of real-time logic evaluations on a per-event basis.
+The query bar filters events with a small expression language. It is parsed once into a tree and evaluated per event inside the filter worker (or on the main thread when Workers are unavailable). A syntax error is shown under the bar and the list keeps showing everything until the query is valid.
 
-## Syntax Rules
+## Fields
 
-Expressions consist of operands (paths to data) evaluated against literals using comparison algorithms inside the dedicated `Filter Worker Thread`.
+- **Event fields:** `type`, `id`, `timestamp`, `parsedType`, `streamId`, `streamColor`, `arrivalTime`. Note that `id` is the observatory's internal id, not the one in your payload.
+- **Payload fields:** any path into the JSON payload, with or without a leading `data.`: `data.amount` and `amount` are the same. Use `data.id` for an `id` inside your payload. Array items are written `items[0].id` or `items.0.id`.
 
-### Supported Operators
+Fields may contain letters, digits and `_ $ . - :`. Anything else must be quoted.
 
-| Logic | Symbol | Example |
-|---|---|---|
-| Equality | `==` | `user.role == "admin"` |
-| Inequality | `!=` | `type != "heartbeat"` |
-| Greater Than | `>` | `data.amount > 500` |
-| Less Than | `<` | `data.duration < 10.5` |
-| Regex Matching | `matches` | `headers.userAgent matches "curl/.*"` |
-| Contains Substring | `contains` | `data.message contains "failure"` |
+## Operators
 
-### Boolean Aggregations
+| Operator | Example |
+|---|---|
+| `==`, `=`, `!=` | `type != "heartbeat"` |
+| `>`, `>=`, `<`, `<=` | `data.amount >= 500` |
+| `contains` | `data.message contains "failure"` |
+| `matches` (regex) | `data.ua matches "curl/.*"` |
+| `in [ ... ]` | `data.level in ["warn", "error"]` |
+| `exists` | `data.user.id exists` |
 
-Queries can be nested infinitely via `AND` or `OR`.
+Values are `"strings"`, `'strings'`, numbers, `true`, `false`, `null`, or a bare word.
 
-```sql
-type == "transaction" AND (data.price > 1000 OR user.is_flagged == true)
+## Combining
+
+`NOT`, `AND`, `OR` (case-insensitive, in that order of precedence) and parentheses:
+
+```text
+type == "transaction" AND (data.price > 1000 OR NOT data.user.verified == true)
 ```
 
-## Performance Note
+Keywords are only recognised as whole words, so a field called `ORDER_ID` or `ANDROID` is just a field.
 
-String matching (`matches`, `contains`) evaluates slower through AST pipelines than explicit numeric thresholds. For streams exceeding `15,000 EPS`, favor explicit index equality logic over Deep Regex mapping to prevent frame stutter.
+## Performance
+
+The filter keeps a bounded copy of the buffer and only evaluates new events, so cost is proportional to the events arriving, not to the buffer size. Regex (`matches`) is compiled once per query. Very expensive patterns are still expensive: prefer `==`, `in` and `contains` on hot streams.

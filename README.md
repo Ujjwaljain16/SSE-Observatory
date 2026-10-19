@@ -38,9 +38,9 @@ Deep-dive into event payloads with structural diffing, automated schema inferenc
 - **Real-Time SSE Monitoring & Multi-Stream Support:** Observe multiple SSE endpoints simultaneously. Each stream is isolated in a dedicated lane, making it trivial to detect cross-service race conditions.
 - **Worker-Based Event Processing:** Offloads JSON parsing, indexing, and filtering to dedicated Web Workers, ensuring the React UI remains buttery smooth even at thousands of events per second.
 - **Query Engine & Filtering DSL:** A custom query language enabling precise structural filtering (e.g., `type == "payment" AND data.amount > 500`).
-- **Event Interception Sandbox:** Write custom JavaScript interceptors on-the-fly to mutate, clean, or drop payloads securely inside an isolated, restricted Worker environment.
+- **Event Interception Sandbox:** Write custom JavaScript interceptors on-the-fly to mutate, clean, or drop payloads inside a locked-down Worker (no network or storage, `eval`/`Function` neutralised, 100 ms execution limit).
 - **Dynamic Schema Inference:** Analyzes incoming JSON payloads automatically to produce a live structural representation of the event stream, highlighting data types and field frequencies.
-- **Distributed Trace Waterfall:** Automatically identifies common correlation keys (`traceId`, `spanId`, `x-request-id`) to link disjointed events into cohesive causal chains and visual waterfalls.
+- **Distributed Trace Waterfall:** Automatically identifies common correlation keys (`traceId`, `requestId`, `correlationId`, `transactionId` and their `snake_case`/`x-` variants) to link disjointed events into cohesive causal chains and visual waterfalls.
 - **Sliding-Window Pattern Detection:** Detect anomalies using sequence rules (e.g., `A -> B -> C`) or burst rules (e.g., more than 5 errors in a 10s window).
 - **Mock Server & Replayable Storage:** Record live sessions, persist them locally via IndexedDB, and replay deterministic scenarios at adjustable speeds without interacting with the live backend.
 
@@ -55,7 +55,7 @@ External SSE Servers
 [ SharedWorker ] — Controls active SSE connections (multiplexing & connection sharing across tabs)
        │
        ▼
-[ Ring Buffer ] — In-memory ring buffer ensures O(1) memory bounds
+[ Ring Buffer ] — newest 1,000 events in memory; every buffer in the pipeline is bounded
        ├── [ IndexedDB ] — Cold storage eviction & persistent session history
        │
        ▼
@@ -79,14 +79,14 @@ External SSE Servers
 
 ## 5. Installation Instructions
 
-Requires **Node.js 18+**.
+Requires **Node.js 20+**.
 
 Clone the repository and install dependencies:
 
 ```bash
 git clone https://github.com/Ujjwaljain16/SSE-Observatory.git
-cd sse-tester
-npm install
+cd SSE-Observatory
+npm ci
 ```
 
 ## 6. Usage Instructions
@@ -99,7 +99,7 @@ npm run dev
 
 This will concurrently run the Vite UI and a lightweight internal Node API (`server.js`).
 
-1. Open `http://localhost:3000` (or `3001` based on your Vite port).
+1. Open `http://localhost:3001` (the API server runs on port 3000).
 2. Enter your SSE target URL.
 3. Apply filters, interceptors, or simply stream the response live.
 
@@ -144,7 +144,7 @@ The testing strategy is heavily optimized for pipeline resilience, memory leaks,
   ```
 
 - **Long-Running Soak tests**
-  Used to identify memory leaks in the ring buffers under sustained pressure:
+  Long-running browser sessions that watch memory growth under sustained load:
   ```bash
   npm run test:soak
   ```
@@ -152,7 +152,7 @@ The testing strategy is heavily optimized for pipeline resilience, memory leaks,
 ## 9. Key Engineering Decisions
 
 - **Why Web Workers?** Parsing massive amounts of JSON payloads, evaluating regex filters, and running user-provided interceptor code natively blocks the main UI thread. Workers guarantee 60fps scrolling under extreme data pressure.
-- **Why SharedWorker connection pooling?** If a user opens 5 tabs viewing the same debugging endpoint, establishing 5 separate SSE connections drains server resources. `SharedWorker` multiplexes a singular connection transparently across all client instances.
+- **Why SharedWorker connection pooling?** If a user opens 5 tabs viewing the same debugging endpoint, establishing 5 separate SSE connections drains server resources. `SharedWorker` multiplexes a singular connection transparently across all client instances (with an in-page fallback where SharedWorker is unavailable).
 - **Why IndexedDB?** LocalStorage has strict storage limits (often ~5MB). IndexedDB supports storing thousands of historical SSE events locally across reloads.
 - **Why Virtualization?** Pushing 10,000 DOM nodes representing rows of raw log data crashes browsers. We use UI virtualization to render only the elements visibly occupying the viewport.
 
