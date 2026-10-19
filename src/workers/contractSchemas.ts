@@ -1,10 +1,7 @@
 import { z } from 'zod'
 
-// Wire contracts between the main thread and the workers.
-//
-// Hot-path messages (ADD_EVENTS, FILTERED_EVENTS) carry up to thousands of events; they are NOT
-// validated element by element at runtime — the schemas below are used by tests and tooling, and the
-// workers use the cheap `isFilterWorkerRequest` guard.
+// zod schemas for the worker wire contracts. Used by tests and tooling only: importing zod into a worker
+// costs ~100 kB, so the workers themselves use the plain guards in contracts.ts.
 
 export const EventMessageSchema = z.object({
     id: z.string(),
@@ -25,8 +22,6 @@ export const SSEWorkerRequestSchema = z.discriminatedUnion('type', [
     z.object({ type: z.literal('ping') })
 ])
 
-export type SSEWorkerRequest = z.infer<typeof SSEWorkerRequestSchema>
-
 export const SSEWorkerResponseSchema = z.discriminatedUnion('type', [
     z.object({ type: z.literal('connected') }),
     z.object({ type: z.literal('disconnected') }),
@@ -34,8 +29,6 @@ export const SSEWorkerResponseSchema = z.discriminatedUnion('type', [
     z.object({ type: z.literal('catchup'), events: z.array(z.object({ raw: z.string(), arrivalTime: z.number(), seq: z.number().optional() })) }),
     z.object({ type: z.literal('error'), message: z.string() })
 ])
-
-export type SSEWorkerResponse = z.infer<typeof SSEWorkerResponseSchema>
 
 // filter worker contracts
 
@@ -48,26 +41,10 @@ export const FilterWorkerRequestSchema = z.discriminatedUnion('type', [
     z.object({ type: z.literal('PING') })
 ])
 
-export type FilterWorkerRequest = z.infer<typeof FilterWorkerRequestSchema>
-
 export const FilterWorkerResponseSchema = z.discriminatedUnion('type', [
     z.object({ type: z.literal('FILTERED_EVENTS'), events: z.array(EventMessageSchema), execMs: z.number() }),
     z.object({ type: z.literal('READY') })
 ])
-
-export type FilterWorkerResponse = z.infer<typeof FilterWorkerResponseSchema>
-
-const REQUEST_TYPES = new Set(['QUERY_UPDATE', 'CUSTOM_FILTERS_UPDATE', 'ADD_EVENTS', 'CONFIG', 'CLEAR', 'PING'])
-
-/** O(1) structural guard for the worker hot path. */
-export function isFilterWorkerRequest(data: unknown): data is FilterWorkerRequest {
-    if (!data || typeof data !== 'object') return false
-    const m = data as { type?: unknown; events?: unknown; maxEvents?: unknown }
-    if (typeof m.type !== 'string' || !REQUEST_TYPES.has(m.type)) return false
-    if (m.type === 'ADD_EVENTS') return Array.isArray(m.events)
-    if (m.type === 'CONFIG') return typeof m.maxEvents === 'number' && m.maxEvents > 0
-    return true
-}
 
 export function createMessageEncoder<T>(schema: z.ZodType<T>) {
     return (data: T): T => {
@@ -92,3 +69,10 @@ export const decodeFilterWorkerRequest = createMessageDecoder(FilterWorkerReques
 
 export const encodeFilterWorkerResponse = createMessageEncoder(FilterWorkerResponseSchema)
 export const decodeFilterWorkerResponse = createMessageDecoder(FilterWorkerResponseSchema)
+
+// Compile-time drift check: the hand-written types in contracts.ts must accept everything the schemas describe.
+import type { FilterWorkerRequest, FilterWorkerResponse, SSEWorkerRequest, SSEWorkerResponse } from './contracts'
+export const _contractTypesMatchSchemas = (
+    a: z.infer<typeof FilterWorkerRequestSchema>, b: z.infer<typeof FilterWorkerResponseSchema>,
+    c: z.infer<typeof SSEWorkerRequestSchema>, d: z.infer<typeof SSEWorkerResponseSchema>,
+): [FilterWorkerRequest, FilterWorkerResponse, SSEWorkerRequest, SSEWorkerResponse] => [a, b, c, d]

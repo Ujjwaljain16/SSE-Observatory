@@ -2,9 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
     encodeFilterWorkerRequest,
     decodeFilterWorkerResponse,
-    FilterWorkerRequest,
-    FilterWorkerResponse
-} from '../contracts'
+} from '../contractSchemas'
+import type { FilterWorkerRequest, FilterWorkerResponse } from '../contracts'
 
 // Mute console logs during tests
 vi.spyOn(console, 'log').mockImplementation(() => { })
