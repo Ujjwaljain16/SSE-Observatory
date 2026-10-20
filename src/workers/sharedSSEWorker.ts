@@ -1,6 +1,7 @@
 // Owns the SSE connections for every open tab: ONE connection per (url + token), multiplexed to all tabs.
 //
 // tab → worker:  { type: 'connect', url, token?, useProxy? } | { type: 'disconnect' } | { type: 'ping' }
+// worker → tab:  { type: 'pong' }                      answer to ping
 // worker → tab:  { type: 'status', phase, attempt?, delayMs?, reason?, status? }
 //                { type: 'events', payloads }         payloads: IncomingSSE[] (each with a monotonic seq); everything parsed in
 //                                                     one go is sent as one message instead of thousands
@@ -172,6 +173,7 @@ setInterval(() => sweep(Date.now()), SWEEP_MS)
                 leave(port)
                 return
             case 'ping':
+                send(port, { type: 'pong' }) // lets the tab notice a dead worker: any message counts as a sign of life
                 return
         }
     }

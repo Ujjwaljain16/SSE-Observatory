@@ -1,60 +1,31 @@
 import { test, expect } from '@playwright/test'
 
 test.describe('Worker Death Spiral', () => {
-    test.skip('System self-heals if workers crash under pressure', async ({ page }) => {
-        test.setTimeout(30000)
+    test('a killed SharedWorker is noticed and the stream carries on in the page', async ({ page, browserName }) => {
+        test.skip(browserName !== 'chromium', 'uses the Chrome DevTools Protocol to kill the worker')
+        test.setTimeout(90000)
+
         await page.goto('/')
-
-        // Connect
-        await page.fill('input[placeholder*="https://api.example.com/sse"]', 'http://localhost:4000/api/stream?freq=100')
-        // Ensure clean state
-        const initialDisconnectBtn = page.locator('button[title="Disconnect"]').first()
-        if (await initialDisconnectBtn.isVisible()) {
-            await initialDisconnectBtn.click()
-            await expect(page.getByRole('button', { name: 'Connect', exact: true })).toBeVisible({ timeout: 5000 })
-        }
-
-        // Connect
-        await page.fill('input[placeholder*="https://api.example.com/sse"]', 'http://localhost:4000/api/stream?freq=100')
-        await page.getByRole('button', { name: 'Connect', exact: true }).click()
-        await expect(page.locator('text=Connected').first()).toBeVisible({ timeout: 10000 })
+        await page.getByTestId('url-input').fill('http://localhost:4000/api/stream?freq=20')
+        await page.getByTestId('connect-button').click()
         await expect(page.getByTestId('event-row').first()).toBeVisible({ timeout: 10000 })
 
-        await page.waitForTimeout(2000)
+        const count = async () => Number((await page.getByTestId('event-count').innerText()).match(/\d+/)![0])
+        await page.waitForTimeout(1500)
 
-        // Simulate worker pressure by injecting rapid message bursts via postMessage
-        // (No __WORKER_REGISTRY__ exists — we exercise the system by connecting to a higher freq stream)
-        // The real worker resilience test: connect at extreme throughput and verify no crash
-        await page.fill('input[placeholder*="https://api.example.com/sse"]', '')
+        // Kill the SharedWorker from outside, the way a crash or an extension would.
+        const cdp = await page.context().browser()!.newBrowserCDPSession()
+        const { targetInfos } = await cdp.send('Target.getTargets')
+        const worker = targetInfos.find((t) => t.type === 'shared_worker')
+        test.skip(!worker, 'this browser did not start a SharedWorker (in-page fallback is in use)')
+        await cdp.send('Target.closeTarget', { targetId: worker!.targetId })
 
-        // Attempt to terminate SharedWorker ports via the close event simulation
-        await page.evaluate(() => {
-            // Closing all MessagePorts held by the page forces the SharedWorker
-            // to clean up and handle zombie connections — the real death spiral scenario
-            const ports: MessagePort[] = (window as any).__sharedWorkerPorts__
-            if (ports && Array.isArray(ports)) {
-                ports.forEach((p: MessagePort) => p.close())
-            }
-        })
+        // Killing a SharedWorker raises no event; the tab notices through missing pongs and takes over the connection.
+        const atKill = await count()
+        await expect.poll(count, { timeout: 45000, intervals: [1000] }).toBeGreaterThan(atKill + 20)
 
-        // Give the system time to respond (crash, heal, or gracefully degrade)
-        await page.waitForTimeout(4000)
-
-        // The React app should NOT have thrown an uncaught error
-        // (no ErrorBoundary "Something went wrong" screen)
-        const isCrashed = await page.evaluate(() =>
-            document.body.innerText.includes('Something went wrong')
-        )
-        expect(isCrashed).toBe(false)
-
-        // Event Stream heading should still be in the DOM (UI alive)
-        await expect(page.locator('text=Event Stream')).toBeVisible({ timeout: 5000 })
-
-        // Disconnect cleanly if still connected
-        const disconnectBtn = page.locator('button[title="Disconnect"]').first()
-        if (await disconnectBtn.isVisible()) {
-            await disconnectBtn.click({ force: true })
-            await expect(page.getByRole('button', { name: 'Connect', exact: true })).toBeVisible({ timeout: 10000 })
-        }
+        // The UI never crashed
+        expect(await page.evaluate(() => document.body.innerText.includes('An error has occurred'))).toBe(false)
+        await expect(page.locator('text=Event Stream')).toBeVisible()
     })
 })

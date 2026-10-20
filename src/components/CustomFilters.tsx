@@ -229,6 +229,7 @@ export const CustomFilters = memo(function CustomFilters({
 
                                         <button
                                             onClick={() => onRemoveCustomFilter(filter.field)}
+                                            aria-label={`Remove filter ${filter.field}`}
                                             className={`
                                                 text-xs px-3 py-1.5 rounded-lg font-semibold transition-all duration-300
                                                 hover:scale-105

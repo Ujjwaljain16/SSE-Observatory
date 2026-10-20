@@ -18,7 +18,9 @@ import type { IncomingSSE } from '../utils/buildEvent'
 import { useEventIngest } from './useEventIngest'
 
 const WORKER_KEY = 'shared-sse-worker'
-const PING_INTERVAL_MS = 30_000
+const PING_INTERVAL_MS = 5_000
+/** A worker that has sent nothing (not even a pong) for this long is treated as dead. */
+const WORKER_SILENCE_MS = 15_000
 const MAX_EVENTS = 1000
 
 export type StreamPhase = 'idle' | 'connecting' | 'open' | 'reconnecting' | 'ended' | 'failed'
@@ -86,6 +88,8 @@ export function useSharedStream(
     const pushRef = useRef(ingest.push)
     pushRef.current = ingest.push
 
+    const lastHeardRef = useRef(0)
+
     const stopPing = () => { if (pingRef.current) { clearInterval(pingRef.current); pingRef.current = null } }
 
     const startDirect = useCallback((url: string, token: string | undefined, useProxy: boolean) => {
@@ -99,6 +103,14 @@ export function useSharedStream(
         client.start()
     }, [])
 
+    // The worker is gone (crashed, killed, failed to load): carry on with the same connection inside the page.
+    const fallbackToDirect = useCallback(() => {
+        workerRef.current = null
+        stopPing()
+        const params = lastParamsRef.current
+        if (params) startDirect(params.url, params.token, params.useProxy)
+    }, [startDirect])
+
     // --- SharedWorker lifecycle -------------------------------------------------------------
     useEffect(() => {
         if (typeof SharedWorker === 'undefined') return
@@ -110,6 +122,7 @@ export function useSharedStream(
             worker.port.start()
 
             worker.port.onmessage = (e: MessageEvent) => {
+                lastHeardRef.current = Date.now()
                 const msg = e.data
                 if (!msg || (msg.key !== undefined && msg.key !== keyRef.current)) return // stale message from a stream we left
                 if (msg.type === 'status') {
@@ -134,13 +147,8 @@ export function useSharedStream(
                 }
             }
 
-            // The script failed to load or crashed: carry on in the page with the same client.
-            worker.onerror = () => {
-                workerRef.current = null
-                stopPing()
-                const params = lastParamsRef.current
-                if (params) startDirect(params.url, params.token, params.useProxy)
-            }
+            // The script failed to load or crashed.
+            worker.onerror = fallbackToDirect
         } catch {
             workerRef.current = null
         }
@@ -153,7 +161,7 @@ export function useSharedStream(
             directRef.current = null
             workerRegistry.release(WORKER_KEY)
         }
-    }, [startDirect])
+    }, [startDirect, fallbackToDirect])
 
     // --- public API -------------------------------------------------------------------------
     const connect = useCallback((url: string, token?: string, clearHistory = true, useProxy = true) => {
@@ -174,11 +182,16 @@ export function useSharedStream(
         const worker = workerRef.current
         if (worker) {
             worker.port.postMessage({ type: 'connect', url: trimmed, token, useProxy })
-            pingRef.current = setInterval(() => worker.port.postMessage({ type: 'ping' }), PING_INTERVAL_MS)
+            lastHeardRef.current = Date.now()
+            pingRef.current = setInterval(() => {
+                // A killed SharedWorker raises no event: silence is the only sign, so the ping doubles as a watchdog.
+                if (Date.now() - lastHeardRef.current > WORKER_SILENCE_MS) fallbackToDirect()
+                else worker.port.postMessage({ type: 'ping' })
+            }, PING_INTERVAL_MS)
         } else {
             startDirect(trimmed, token, useProxy)
         }
-    }, [ingest.clear, startDirect]) // eslint-disable-line react-hooks/exhaustive-deps
+    }, [ingest.clear, startDirect, fallbackToDirect]) // eslint-disable-line react-hooks/exhaustive-deps
 
     const disconnect = useCallback(() => {
         stopPing()

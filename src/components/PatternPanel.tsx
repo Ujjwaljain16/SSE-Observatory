@@ -119,6 +119,8 @@ export function PatternPanel({
                                     <div className="flex items-center gap-1">
                                         <button
                                             onClick={() => setExpandedAlert(expandedAlert === alert.id ? null : alert.id)}
+                                            aria-label={expandedAlert === alert.id ? 'Hide matching events' : 'Show matching events'}
+                                            aria-expanded={expandedAlert === alert.id}
                                             className={`p-1 rounded transition-colors ${isDark ? 'hover:bg-slate-700' : 'hover:bg-slate-200'}`}
                                         >
                                             {expandedAlert === alert.id
@@ -128,6 +130,7 @@ export function PatternPanel({
                                         </button>
                                         <button
                                             onClick={() => onDismissAlert(alert.id)}
+                                            aria-label="Dismiss alert"
                                             className={`p-1 rounded transition-colors ${isDark ? 'hover:bg-slate-700' : 'hover:bg-slate-200'}`}
                                         >
                                             <X className="w-3.5 h-3.5 text-slate-400" />
@@ -289,7 +292,13 @@ export function PatternPanel({
                             )}
 
 
-                            <button onClick={() => onToggleRule(rule.id)} className="shrink-0 transition-colors">
+                            <button
+                                role="switch"
+                                aria-checked={rule.enabled}
+                                aria-label={`${rule.name} enabled`}
+                                onClick={() => onToggleRule(rule.id)}
+                                className="shrink-0 transition-colors"
+                            >
                                 {rule.enabled
                                     ? <ToggleRight className="w-5 h-5 text-indigo-400" />
                                     : <ToggleLeft className={`w-5 h-5 ${muted}`} />
@@ -300,6 +309,7 @@ export function PatternPanel({
                             {!rule.id.startsWith('builtin-') && (
                                 <button
                                     onClick={() => onRemoveRule(rule.id)}
+                                    aria-label={`Remove rule ${rule.name}`}
                                     className={`shrink-0 p-1 rounded transition-colors ${isDark ? 'hover:bg-slate-600 text-slate-400' : 'hover:bg-slate-200 text-slate-500'
                                         }`}
                                 >
