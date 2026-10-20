@@ -12,7 +12,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { EventMessage } from '../types'
 import { workerRegistry } from '../utils/workerRegistry'
-import { SSEClient, type SSEPhase, type SSEPhaseInfo } from '../utils/sseClient'
+import type { SSEPhase, SSEPhaseInfo } from '../core/sse/sseClient'
+import { createObservedStream, type ObservedStream } from '../core/sse/observedStream'
 import { buildSSERequest } from '../utils/sseProxyUrl'
 import type { IncomingSSE } from '../utils/buildEvent'
 import { useEventIngest } from './useEventIngest'
@@ -80,7 +81,7 @@ export function useSharedStream(
     const [status, setStatus] = useState<StreamStatus>(IDLE)
 
     const workerRef = useRef<SharedWorker | null>(null)
-    const directRef = useRef<SSEClient | null>(null)
+    const directRef = useRef<ObservedStream | null>(null)
     const pingRef = useRef<ReturnType<typeof setInterval> | null>(null)
     const keyRef = useRef('')
     const lastSeqRef = useRef(0)
@@ -94,13 +95,15 @@ export function useSharedStream(
 
     const startDirect = useCallback((url: string, token: string | undefined, useProxy: boolean) => {
         directRef.current?.stop()
-        const client = new SSEClient({
+        const stream = createObservedStream({
             request: () => buildSSERequest(url, token, useProxy),
-            onMessage: (m) => pushRef.current({ event: m.event, data: m.data, id: m.id, raw: m.raw, arrivalTime: Date.now() }),
-            onPhase: (phase, info) => setStatus(describeStatus(phase, info)),
+            sinks: {
+                onMessage: (message) => pushRef.current(message),
+                onPhase: (phase, info) => setStatus(describeStatus(phase, info)),
+            },
         })
-        directRef.current = client
-        client.start()
+        directRef.current = stream
+        stream.start()
     }, [])
 
     // The worker is gone (crashed, killed, failed to load): carry on with the same connection inside the page.
