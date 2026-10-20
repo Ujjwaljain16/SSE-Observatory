@@ -12,7 +12,8 @@
 
 /// <reference lib="webworker" />
 
-import { SSEClient, type SSEClientOptions, type SSEPhase, type SSEPhaseInfo } from '../utils/sseClient'
+import { SSEClient, type SSEClientOptions, type SSEPhase, type SSEPhaseInfo } from '../core/sse/sseClient'
+import { createObservedStream, type ObservedStream } from '../core/sse/observedStream'
 import { buildSSERequest } from '../utils/sseProxyUrl'
 import type { IncomingSSE } from '../utils/buildEvent'
 
@@ -25,7 +26,7 @@ interface StatusMessage { type: 'status'; key: string; phase: SSEPhase; attempt?
 
 interface Connection {
     key: string
-    client: SSEClient
+    client: ObservedStream
     ports: Set<MessagePort>
     buffer: IncomingSSE[]
     /** Events parsed but not yet posted: they are sent together once the current parse step finishes. */
@@ -79,24 +80,27 @@ function openConnection(key: string, url: string, token: string | undefined, use
         flushQueued: false,
         status: { type: 'status', key, phase: 'connecting', attempt: 0 },
         idleTimer: null,
-        client: undefined as unknown as SSEClient,
+        client: undefined as unknown as ObservedStream,
     }
-    conn.client = clientFactory({
+    conn.client = createObservedStream({
         request: () => buildSSERequest(url, token, useProxy),
-        onMessage: (m) => {
-            const payload: IncomingSSE = { event: m.event, data: m.data, id: m.id, raw: m.raw, arrivalTime: Date.now(), seq: ++seq }
-            conn.buffer.push(payload)
-            if (conn.buffer.length > MAX_BUFFER) conn.buffer.shift()
-            conn.pending.push(payload)
-            if (!conn.flushQueued) {
-                conn.flushQueued = true
-                queueMicrotask(() => flushPending(conn))
-            }
-        },
-        onPhase: (phase: SSEPhase, info: SSEPhaseInfo) => {
-            flushPending(conn) // events that came before the status change must arrive before it
-            conn.status = { type: 'status', key, phase, ...info }
-            broadcast(conn, conn.status)
+        nextSeq: () => ++seq, // numbered across every connection this worker holds
+        clientFactory: (options) => clientFactory(options), // read at call time: tests swap it
+        sinks: {
+            onMessage: (payload) => {
+                conn.buffer.push(payload)
+                if (conn.buffer.length > MAX_BUFFER) conn.buffer.shift()
+                conn.pending.push(payload)
+                if (!conn.flushQueued) {
+                    conn.flushQueued = true
+                    queueMicrotask(() => flushPending(conn))
+                }
+            },
+            onPhase: (phase: SSEPhase, info: SSEPhaseInfo) => {
+                flushPending(conn) // events that came before the status change must arrive before it
+                conn.status = { type: 'status', key, phase, ...info }
+                broadcast(conn, conn.status)
+            },
         },
     })
     connections.set(key, conn)

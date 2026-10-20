@@ -12,7 +12,7 @@ vi.mock('../../utils/workerRegistry', () => ({
 
 // Stand-in for the in-page fallback client
 const clients: Array<{ opts: any; started: number; stopped: number }> = []
-vi.mock('../../utils/sseClient', () => ({
+vi.mock('../../core/sse/sseClient', () => ({
     SSEClient: class {
         started = 0
         stopped = 0
