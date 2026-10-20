@@ -44,13 +44,15 @@ function PerfOverlayBody({
 
     if (!visible) {
         return (
-            <div
-                className="fixed bottom-20 right-4 z-50 text-xs font-mono px-2 py-1 rounded opacity-30 hover:opacity-80 cursor-pointer select-none transition-opacity bg-black text-white"
+            <button
+                type="button"
+                className="fixed bottom-20 right-4 z-50 text-xs font-mono px-2 py-1 rounded cursor-pointer select-none transition-colors bg-black/70 hover:bg-black/90 text-white"
                 onClick={() => setVisible(true)}
+                aria-label="Perf: show the performance overlay"
                 title="Shift+P to toggle perf overlay"
             >
                 ⚡ Perf
-            </div>
+            </button>
         )
     }
 

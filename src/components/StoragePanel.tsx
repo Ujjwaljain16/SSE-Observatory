@@ -59,14 +59,14 @@ export const StoragePanel = ({
 
             <div className="grid grid-cols-2 gap-3 mb-3">
                 <div className={`p-2 rounded-lg text-center ${isDark ? 'bg-slate-700/60' : 'bg-white border border-slate-200'}`}>
-                    <div className={`text-xs mb-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>RAM Buffer</div>
+                    <div className={`text-xs mb-0.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>RAM Buffer</div>
                     <div className={`text-lg font-bold font-mono ${isDark ? 'text-white' : 'text-slate-900'}`}>
                         {ramBufferCount.toLocaleString()}
-                        <span className={`text-xs font-normal ml-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>/ {maxRamBuffer.toLocaleString()}</span>
+                        <span className={`text-xs font-normal ml-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>/ {maxRamBuffer.toLocaleString()}</span>
                     </div>
                 </div>
                 <div className={`p-2 rounded-lg text-center ${isDark ? 'bg-slate-700/60' : 'bg-white border border-slate-200'}`}>
-                    <div className={`text-xs mb-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Stored (IndexedDB)</div>
+                    <div className={`text-xs mb-0.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>Stored (IndexedDB)</div>
                     <div className={`text-lg font-bold font-mono ${isDark ? 'text-indigo-300' : 'text-indigo-700'}`}>
                         {idbAvailable ? totalStoredCount.toLocaleString() : '—'}
                     </div>
@@ -78,7 +78,7 @@ export const StoragePanel = ({
                     <div className={`h-1.5 w-full rounded-full ${isDark ? 'bg-slate-700' : 'bg-slate-200'}`}>
                         <div className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all duration-500" style={{ width: `${storageFillPct}%` }} />
                     </div>
-                    <div className={`text-xs mt-0.5 text-right ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                    <div className={`text-xs mt-0.5 text-right ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                         {storageFillPct.toFixed(1)}% of the {MAX_STORED_EVENTS.toLocaleString()}-event limit (oldest are removed first)
                     </div>
                 </div>

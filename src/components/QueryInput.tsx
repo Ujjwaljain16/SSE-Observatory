@@ -43,7 +43,7 @@ export const QueryInput = ({ theme, query, onQueryChange, error }: QueryInputPro
                         <h3 className={`text-base font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
                             Query Engine
                         </h3>
-                        <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                        <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                             Advanced filtering with DSL syntax
                         </p>
                     </div>
@@ -104,7 +104,7 @@ export const QueryInput = ({ theme, query, onQueryChange, error }: QueryInputPro
                                 `}>
                                     {ex.query}
                                 </code>
-                                <span className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                                <span className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                                     {ex.label}
                                 </span>
                             </button>
@@ -163,7 +163,7 @@ export const QueryInput = ({ theme, query, onQueryChange, error }: QueryInputPro
 
             <div className={`
                 mt-3 flex flex-wrap gap-2 items-center text-xs
-                ${isDark ? 'text-slate-500' : 'text-slate-400'}
+                ${isDark ? 'text-slate-400' : 'text-slate-600'}
             `}>
                 <span>Operators:</span>
                 {['==', '!=', '>', '<', '>=', '<=', 'AND', 'OR', 'contains', 'matches'].map(op => (
@@ -171,7 +171,7 @@ export const QueryInput = ({ theme, query, onQueryChange, error }: QueryInputPro
                         key={op}
                         className={`
                             px-1.5 py-0.5 rounded font-mono
-                            ${isDark ? 'bg-slate-800/70 text-slate-400' : 'bg-slate-100 text-slate-500'}
+                            ${isDark ? 'bg-slate-800/70 text-slate-300' : 'bg-slate-100 text-slate-700'}
                         `}
                     >
                         {op}

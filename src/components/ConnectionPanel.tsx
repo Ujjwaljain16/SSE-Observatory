@@ -150,7 +150,7 @@ export const ConnectionPanel = ({
                             flex-1 lg:flex-none lg:w-32 px-4 py-3 rounded-xl font-bold text-sm transition-all duration-300
                             flex items-center justify-center gap-2 hover:scale-[1.02]
                             ${(!busy && !url.trim())
-                                ? isDark ? 'bg-slate-700 text-slate-400 opacity-50 cursor-not-allowed' : 'bg-slate-200 text-slate-500 opacity-50 cursor-not-allowed'
+                                ? isDark ? 'bg-slate-700 text-slate-400 opacity-50 cursor-not-allowed' : 'bg-slate-200 text-slate-600 opacity-50 cursor-not-allowed'
                                 : busy
                                     ? 'bg-gradient-to-r from-red-500 to-rose-500 text-white shadow-lg shadow-red-500/30'
                                     : 'bg-gradient-to-r from-sky-600 via-blue-600 to-cyan-600 text-white shadow-lg shadow-blue-500/30'
@@ -255,7 +255,7 @@ export const ConnectionPanel = ({
                         Use Server Proxy
                         {useProxy && <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-400 font-mono">ENCRYPTED</span>}
                     </span>
-                    <span className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                    <span className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                         {useProxy ? 'Routes through production proxy (bypasses CORS)' : 'Direct connection (requires CORS or localhost)'}
                     </span>
                 </div>
@@ -275,7 +275,8 @@ export const ConnectionPanel = ({
                             <div className={`w-2.5 h-2.5 rounded-full ${connected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse' : (isLoading || reconnecting) ? 'bg-amber-400 animate-pulse' : 'bg-slate-400'}`} />
                             <span
                                 data-testid="connection-status"
-                                className={`text-sm font-semibold ${connected ? 'text-emerald-600 dark:text-emerald-400' : isDark ? 'text-slate-400' : 'text-slate-500'}`}
+                                role="status" aria-live="polite"
+                                className={`text-sm font-semibold ${connected ? 'text-emerald-600 dark:text-emerald-400' : isDark ? 'text-slate-400' : 'text-slate-600'}`}
                             >
                                 {connected ? (
                                     <span>Connected to <span className="text-slate-700 dark:text-slate-300 font-mono ml-1">{(() => { try { return new URL(url).hostname } catch { return 'Endpoint' } })()}</span></span>
@@ -287,11 +288,11 @@ export const ConnectionPanel = ({
                     {connected && !error && (
                         <>
                             <div className={`hidden sm:block w-px h-4 ${isDark ? 'bg-slate-700' : 'bg-slate-300'}`} />
-                            <span className={`text-sm flex items-center gap-1.5 font-mono ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                            <span className={`text-sm flex items-center gap-1.5 font-mono ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                                 <Clock className="w-4 h-4" /> {formatTime(connectionTime)}
                             </span>
                             <div className={`hidden sm:block w-px h-4 ${isDark ? 'bg-slate-700' : 'bg-slate-300'}`} />
-                            <span className={`text-sm flex items-center gap-1.5 font-mono ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                            <span className={`text-sm flex items-center gap-1.5 font-mono ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                                 <Plug className="w-4 h-4" /> {eventsLength} events
                             </span>
                         </>

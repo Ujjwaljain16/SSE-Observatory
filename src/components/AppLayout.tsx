@@ -118,7 +118,7 @@ export function AppLayout() {
                     <div className={`flex max-w-full overflow-x-auto p-1 rounded-xl transition-all ${theme === 'dark' ? 'bg-slate-800' : 'bg-slate-200'}`}>
                         {([
                             { key: 'monitor', label: 'Monitor Mode', Icon: Activity, color: 'bg-blue-600' },
-                            { key: 'multistream', label: 'Multi-Stream', Icon: Layers, color: 'bg-emerald-600' },
+                            { key: 'multistream', label: 'Multi-Stream', Icon: Layers, color: 'bg-emerald-700' },
                             { key: 'mock', label: 'Mock Server', Icon: Server, color: 'bg-purple-600' },
                         ] as const).map(({ key, label, Icon, color }) => (
                             <button
@@ -129,7 +129,7 @@ export function AppLayout() {
                                 }}
                                 className={`px-2.5 sm:px-6 py-2 rounded-lg font-bold text-xs sm:text-sm whitespace-nowrap transition-all flex items-center gap-2 ${appMode === key
                                     ? `${color} text-white shadow-md`
-                                    : theme === 'dark' ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-800'
+                                    : theme === 'dark' ? 'text-slate-300 hover:text-white' : 'text-slate-700 hover:text-slate-900'
                                     }`}
                             >
                                 <Icon className="hidden sm:block w-4 h-4" /> {label}
@@ -263,7 +263,7 @@ export function AppLayout() {
                                             Icon: AlertTriangle,
                                             active: showPatterns,
                                             onToggle: () => setShowPatterns(!showPatterns),
-                                            activeColor: activePatternAlerts.length > 0 ? 'bg-amber-500' : 'bg-amber-600',
+                                            activeColor: activePatternAlerts.length > 0 ? 'bg-amber-500' : 'bg-amber-700',
                                         },
                                     ] as const).map(({ key, label, Icon, active, onToggle, activeColor }) => (
                                         <button
@@ -296,7 +296,7 @@ export function AppLayout() {
                                         className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${interceptors.some(i => i.enabled && i.compiledFn)
                                             ? 'bg-amber-500 text-white'
                                             : showInterceptors
-                                                ? 'bg-amber-600 text-white'
+                                                ? 'bg-amber-700 text-white'
                                                 : theme === 'dark'
                                                     ? 'bg-slate-700 text-slate-300 hover:bg-slate-600'
                                                     : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
@@ -315,15 +315,15 @@ export function AppLayout() {
 
                                 <div className="flex flex-wrap gap-2">
                                     {([
-                                        { fmt: 'json' as const, label: 'JSON', cls: 'bg-emerald-600 hover:bg-emerald-700' },
-                                        { fmt: 'csv' as const, label: 'CSV', cls: 'bg-amber-600 hover:bg-amber-700' },
+                                        { fmt: 'json' as const, label: 'JSON', cls: 'bg-emerald-700 hover:bg-emerald-800' },
+                                        { fmt: 'csv' as const, label: 'CSV', cls: 'bg-amber-700 hover:bg-amber-800' },
                                         { fmt: 'record' as const, label: 'Record', cls: 'bg-purple-600 hover:bg-purple-700', title: 'Export as a playable Mock Server recording' },
                                     ]).map(({ fmt, label, cls, title }) => (
                                         <button
                                             key={fmt}
                                             onClick={() => exportEvents(filteredEvents, { format: fmt })}
                                             disabled={filteredEvents.length === 0}
-                                            aria-label={title} title={title}
+                                            aria-label={title ? `${label}: ${title}` : undefined} title={title}
                                             className={`px-4 py-2 ${cls} disabled:bg-slate-600 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors text-sm flex items-center gap-2`}
                                         >
                                             {fmt === 'record'
