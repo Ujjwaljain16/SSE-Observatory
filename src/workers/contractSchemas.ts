@@ -27,6 +27,7 @@ export const SSEWorkerResponseSchema = z.discriminatedUnion('type', [
     z.object({ type: z.literal('disconnected') }),
     z.object({ type: z.literal('event'), payload: z.object({ raw: z.string(), arrivalTime: z.number(), seq: z.number().optional() }) }),
     z.object({ type: z.literal('catchup'), events: z.array(z.object({ raw: z.string(), arrivalTime: z.number(), seq: z.number().optional() })) }),
+    z.object({ type: z.literal('observations'), key: z.string(), captureId: z.string(), batch: z.array(z.any()), replace: z.boolean().optional() }),
     z.object({ type: z.literal('error'), message: z.string() })
 ])
 

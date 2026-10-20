@@ -6,6 +6,7 @@
 //                { type: 'events', payloads }         payloads: IncomingSSE[] (each with a monotonic seq); everything parsed in
 //                                                     one go is sent as one message instead of thousands
 //                { type: 'catchup', events }          last events of a connection a tab joined late
+//                { type: 'observations', key, captureId, batch, replace? }   recorded observations, batched (~10 Hz)
 //
 // Connection lifecycle (reconnect, backoff, Last-Event-ID resume) lives in SSEClient; this file only
 // does the multi-tab bookkeeping.
@@ -20,6 +21,7 @@ import type { IncomingSSE } from '../utils/buildEvent'
 const MAX_BUFFER = 50                // recent events kept so a late-joining tab can catch up
 const SWEEP_MS = 15_000              // how often silent tabs are looked for
 const PORT_TIMEOUT_MS = 75_000       // a tab that stayed silent this long (ping interval is 30 s) is considered gone
+const JOIN_HISTORY_RECORDS = 5_000     // newest records sent to a tab that joins late
 const IDLE_GRACE_MS = 5_000          // keep a connection this long after its last tab left (quick reloads)
 
 interface StatusMessage { type: 'status'; key: string; phase: SSEPhase; attempt?: number; delayMs?: number; reason?: string; status?: number }
@@ -86,6 +88,10 @@ function openConnection(key: string, url: string, token: string | undefined, use
         request: () => buildSSERequest(url, token, useProxy),
         nextSeq: () => ++seq, // numbered across every connection this worker holds
         clientFactory: (options) => clientFactory(options), // read at call time: tests swap it
+        recording: {
+            // Records go to every tab in batches; the page runs the analysis, so the worker only records and forwards.
+            onObservations: (batch) => broadcast(conn, { type: 'observations', key, captureId: conn.client.captureId, batch }),
+        },
         sinks: {
             onMessage: (payload) => {
                 conn.buffer.push(payload)
@@ -145,6 +151,9 @@ function join(port: MessagePort, url: string, token: string | undefined, useProx
 
     send(port, conn.status)
     if (conn.buffer.length > 0) send(port, { type: 'catchup', key, events: conn.buffer })
+    // A tab that joins late gets the retained history, so its analysis starts from everything recorded so far.
+    const history = conn.client.store?.snapshot().slice(-JOIN_HISTORY_RECORDS)
+    if (history && history.length > 0) send(port, { type: 'observations', key, captureId: conn.client.captureId, batch: history, replace: true })
 }
 
 function sweep(now: number) {
