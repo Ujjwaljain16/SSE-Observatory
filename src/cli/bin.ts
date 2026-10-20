@@ -1,4 +1,4 @@
-import { readFile, writeFile } from 'node:fs/promises'
+import { readdir, readFile, writeFile } from 'node:fs/promises'
 import { main } from './index'
 
 // Bundled to dist-cli/bin/sse-doctor.mjs (the build adds the shebang). Excluded from coverage: it only wires process.*.
@@ -10,6 +10,7 @@ main(process.argv.slice(2), {
     err: (text) => { process.stderr.write(text) },
     readText: (path) => readFile(path, 'utf8'),
     writeText: (path, text) => writeFile(path, text, 'utf8'),
+    listDir: (dir) => readdir(dir),
     env: process.env,
     signal: controller.signal,
 }).then(

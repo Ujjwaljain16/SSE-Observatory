@@ -123,3 +123,15 @@ describe('stream text', () => {
         expect(framesOf(capture).map((f) => [f.id, f.data])).toEqual([['1', 'h€llo'], ['2', 'two']])
     })
 })
+
+describe('files that went through an editor, git on Windows or a PowerShell redirect', () => {
+    it('read the same with CRLF line endings and a byte order mark, and the integrity hash still matches', () => {
+        const text = serializeCapture(sample())
+        for (const variant of [text.replace(/\n/g, '\r\n'), '\ufeff' + text, '\ufeff' + text.replace(/\n/g, '\r\n')]) {
+            const parsed = parseCapture(variant)
+            expect(parsed.integrity).toBe('ok')
+            expect(parsed.warnings).toEqual([])
+            expect(parsed.capture.records).toEqual(sample().records)
+        }
+    })
+})

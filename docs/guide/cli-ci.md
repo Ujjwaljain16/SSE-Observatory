@@ -33,6 +33,8 @@ A scenario is a JSON file that says what a stream must do, and `sse-doctor test`
 | `url: "fixture://f06-skips?scale=0.05"` | a built-in faulty or healthy stream, started in-process (`sse-doctor fixtures list`) |
 | `replay: { "capture": "file.sse-capture", "honor_last_event_id": true, "test_aids": { "skip_ids": ["6"], "drop_after": 3 } }` | a saved capture served from this process, so the scenario needs no live server |
 
+A `replay` capture path is relative to the folder you run the command from, not to the scenario file. On shells that do not expand wildcards (PowerShell), `sse-doctor test scenarios/*.json` expands a `*` in the last path segment itself.
+
 Secrets enter only through `${ENV:NAME}`. A literal token, key or password in a scenario is rejected (exit 2), and every value taken from the environment is scrubbed from all output.
 
 ## Steps

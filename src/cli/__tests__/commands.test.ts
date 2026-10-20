@@ -206,6 +206,28 @@ describe('probe', () => {
         expect(h.all()).not.toContain('canary-fail-secret-aa19')
     })
 
+    it('an interrupted probe still saves the capture and reports what it saw, and exits 130', async () => {
+        const controller = new AbortController()
+        const h = host({}, {})
+        h.io.signal = controller.signal
+        const running = main(['probe', fixtures.urlFor('h01', { scale: 0.05, n: 500 }), '--duration', '30', '--out', 'cut.sse-capture'], h.io)
+        await new Promise((r) => setTimeout(r, 700))
+        controller.abort()
+        expect(await running).toBe(EXIT.interrupted)
+        expect(h.written['cut.sse-capture']).toContain('"format":"sse-capture"')
+        expect(h.out).toContain('sse-doctor probe')
+    })
+
+    it('curl takes the quoting from --shell', async () => {
+        const posix = host()
+        await main(['curl', 'https://api.test/s?token=abc12345', '--shell', 'posix'], posix.io)
+        const ps = host()
+        await main(['curl', 'https://api.test/s?token=abc12345', '--shell', 'powershell'], ps.io)
+        expect(posix.out).toContain('${STREAM_TOKEN}')
+        expect(ps.out).toContain('$env:STREAM_TOKEN')
+        expect(await main(['curl', 'https://api.test/s', '--shell', 'fish'], host().io)).toBe(EXIT.usage)
+    })
+
     it('stops at --max-events', async () => {
         const h = host()
         await main(['probe', fixtures.urlFor('h01', { scale: 0.02, n: 40 }), '--max-events', '4', '--duration', '10'], h.io)

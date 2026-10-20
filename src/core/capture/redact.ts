@@ -144,13 +144,14 @@ class Redactor {
             cursor = s.end
         }
         out += text.slice(cursor)
+        // Chunk boundaries are asked for in increasing order, so one cursor walks the replacements once. Searching from the
+        // start for every boundary made redaction quadratic in the number of chunks times the number of secrets.
+        let next = 0
+        let shift = 0
         const map = (offset: number): number => {
-            let shift = 0
-            for (const r of replacements) {
-                if (offset >= r.end) shift = r.shift
-                else if (offset > r.start) return r.newEnd // inside a replaced value: cut after the placeholder
-                else break
-            }
+            while (next < replacements.length && offset >= replacements[next]!.end) { shift = replacements[next]!.shift; next++ }
+            const r = replacements[next]
+            if (r && offset > r.start) return r.newEnd // inside a replaced value: cut after the placeholder
             return offset + shift
         }
         return { out, map }

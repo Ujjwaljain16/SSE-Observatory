@@ -6,6 +6,8 @@ export interface CliIo {
     /** Read a file as UTF-8 text. */
     readText?(path: string): Promise<string>
     writeText?(path: string, text: string): Promise<void>
+    /** File names in a directory, for expanding `dir/*.json` where the shell does not (Windows). */
+    listDir?(dir: string): Promise<string[]>
     /** Environment variables, by name. Secrets are passed this way, never on the command line. */
     env?: Record<string, string | undefined>
     /** Aborted when the user interrupts (Ctrl+C). */

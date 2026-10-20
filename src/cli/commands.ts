@@ -136,7 +136,9 @@ export async function curlCommand(io: CliIo, args: ParsedArgs): Promise<number> 
         const stub: Capture = { header: newHeader({ kind: 'local-full', source: { kind: 'cli' }, request: { url: redactUrl(target), method: 'GET', headers: {} } }), records: [] }
         safe = redactCapture(stub).capture
     } else safe = shareable((await loadCapture(io, target)).capture, args)
-    io.out(toCurl(safe, { shell: io.env?.['ComSpec'] ? 'powershell' : 'posix' }) + '\n')
+    const shell = stringFlag(args, 'shell') ?? (io.env?.['ComSpec'] && !io.env['SHELL'] ? 'powershell' : 'posix')
+    if (shell !== 'posix' && shell !== 'powershell') throw new CliError('--shell must be posix or powershell.', EXIT.usage)
+    io.out(toCurl(safe, { shell }) + '\n')
     return EXIT.ok
 }
 
@@ -229,7 +231,6 @@ export async function probeCommand(io: CliIo, args: ParsedArgs, secrets: SecretR
     io.signal?.removeEventListener('abort', onAbort)
     stream.flushObservations()
     stream.stop()
-    if (reason === 'interrupted') return EXIT.interrupted
 
     const endT = records.at(-1)?.t ?? 0
     const capture = localCapture(records, {
@@ -247,6 +248,8 @@ export async function probeCommand(io: CliIo, args: ParsedArgs, secrets: SecretR
     const a = analysisOf(capture, profile)
     const notes = [`Observed ${events} event${events === 1 ? '' : 's'} for ${(endT / 1000).toFixed(1)} s (stopped: ${reason}).`, ...(out ? [`Capture written to ${out}${args.flags['no-redact'] === true ? ' (NOT redacted)' : ' (redacted)'}.`] : [])]
     const code = show(io, { command: 'probe', subject: redactUrl(target), findings: a.findings, coverage: a.coverage, notes }, args)
+    // An interrupted probe still reports what it saw and saves the capture; only the exit code says it was cut short.
+    if (reason === 'interrupted') return EXIT.interrupted
     if (reason === 'failed' && code === EXIT.ok && a.findings.length === 0) return EXIT.couldNotRun
     return code
 }

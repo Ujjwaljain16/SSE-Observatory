@@ -175,7 +175,7 @@ export class SSEClient {
                     }
                     // "ttfbMs" is the time until the response headers arrived (the usual meaning of time to first byte).
                     this.observe({ kind: 'response', status: res.status, contentType: res.headers.get('content-type') ?? '', redirected: Boolean(res.redirected), headers: kept, ttfbMs: Math.round(clock.now() - requestedAt) })
-                    if (res.status !== 200 && res.status !== 204) {
+                    if (res.status !== 200) { // 204 included: the server told the client to stop, and that is what a debugger must be able to say
                         this.observe({ kind: 'violation', code: 'HTTP_STATUS_NOT_200', severity: violationSeverity('HTTP_STATUS_NOT_200'), detail: `The response status was ${res.status}.` })
                     }
                 }

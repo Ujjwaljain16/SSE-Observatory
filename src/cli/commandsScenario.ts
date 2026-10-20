@@ -44,10 +44,29 @@ function renderJunit(runs: ScenarioRun[]): string {
     return `<?xml version="1.0" encoding="UTF-8"?>\n<testsuites>\n${suites.join('\n')}\n</testsuites>\n`
 }
 
+/** Expands a `*` in the last path segment (`scenarios/*.json`) for shells that leave it alone. Anything else is taken as it is. */
+async function expandFiles(io: CliIo, patterns: string[]): Promise<string[]> {
+    const out: string[] = []
+    for (const pattern of patterns) {
+        const slash = Math.max(pattern.lastIndexOf('/'), pattern.lastIndexOf('\\'))
+        const dir = slash >= 0 ? pattern.slice(0, slash) : '.'
+        const name = slash >= 0 ? pattern.slice(slash + 1) : pattern
+        if (!name.includes('*') || !io.listDir) { out.push(pattern); continue }
+        const re = new RegExp(`^${name.split('*').map((part) => part.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*')}$`)
+        let names: string[]
+        try { names = await io.listDir(dir) } catch { throw new CliError(`Cannot read the folder "${dir}".`, EXIT.couldNotRun) }
+        const matches = names.filter((n) => re.test(n)).sort()
+        if (matches.length === 0) throw new CliError(`No file matches "${pattern}".`, EXIT.usage)
+        out.push(...matches.map((n) => (slash >= 0 ? `${dir}/${n}` : n)))
+    }
+    return out
+}
+
 export async function testCommand(io: CliIo, args: ParsedArgs, secrets: SecretRegistry): Promise<number> {
-    const files = args.positionals.slice(1)
-    if (files.length === 0) throw new CliError('Usage: sse-doctor test <scenario.json>... [--format human|json|md|junit] [--output file] [--allow-inconclusive]', EXIT.usage)
+    const patterns = args.positionals.slice(1)
+    if (patterns.length === 0) throw new CliError('Usage: sse-doctor test <scenario.json>... [--format human|json|md|junit] [--output file] [--allow-inconclusive]', EXIT.usage)
     const fs = requireFiles(io)
+    const files = await expandFiles(io, patterns)
     const runs: ScenarioRun[] = []
     for (const file of files) {
         let text: string
