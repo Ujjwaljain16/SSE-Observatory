@@ -132,6 +132,16 @@ describe('useSharedStream (SharedWorker transport)', () => {
         await waitFor(() => expect(data(result)).toEqual(['b', 'a']))
     })
 
+    it('takes a batched events message in order, skipping sequence numbers it already has', async () => {
+        const { result } = setup()
+        const p = (n: number) => ({ event: 'message', data: `e${n}`, id: '', raw: '', arrivalTime: n, seq: n })
+        sse('e1', 1)
+        deliver({ type: 'events', key: KEY, payloads: [p(1), p(2), p(3)] }) // 1 repeats what already arrived
+        deliver({ type: 'events', key: 'other::', payloads: [p(99)] })      // a stream this tab left
+        deliver({ type: 'events', key: KEY, payloads: [p(3), p(4)] })
+        await waitFor(() => expect(data(result)).toEqual(['e4', 'e3', 'e2', 'e1']))
+    })
+
     it('replays catch-up events in chronological order, once', async () => {
         const { result } = setup()
         const mk = (n: number) => ({ event: 'message', data: `c${n}`, id: '', raw: '', arrivalTime: n, seq: n })

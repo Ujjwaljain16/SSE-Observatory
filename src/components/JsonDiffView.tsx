@@ -2,8 +2,8 @@ import diff from 'microdiff'
 import type { Theme } from '../types'
 
 interface JsonDiffViewProps {
-    oldData: any;
-    newData: any;
+    oldData: unknown
+    newData: unknown
     theme: Theme;
 }
 
@@ -11,8 +11,9 @@ export const JsonDiffView = ({ oldData, newData, theme }: JsonDiffViewProps) => 
     const isDark = theme === 'dark'
 
     // Safety check just in case
-    const safeOld = typeof oldData === 'object' && oldData !== null ? oldData : {}
-    const safeNew = typeof newData === 'object' && newData !== null ? newData : {}
+    const asObject = (v: unknown): object => (typeof v === 'object' && v !== null ? v : {})
+    const safeOld = asObject(oldData)
+    const safeNew = asObject(newData)
 
     // Using microdiff
     const differences = diff(safeOld, safeNew)
@@ -47,7 +48,7 @@ export const JsonDiffView = ({ oldData, newData, theme }: JsonDiffViewProps) => 
                         return (
                             <div key={i} className={`flex gap-3 p-2 rounded-lg ${isDark ? 'bg-rose-500/10 text-rose-400' : 'bg-rose-50 text-rose-700'}`}>
                                 <span className="opacity-50 select-none w-4 font-bold">-</span>
-                                <span><span className="font-semibold">{pathStr}:</span> <del className="opacity-70">{JSON.stringify((d as any).oldValue)}</del></span>
+                                <span><span className="font-semibold">{pathStr}:</span> <del className="opacity-70">{JSON.stringify(d.oldValue)}</del></span>
                             </div>
                         )
                     }

@@ -1,9 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { EventMessage } from '../types'
+import { FifoQueue } from '../utils/fifoQueue'
 import { openDB, putBatch, countAll, clearStore, deleteOldest, readAllNewestFirst } from '../utils/idbUtils'
 
 const FLUSH_INTERVAL_MS = 100
 const FLUSH_BATCH_SIZE = 50
+/** Events per IndexedDB transaction. Larger transactions are far cheaper than many small ones. */
+const WRITE_BATCH = 200
+/** Cold storage is best effort: if writes cannot keep up, the oldest pending ones are dropped instead of growing memory. */
+export const MAX_PENDING_WRITES = 20_000
 export const MAX_STORED_EVENTS = 100_000
 
 interface UseEventStorageReturn {
@@ -23,9 +28,12 @@ export const useEventStorage = (): UseEventStorageReturn => {
     const [idbAvailable, setIdbAvailable] = useState(false)
     const [totalStoredCount, setTotalStoredCount] = useState(0)
     const dbRef = useRef<IDBDatabase | null>(null)
-    const writeQueueRef = useRef<EventMessage[]>([])
+    const writeQueueRef = useRef(new FifoQueue<EventMessage>())
     const countRef = useRef(0)
     const trimmingRef = useRef(false)
+    const flushingRef = useRef<Promise<void> | null>(null)
+    const warnedDropRef = useRef(false)
+    const kickRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
     const trim = useCallback(async (db: IDBDatabase) => {
         if (trimmingRef.current) return
@@ -42,24 +50,36 @@ export const useEventStorage = (): UseEventStorageReturn => {
         }
     }, [])
 
-    const flush = useCallback(async () => {
-        const db = dbRef.current
-        const queue = writeQueueRef.current
-        if (!db || queue.length === 0) return
-        const batch = queue.splice(0, queue.length)
-
-        try {
-            await putBatch(db, batch)
-            countRef.current += batch.length
-            setTotalStoredCount(countRef.current)
-            if (countRef.current > MAX_STORED_EVENTS) void trim(db) // side effects live here, not inside a state updater
-        } catch (e) {
-            console.warn('[useEventStorage] Flush failed:', e)
-            if ((e as DOMException)?.name === 'QuotaExceededError') {
-                setIdbAvailable(false)
-                window.dispatchEvent(new CustomEvent('idb-quota-exceeded'))
+    // One writer at a time: IndexedDB runs read-write transactions one after another anyway, so firing a new
+    // transaction per batch only piles up pending transactions (each holding a copy of its events) behind a burst.
+    // Callers share the in-flight run, which keeps draining the queue until it is empty.
+    const flush = useCallback((): Promise<void> => {
+        if (flushingRef.current) return flushingRef.current
+        const run = (async () => {
+            const db = dbRef.current
+            if (!db) return
+            while (writeQueueRef.current.length > 0) {
+                const batch = writeQueueRef.current.take(WRITE_BATCH)
+                try {
+                    await putBatch(db, batch)
+                    countRef.current += batch.length
+                    setTotalStoredCount(countRef.current)
+                    if (countRef.current > MAX_STORED_EVENTS) void trim(db) // side effects live here, not inside a state updater
+                    // Give the page a turn between transactions: cloning events into IndexedDB is synchronous work.
+                    await new Promise<void>((resolve) => setTimeout(resolve, 0))
+                } catch (e) {
+                    console.warn('[useEventStorage] Flush failed:', e)
+                    if ((e as DOMException)?.name === 'QuotaExceededError') {
+                        writeQueueRef.current.clear()
+                        setIdbAvailable(false)
+                        window.dispatchEvent(new CustomEvent('idb-quota-exceeded'))
+                        return
+                    }
+                }
             }
-        }
+        })().finally(() => { flushingRef.current = null })
+        flushingRef.current = run
+        return run
     }, [trim])
 
     useEffect(() => {
@@ -81,6 +101,7 @@ export const useEventStorage = (): UseEventStorageReturn => {
         return () => {
             cancelled = true
             clearInterval(timer)
+            if (kickRef.current !== null) { clearTimeout(kickRef.current); kickRef.current = null }
             void flush()
         }
     }, [flush])
@@ -88,8 +109,19 @@ export const useEventStorage = (): UseEventStorageReturn => {
     /** Queues an event for batched writing; flushes right away once a batch is full. */
     const saveEvent = useCallback((event: EventMessage) => {
         if (!idbAvailable) return
-        writeQueueRef.current.push(event)
-        if (writeQueueRef.current.length >= FLUSH_BATCH_SIZE) void flush()
+        const queue = writeQueueRef.current
+        queue.push(event)
+        if (queue.length > MAX_PENDING_WRITES) {
+            queue.dropOldest(queue.length - MAX_PENDING_WRITES)
+            if (!warnedDropRef.current) {
+                warnedDropRef.current = true
+                console.warn('[useEventStorage] Storage cannot keep up with the stream; the oldest unsaved events are not kept in history.')
+            }
+        }
+        // Start writing from a timer, not from here: saveEvent runs inside the ingest frame, which must stay short.
+        if (queue.length >= FLUSH_BATCH_SIZE && kickRef.current === null) {
+            kickRef.current = setTimeout(() => { kickRef.current = null; void flush() }, 0)
+        }
     }, [idbAvailable, flush])
 
     const loadHistory = useCallback(async (limit: number = MAX_STORED_EVENTS): Promise<EventMessage[]> => {
@@ -107,7 +139,7 @@ export const useEventStorage = (): UseEventStorageReturn => {
     const clearStorage = useCallback(async () => {
         const db = dbRef.current
         if (!db) return
-        writeQueueRef.current = []
+        writeQueueRef.current.clear()
         await clearStore(db)
         countRef.current = 0
         setTotalStoredCount(0)

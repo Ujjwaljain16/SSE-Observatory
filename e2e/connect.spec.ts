@@ -55,7 +55,7 @@ test.describe('SSE-Tester E2E', () => {
         await expect(page.locator('text=Connected').first()).toBeVisible({ timeout: 10000 });
         await page.waitForTimeout(5000);
 
-        const eventStat = await page.locator('text=events').first().innerText();
+        const eventStat = await page.getByTestId('event-count').innerText();
         const countMatch = eventStat.match(/(\d+)/);
         const count = countMatch ? parseInt(countMatch[1]) : 0;
         expect(count).toBeGreaterThan(100);

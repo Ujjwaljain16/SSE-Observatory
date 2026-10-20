@@ -119,6 +119,12 @@ export function useSharedStream(
                     if (p.seq !== undefined && p.seq <= lastSeqRef.current) return
                     if (p.seq !== undefined) lastSeqRef.current = p.seq
                     pushRef.current(p)
+                } else if (msg.type === 'events') {
+                    const fresh = (msg.payloads as IncomingSSE[]).filter((p) => p.seq === undefined || p.seq > lastSeqRef.current)
+                    if (fresh.length === 0) return
+                    const last = fresh[fresh.length - 1].seq
+                    if (last !== undefined) lastSeqRef.current = last
+                    pushRef.current(fresh)
                 } else if (msg.type === 'catchup') {
                     const fresh = (msg.events as IncomingSSE[]).filter((p) => p.seq === undefined || p.seq > lastSeqRef.current)
                     if (fresh.length === 0) return

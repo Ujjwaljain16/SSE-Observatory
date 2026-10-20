@@ -172,7 +172,13 @@ export const InterceptorEditor = ({
                                 )}
 
 
-                                <button onClick={e => { e.stopPropagation(); onToggle(interceptor.id) }} className="flex items-center justify-center">
+                                <button
+                                    role="switch"
+                                    aria-checked={interceptor.enabled}
+                                    aria-label={`${interceptor.name} enabled`}
+                                    onClick={e => { e.stopPropagation(); onToggle(interceptor.id) }}
+                                    className="flex items-center justify-center"
+                                >
                                     <span className="flex">
                                         {interceptor.enabled
                                             ? <ToggleRight className="w-5 h-5 text-amber-400" />

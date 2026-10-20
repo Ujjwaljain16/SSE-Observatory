@@ -3,7 +3,7 @@ import type { EventMessage, CustomFilter, Profile } from '../types'
 import type { Interceptor } from '../hooks/useInterceptors'
 import type { StreamInstance } from '../hooks/useMultiStream'
 import type { TraceEntry } from '../hooks/useCorrelationTracker'
-import type { PatternRule, PatternAlert } from '../hooks/usePatternDetector'
+import type { PatternRule, PatternAlert, NewPatternRule } from '../hooks/usePatternDetector'
 
 interface StreamContextValue {
     connected: boolean
@@ -71,7 +71,7 @@ interface StreamContextValue {
 
     streams: StreamInstance[]
     mergedEvents: EventMessage[]
-    addStream: (name: string, url: string) => string
+    addStream: (name: string, url: string, token?: string) => string
     removeStream: (id: string) => void
     connectStream: (id: string) => void
     disconnectStream: (id: string) => void
@@ -111,7 +111,7 @@ interface StreamContextValue {
     patternRules: PatternRule[]
     patternAlerts: PatternAlert[]
     activePatternAlerts: PatternAlert[]
-    addPatternRule: (rule: Omit<PatternRule, 'id'>) => void
+    addPatternRule: (rule: NewPatternRule) => void
     removePatternRule: (id: string) => void
     togglePatternRule: (id: string) => void
     dismissPatternAlert: (id: string) => void

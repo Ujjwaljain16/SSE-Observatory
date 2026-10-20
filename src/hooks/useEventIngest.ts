@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import type { EventMessage } from '../types'
+import { FifoQueue } from '../utils/fifoQueue'
 import { buildEvent, finalizeEvent, type IncomingSSE } from '../utils/buildEvent'
 
 /**
@@ -36,7 +37,7 @@ export function useEventIngest({ maxEvents, applyInterceptors, onEventPersist }:
     // (by event identity) must start over when it changes: a replacement can overlap the old contents.
     const [epoch, setEpoch] = useState(0)
 
-    const queue = useRef<IncomingSSE[]>([])
+    const queue = useRef(new FifoQueue<IncomingSSE>())
     const scheduled = useRef<{ raf?: number; timer?: ReturnType<typeof setTimeout> } | null>(null)
     const processing = useRef(false)
     const generation = useRef(0)
@@ -59,7 +60,7 @@ export function useEventIngest({ maxEvents, applyInterceptors, onEventPersist }:
             const start = performance.now()
             const accepted: EventMessage[] = [] // oldest → newest
             while (queue.current.length > 0 && performance.now() - start < SLICE_BUDGET_MS) {
-                for (const incoming of queue.current.splice(0, CHUNK)) {
+                for (const incoming of queue.current.take(CHUNK)) {
                     let event: EventMessage | null = buildEvent(incoming)
                     const intercept = interceptorRef.current
                     if (intercept) {
@@ -111,11 +112,10 @@ export function useEventIngest({ maxEvents, applyInterceptors, onEventPersist }:
     }, [flush])
 
     const push = useCallback((incoming: IncomingSSE | IncomingSSE[]) => {
-        const list = Array.isArray(incoming) ? incoming : [incoming]
-        queue.current.push(...list)
+        if (Array.isArray(incoming)) for (const item of incoming) queue.current.push(item)
+        else queue.current.push(incoming)
         if (queue.current.length > MAX_QUEUE) {
-            const drop = queue.current.length - MAX_QUEUE
-            queue.current.splice(0, drop)
+            const drop = queue.current.dropOldest(queue.current.length - MAX_QUEUE)
             droppedRef.current += drop
             setDroppedCount(droppedRef.current)
         }
@@ -133,7 +133,7 @@ export function useEventIngest({ maxEvents, applyInterceptors, onEventPersist }:
     /** Drops queued and in-flight messages and empties the buffer. */
     const clear = useCallback(() => {
         generation.current++
-        queue.current = []
+        queue.current.clear()
         cancelScheduled()
         droppedRef.current = 0
         setDroppedCount(0)
@@ -145,7 +145,7 @@ export function useEventIngest({ maxEvents, applyInterceptors, onEventPersist }:
     /** Replaces the whole buffer (e.g. loading history from storage). */
     const replace = useCallback((next: EventMessage[]) => {
         generation.current++
-        queue.current = []
+        queue.current.clear()
         cancelScheduled()
         setEpoch((e) => e + 1)
         setEvents(next.slice(0, maxRef.current))

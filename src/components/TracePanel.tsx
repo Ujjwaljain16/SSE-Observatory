@@ -1,7 +1,8 @@
 // ui for rendering the causal event chain of a given trace
 
-import { useMemo } from 'react'
+import { useMemo, useRef } from 'react'
 import type { Theme } from '../types'
+import { useModalFocus } from '../hooks/useModalFocus'
 import type { TraceEntry } from '../hooks/useCorrelationTracker'
 import { GitBranch, X, Clock, Layers } from 'lucide-react'
 
@@ -19,6 +20,8 @@ function relativeMs(base: number, t: number): string {
 
 export function TracePanel({ theme, trace, onClose }: TracePanelProps) {
     const isDark = theme === 'dark'
+    const dialogRef = useRef<HTMLDivElement>(null)
+    useModalFocus(dialogRef, trace !== null, onClose)
 
     const duration = useMemo(() => {
         if (!trace || trace.events.length < 2) return 0
@@ -32,7 +35,12 @@ export function TracePanel({ theme, trace, onClose }: TracePanelProps) {
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
 
             <div
-                className={`relative w-full max-w-2xl max-h-[80vh] flex flex-col rounded-xl shadow-2xl border overflow-hidden ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'
+                ref={dialogRef}
+                role="dialog"
+                aria-modal="true"
+                aria-label={`Trace ${trace.id}`}
+                tabIndex={-1}
+                className={`relative w-full max-w-2xl max-h-[80vh] flex flex-col rounded-xl shadow-2xl border overflow-hidden outline-none ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'
                     }`}
                 onClick={e => e.stopPropagation()}
             >
@@ -61,10 +69,11 @@ export function TracePanel({ theme, trace, onClose }: TracePanelProps) {
                         </div>
                         <button
                             onClick={onClose}
+                            aria-label="Close trace"
                             className={`p-1.5 rounded-lg transition-colors ${isDark ? 'hover:bg-slate-700 text-slate-400 hover:text-white' : 'hover:bg-slate-100 text-slate-500 hover:text-slate-900'
                                 }`}
                         >
-                            <X className="w-4 h-4" />
+                            <X className="w-4 h-4" aria-hidden="true" />
                         </button>
                     </div>
                 </div>

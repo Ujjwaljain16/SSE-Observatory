@@ -109,7 +109,7 @@ export const EventsList = memo(function EventsList({
                         <h2 className={`text-lg font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
                             Event Stream
                         </h2>
-                        <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                        <p data-testid="event-count" className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                             {filteredEvents.length} events captured
                         </p>
                     </div>
@@ -285,7 +285,7 @@ export const EventsList = memo(function EventsList({
                                                                         : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
                                                                 }
                                                             `}
-                                                            title="Compare with previous event in list"
+                                                            aria-label="Compare with previous event in list" title="Compare with previous event in list"
                                                         >
                                                             <SplitSquareHorizontal className="w-3 h-3" />
                                                             {isDiffActive ? 'Hide Diff' : 'Compare'}

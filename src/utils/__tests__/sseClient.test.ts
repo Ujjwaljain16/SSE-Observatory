@@ -173,6 +173,25 @@ describe('SSEClient', () => {
         expect(t.messages[0]).toMatchObject({ event: 'split', data: 'hello' })
     })
 
+    it('parses one huge chunk in slices: every event arrives intact and the event loop keeps getting turns', async () => {
+        const N = 60_000
+        let body = ''
+        for (let i = 0; i < N; i++) body += `id: ${i}\ndata: {"i":${i},"s":"héllo 😀 ${i}"}\n\n`
+        body += 'event: end\ndata: done\n\n'
+        const url = await serve((_req, res) => { res.writeHead(200, SSE); res.end(body) }) // a single write: multi-megabyte chunks
+        const t = run(url)
+        let ticks = 0
+        const timer = setInterval(() => ticks++, 1)
+        t.client.start()
+        await t.until(() => t.names().includes('ended'), 15000)
+        clearInterval(timer)
+        expect(t.messages).toHaveLength(N + 1)
+        // multi-byte characters straddling the slice boundaries must not be corrupted
+        for (const i of [0, 1, 12345, N - 1]) expect(t.messages[i]?.data).toBe(`{"i":${i},"s":"héllo 😀 ${i}"}`)
+        expect(t.messages.slice(0, N).every((m, i) => m.id === String(i))).toBe(true)
+        expect(ticks).toBeGreaterThan(3)
+    })
+
     it('can POST a JSON body (used for the proxy)', async () => {
         let got = ''
         let method = ''

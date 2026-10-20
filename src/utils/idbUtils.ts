@@ -86,6 +86,12 @@ const txDone = (tx: IDBTransaction): Promise<void> =>
         tx.onabort = () => reject(tx.error ?? new DOMException('Transaction aborted', 'AbortError'))
     })
 
+/** Rebuilds the derived search index that putBatch leaves out. */
+const restore = (e: EventMessage): EventMessage => {
+    if (e._searchIndex === undefined) e._searchIndex = (typeof e.data === 'string' ? e.data : JSON.stringify(e.data)).toLowerCase()
+    return e
+}
+
 export const putBatch = async (db: IDBDatabase, events: EventMessage[]): Promise<void> => {
     if (events.length === 0) return
     const tx = db.transaction(STORE_NAME, 'readwrite')
@@ -94,7 +100,9 @@ export const putBatch = async (db: IDBDatabase, events: EventMessage[]): Promise
         const store = tx.objectStore(STORE_NAME)
         const now = Date.now()
         for (const event of events) {
-            store.put({ ...event, arrivalTime: event.arrivalTime ?? now, seq: event.seq ?? 0 })
+            // _searchIndex is a lowercase copy of data: not stored (it is rebuilt on read), which keeps writes small
+            const { _searchIndex: _omit, ...record } = event
+            store.put({ ...record, arrivalTime: event.arrivalTime ?? now, seq: event.seq ?? 0 })
         }
     } catch (e) {
         try { tx.abort() } catch { /* already finished */ }
@@ -125,7 +133,7 @@ export const getPage = (
         request.onsuccess = () => {
             const cursor = request.result
             if (cursor && results.length < limit) {
-                results.push(cursor.value as EventMessage)
+                results.push(restore(cursor.value as EventMessage))
                 cursor.continue()
             } else {
                 resolve(results)
@@ -151,7 +159,7 @@ export const getAllAfter = (
         request.onsuccess = () => {
             const cursor = request.result
             if (cursor && results.length < limit) {
-                results.push(cursor.value as EventMessage)
+                results.push(restore(cursor.value as EventMessage))
                 cursor.continue()
             } else {
                 resolve(results)

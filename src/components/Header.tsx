@@ -55,6 +55,7 @@ export const Header = ({ theme, onToggleTheme }: HeaderProps) => {
                             : 'bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 border border-slate-200'
                         }
                     `}
+                    aria-label="Documentation"
                     title="Documentation"
                 >
                     <BookOpen className="w-5 h-5" />
@@ -72,6 +73,7 @@ export const Header = ({ theme, onToggleTheme }: HeaderProps) => {
                             : 'bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 border border-slate-200'
                         }
                     `}
+                    aria-label="View source on GitHub"
                     title="View Source"
                 >
                     <Github className="w-5 h-5" />
@@ -87,6 +89,7 @@ export const Header = ({ theme, onToggleTheme }: HeaderProps) => {
                             : 'bg-slate-100 hover:bg-slate-200 text-orange-500 hover:text-orange-600 border border-slate-200'
                         }
                     `}
+                    aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
                     title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Mode`}
                 >
                     {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
