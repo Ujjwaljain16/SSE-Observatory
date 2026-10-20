@@ -16,7 +16,7 @@ npm run doctor -- analyze stream.sse-capture
 | `analyze <capture>` | Analyzes a saved capture (`.sse-capture`, or an old `.sse-record`). |
 | `report <capture>` | Writes a shareable report: `--format md` (default), `html` (one self-contained file) or `json`. `--output <file>`. |
 | `compare <a> <b>` | Compares two captures: status, headers, timing, heartbeat rhythm, chunk sizes, events. |
-| `curl <capture\|url>` | Prints a curl command that reproduces the request. Header and query values become environment variables. |
+| `curl <capture\|url>` | Prints a curl command that reproduces the request. Header and query values become environment variables. `--shell posix\|powershell` picks the quoting. |
 | `redact <capture>` | Writes a copy that is safe to share: `--output <file>`. |
 | `test <scenario.json>...` | Runs [scenario files](/guide/cli-ci). |
 | `replay <capture>`, `fixtures list|serve` | Serve a capture or the built-in streams locally ([details](/guide/cli-ci)). |
