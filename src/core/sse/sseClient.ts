@@ -57,6 +57,11 @@ export interface SSEClientOptions {
     onObservation?: ((draft: ObservationDraft) => void) | undefined
     /** Time source for measurements (time to response headers). Defaults to the real monotonic clock. */
     clock?: Clock | undefined
+    /**
+     * The last event id to resume from on the FIRST request. Use it when this client takes over a stream that
+     * another client was already reading, so the server can continue where that one stopped.
+     */
+    initialLastEventId?: string | undefined
 }
 
 class HttpError extends Error {
@@ -67,11 +72,13 @@ const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504])
 
 export class SSEClient {
     private controller: AbortController | null = null
-    private lastEventId = ''
+    private lastEventId: string
     private serverRetryMs: number | null = null
     private running = false
 
-    constructor(private readonly opts: SSEClientOptions) {}
+    constructor(private readonly opts: SSEClientOptions) {
+        this.lastEventId = opts.initialLastEventId ?? ''
+    }
 
     get lastId() { return this.lastEventId }
     get isRunning() { return this.running }
