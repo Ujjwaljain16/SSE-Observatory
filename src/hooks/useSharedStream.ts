@@ -14,6 +14,7 @@ import type { EventMessage } from '../types'
 import { workerRegistry } from '../utils/workerRegistry'
 import type { SSEPhase, SSEPhaseInfo } from '../core/sse/sseClient'
 import { createObservedStream, type ObservedStream } from '../core/sse/observedStream'
+import { MAIN_STREAM, observationRegistry } from '../doctor/observationRegistry'
 import { buildSSERequest } from '../utils/sseProxyUrl'
 import type { IncomingSSE } from '../utils/buildEvent'
 import { useEventIngest } from './useEventIngest'
@@ -110,7 +111,10 @@ export function useSharedStream(
                 onPhase: (phase, info) => setStatus(describeStatus(phase, info)),
             },
             clientOptions: { initialLastEventId: lastEventId },
+            recording: { onObservations: () => observationRegistry.notify(MAIN_STREAM) },
         })
+        // The page runs this stream itself, so the registry adopts its store instead of copying it.
+        if (stream.store) observationRegistry.attach(MAIN_STREAM, stream.store, stream.captureId)
         directRef.current = stream
         stream.start()
     }, [deliver])
@@ -151,6 +155,8 @@ export function useSharedStream(
                     const last = fresh[fresh.length - 1].seq
                     if (last !== undefined) lastSeqRef.current = last
                     deliver(fresh)
+                } else if (msg.type === 'observations') {
+                    observationRegistry.receive(MAIN_STREAM, { captureId: msg.captureId, batch: msg.batch, replace: msg.replace })
                 } else if (msg.type === 'catchup') {
                     const fresh = (msg.events as IncomingSSE[]).filter((p) => p.seq === undefined || p.seq > lastSeqRef.current)
                     if (fresh.length === 0) return
@@ -190,6 +196,7 @@ export function useSharedStream(
         keyRef.current = `${trimmed}::${token ?? ''}`
         lastSeqRef.current = 0
         lastEventIdRef.current = '' // a new connection starts fresh; only a takeover resumes
+        observationRegistry.reset(MAIN_STREAM)
         if (clearHistory) ingest.clear()
         setStatus({ phase: 'connecting', message: '' })
 

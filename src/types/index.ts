@@ -7,6 +7,8 @@ export interface EventMessage {
     parsedType?: string | undefined
     /** Server-sent event id (the SSE `id:` field) in effect when the event arrived. */
     sseId?: string | undefined
+    /** Sequence number of this event's observation record, so a finding's evidence can point at the event. */
+    obsSeq?: number | undefined
     /** Per-tab monotonic counter; with arrivalTime it gives events a total order (storage paging). */
     seq?: number | undefined
     streamId?: string | undefined

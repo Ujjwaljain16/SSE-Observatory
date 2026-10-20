@@ -28,6 +28,7 @@ export function buildEvent(p: IncomingSSE, extra: Partial<EventMessage> = {}): E
         id: uuid(),
         timestamp: timeFormat.format(new Date(p.arrivalTime)),
         arrivalTime: p.arrivalTime,
+        ...(p.obsSeq !== undefined ? { obsSeq: p.obsSeq } : {}),
         seq: nextSeq(),
         type: p.event || 'message',
         data: p.data,

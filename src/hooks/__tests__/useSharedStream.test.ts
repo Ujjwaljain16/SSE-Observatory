@@ -2,6 +2,7 @@ import { renderHook, act, waitFor } from '@testing-library/react'
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { useSharedStream } from '../useSharedStream'
 import type { EventMessage } from '../../types'
+import { observationRegistry, MAIN_STREAM } from '../../doctor/observationRegistry'
 
 const mockPort = { start: vi.fn(), postMessage: vi.fn(), onmessage: null as ((e: MessageEvent) => void) | null }
 const mockWorker: { port: typeof mockPort; onerror: unknown } = { port: mockPort, onerror: null }
@@ -41,6 +42,17 @@ describe('useSharedStream (SharedWorker transport)', () => {
         return hook
     }
     const data = (r: { current: { events: EventMessage[] } }) => r.current.events.map((e) => e.data)
+
+    it('puts the observation batches of the worker into the registry, and ignores a stream the tab has left', () => {
+        observationRegistry.reset(MAIN_STREAM)
+        setup()
+        const chunk = (seq: number) => ({ seq, t: seq, conn: 0, kind: 'chunk', bytes: 10 + seq })
+        deliver({ type: 'observations', key: KEY, captureId: 'cap-1', batch: [chunk(0), chunk(1)] })
+        deliver({ type: 'observations', key: 'other::', captureId: 'cap-x', batch: [chunk(9)] })
+        const entry = observationRegistry.get(MAIN_STREAM)!
+        expect(entry.captureId).toBe('cap-1')
+        expect(entry.store.snapshot().map((o) => o.seq)).toEqual([0, 1])
+    })
 
     it('asks the worker to connect and reports the connecting state', () => {
         const { result } = setup()
@@ -272,6 +284,25 @@ describe('useSharedStream (in-page fallback)', () => {
         act(() => { result.current.disconnect() })
         expect(clients[0].stopped).toBeGreaterThan(0)
         expect(result.current.status).toBe('idle')
+    })
+
+    it('records in the page too: the in-page client is observed, adopted by the registry, and events point at their records', async () => {
+        observationRegistry.reset(MAIN_STREAM)
+        const { result } = renderHook(() => useSharedStream())
+        act(() => { result.current.connect('http://api.test/stream') })
+        expect(typeof clients[0].opts.onObservation).toBe('function')
+        act(() => {
+            clients[0].opts.onObservation({ kind: 'chunk', bytes: 30 })
+            clients[0].opts.onObservation({ kind: 'event', event: 'order', sseId: '5', dataBytes: 3 }) // seq 1
+            clients[0].opts.onMessage({ event: 'order', data: 'abc', id: '5', raw: '' })
+        })
+        await waitFor(() => expect(result.current.events).toHaveLength(1))
+        expect(result.current.events[0].obsSeq).toBe(1)
+        const entry = observationRegistry.get(MAIN_STREAM)!
+        expect(entry.store.snapshot().map((o) => o.kind)).toEqual(['chunk', 'event'])
+        // a fresh connect forgets the previous stream's records
+        act(() => { result.current.connect('http://other.test/stream') })
+        expect(observationRegistry.get(MAIN_STREAM)!.store.snapshot()).toEqual([])
     })
 
     it('a new connection starts fresh: the previous stream\'s event id is not carried over', async () => {
