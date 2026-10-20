@@ -37,18 +37,19 @@ type Marker = Extract<Observation, { kind: 'truncated' }>
 type Series = Extract<Observation, { kind: 'heartbeatSeries' }>
 const digitsToHash = (text: string) => text.replace(/\d+/g, '#')
 
+// Calibrated against measured V8 heap use per retained record (object, map entry, strings), so the cap bounds real memory.
 function estimateBytes(o: Observation): number {
     switch (o.kind) {
-        case 'chunk': return 48
-        case 'event': return 104 + o.sseId.length + o.event.length + (o.dataHash ? 24 : 0) + (o.extracted ? 48 : 0)
-        case 'comment': return 64 + o.text.length
-        case 'violation': return 96 + o.detail.length
+        case 'chunk': return 120
+        case 'event': return 120 + o.sseId.length + o.event.length + (o.dataHash ? 24 : 0) + (o.extracted ? 48 : 0)
+        case 'comment': return 128 + o.text.length
+        case 'violation': return 144 + o.detail.length
         case 'connect': return 120 + o.url.length + o.headerNames.join('').length
         case 'response': return 120 + Object.entries(o.headers).reduce((n, [k, v]) => n + k.length + v.length, 0)
-        case 'phase': return 112 + (o.info.reason?.length ?? 0)
-        case 'reconnect': return 120 + o.reason.length
+        case 'phase': return 152 + (o.info.reason?.length ?? 0)
+        case 'reconnect': return 160 + o.reason.length
         case 'heartbeatSeries': return 136 + o.text.length
-        default: return 72
+        default: return 120
     }
 }
 
