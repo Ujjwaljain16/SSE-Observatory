@@ -31,6 +31,12 @@ export default [
         },
     },
 
+    // Browser-driving scripts: they run on Node, but their page.evaluate callbacks run in the page
+    {
+        files: ['scripts/bench.mjs', 'scripts/screenshots.mjs'],
+        languageOptions: { globals: { ...globals.node, ...globals.browser } },
+    },
+
     // Frontend (React + TypeScript)
     {
         files: ['src/**/*.{ts,tsx}', 'e2e/**/*.ts', '*.ts'],
