@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import type { EventMessage } from '../types'
-import { SSEClient } from '../utils/sseClient'
+import { createObservedStream, type ObservedStream } from '../core/sse/observedStream'
 import { buildSSERequest } from '../utils/sseProxyUrl'
 import { buildEvent, finalizeEvent } from '../utils/buildEvent'
 import { describeStatus } from './useSharedStream'
@@ -56,7 +56,7 @@ export const useMultiStream = (): UseMultiStreamReturn => {
     const streamsRef = useRef(streams)
     streamsRef.current = streams
 
-    const clientsRef = useRef<Map<string, SSEClient>>(new Map())
+    const clientsRef = useRef<Map<string, ObservedStream>>(new Map())
     const pendingRef = useRef<Map<string, EventMessage[]>>(new Map()) // oldest → newest per stream
     const frameRef = useRef<number | null>(null)
 
@@ -99,30 +99,29 @@ export const useMultiStream = (): UseMultiStreamReturn => {
         if (!stream || !stream.url.trim()) return
         stopClient(id)
 
-        const client = new SSEClient({
+        const lane = createObservedStream({
             request: () => buildSSERequest(stream.url, stream.token, true),
-            onMessage: (m) => {
-                const event = finalizeEvent(buildEvent(
-                    { event: m.event, data: m.data, id: m.id, raw: m.raw, arrivalTime: Date.now() },
-                    { streamId: id, streamColor: stream.color }
-                ))
-                const list = pendingRef.current.get(id) ?? []
-                list.push(event)
-                pendingRef.current.set(id, list)
-                scheduleFlush()
-            },
-            onPhase: (phase, info) => {
-                const status = describeStatus(phase, info)
-                updateStream(id, {
-                    connected: status.phase === 'open',
-                    isLoading: status.phase === 'connecting',
-                    error: status.phase === 'reconnecting' || status.phase === 'failed' || status.phase === 'ended' ? status.message : '',
-                })
+            sinks: {
+                onMessage: (message) => {
+                    const event = finalizeEvent(buildEvent(message, { streamId: id, streamColor: stream.color }))
+                    const list = pendingRef.current.get(id) ?? []
+                    list.push(event)
+                    pendingRef.current.set(id, list)
+                    scheduleFlush()
+                },
+                onPhase: (phase, info) => {
+                    const status = describeStatus(phase, info)
+                    updateStream(id, {
+                        connected: status.phase === 'open',
+                        isLoading: status.phase === 'connecting',
+                        error: status.phase === 'reconnecting' || status.phase === 'failed' || status.phase === 'ended' ? status.message : '',
+                    })
+                },
             },
         })
-        clientsRef.current.set(id, client)
+        clientsRef.current.set(id, lane)
         updateStream(id, { isLoading: true, error: '' })
-        client.start()
+        lane.start()
     }, [scheduleFlush, stopClient, updateStream])
 
     const disconnectStream = useCallback((id: string) => {
