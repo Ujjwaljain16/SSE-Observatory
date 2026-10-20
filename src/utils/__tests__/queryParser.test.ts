@@ -152,7 +152,9 @@ describe('errors', () => {
 
 describe('properties', () => {
     const reserved = ['and', 'or', 'not', 'in', 'exists', 'contains', 'matches', 'true', 'false', 'null']
-    const ident = fc.stringMatching(/^[a-z][a-z0-9_]{0,8}$/).filter((s) => !reserved.includes(s))
+    // Root fields (id, type, timestamp, ...) read the event itself, not the payload, so payload properties must avoid them.
+    const rootFields = ['id', 'type', 'timestamp', 'parsedtype', 'streamid', 'streamcolor', 'arrivaltime']
+    const ident = fc.stringMatching(/^[a-z][a-z0-9_]{0,8}$/).filter((s) => !reserved.includes(s) && !rootFields.includes(s))
 
     it('never throws anything but QueryParseError for arbitrary input', () => {
         fc.assert(fc.property(fc.string(), (q) => {
