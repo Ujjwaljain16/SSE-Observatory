@@ -3,6 +3,7 @@
 
 import { parseArgs } from './args'
 import { analyzeCommand, compareCommand, curlCommand, probeCommand, redactCommand, reportCommand } from './commands'
+import { fixturesCommand, replayCommand, testCommand } from './commandsScenario'
 import { CliError, EXIT, type CliIo } from './io'
 import { SecretRegistry, scrubbedIo } from './secretRegistry'
 import { selftestChecks } from './selftest'
@@ -26,6 +27,9 @@ Commands:
   compare <a> <b>        compare two saved captures
   curl <capture|url>     print a curl command that reproduces the request, with secrets as variables
   redact <capture>       write a copy that is safe to share (--output <file>)
+  test <scenario.json>.. run scenario files: collect, disconnect, reconnect, verify (exit 4 = inconclusive)
+  replay <capture>       serve a capture as a local SSE endpoint (--honor-last-event-id, --drop-after, --skip-ids)
+  fixtures list|serve    the built-in faulty and healthy streams
   selftest               check that this build of the tool works
   --version, --help
 
@@ -75,6 +79,9 @@ export async function main(argv: string[], rawIo: CliIo): Promise<number> {
             case 'compare': return await compareCommand(io, args)
             case 'curl': return await curlCommand(io, args)
             case 'probe': return await probeCommand(io, args, secrets)
+            case 'test': return await testCommand(io, args, secrets)
+            case 'replay': return await replayCommand(io, args)
+            case 'fixtures': return await fixturesCommand(io, args)
             default:
                 io.err(`Unknown command: ${command}\nRun "sse-doctor --help" for usage.\n`)
                 return EXIT.usage

@@ -92,6 +92,9 @@ export class SSEClient {
     }
 
     get lastId() { return this.lastEventId }
+
+    /** Start the next connection without a Last-Event-ID, as a client that lost its cursor would. */
+    forgetLastEventId(): void { this.lastEventId = '' }
     get isRunning() { return this.running }
 
     start(): void {

@@ -18,6 +18,8 @@ npm run doctor -- analyze stream.sse-capture
 | `compare <a> <b>` | Compares two captures: status, headers, timing, heartbeat rhythm, chunk sizes, events. |
 | `curl <capture\|url>` | Prints a curl command that reproduces the request. Header and query values become environment variables. |
 | `redact <capture>` | Writes a copy that is safe to share: `--output <file>`. |
+| `test <scenario.json>...` | Runs [scenario files](/guide/cli-ci). |
+| `replay <capture>`, `fixtures list|serve` | Serve a capture or the built-in streams locally ([details](/guide/cli-ci)). |
 | `selftest` | Checks that this build works: each rule against a stream that should and one that should not trigger it, plus redaction. |
 
 Options for every command: `--format human|json|md|junit`, `--fail-on info|warning|error|critical` (default `error`), `--profile <file.json>`, `--quiet`, `--verbose`.
@@ -30,7 +32,7 @@ Options for every command: `--format human|json|md|junit`, `--fail-on info|warni
 | 1 | an open finding at or above `--fail-on` |
 | 2 | wrong usage, or an input that is not a capture |
 | 3 | could not run (file unreadable, connection failed without a diagnosis) |
-| 4 | inconclusive (reserved for scenario checks) |
+| 4 | inconclusive: no check failed, but a scenario check could not be decided |
 | 130 | interrupted |
 
 ## Secrets

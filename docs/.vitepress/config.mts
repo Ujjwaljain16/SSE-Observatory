@@ -33,7 +33,8 @@ export default defineConfig({
                         { text: 'JavaScript Interceptors', link: '/guide/interceptors' },
                         { text: 'Pattern Detection', link: '/guide/patterns' },
                         { text: 'Mock Server & Replay', link: '/guide/mock-server' },
-                        { text: 'Command Line (sse-doctor)', link: '/guide/cli' }
+                        { text: 'Command Line (sse-doctor)', link: '/guide/cli' },
+                        { text: 'Scenarios & CI', link: '/guide/cli-ci' }
                     ]
                 }
             ],

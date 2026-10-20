@@ -1,0 +1,44 @@
+name: 'SSE Observatory scenarios'
+description: 'Run sse-doctor scenario files against an SSE stream in CI. Builds the tool from this repository; nothing is installed from npm.'
+inputs:
+  scenarios:
+    description: 'Scenario files (space separated paths or globs, relative to the workspace).'
+    required: true
+  format:
+    description: 'Output format: human, json, md or junit.'
+    required: false
+    default: 'human'
+  output:
+    description: 'Write the report to this file as well (for example a JUnit file to upload).'
+    required: false
+    default: ''
+  allow-inconclusive:
+    description: 'Treat inconclusive scenarios (exit 4) as passing.'
+    required: false
+    default: 'false'
+runs:
+  using: 'composite'
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 22
+    - name: Build sse-doctor
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: npm ci --ignore-scripts && npm run build:cli
+    - name: Run scenarios
+      shell: bash
+      env:
+        SCENARIOS: ${{ inputs.scenarios }}
+        FORMAT: ${{ inputs.format }}
+        OUTPUT: ${{ inputs.output }}
+        ALLOW_INCONCLUSIVE: ${{ inputs.allow-inconclusive }}
+      run: |
+        args=(test)
+        # Word splitting is intended: the input is a list of paths.
+        # shellcheck disable=SC2206
+        args+=($SCENARIOS)
+        args+=(--format "$FORMAT")
+        if [ -n "$OUTPUT" ]; then args+=(--output "$OUTPUT"); fi
+        if [ "$ALLOW_INCONCLUSIVE" = "true" ]; then args+=(--allow-inconclusive); fi
+        node "${{ github.action_path }}/dist-cli/bin/sse-doctor.mjs" "${args[@]}"

@@ -72,6 +72,8 @@ export interface ObservedStream {
     readonly isRunning: boolean
     /** The last event id the server sent, as the client would send it on reconnect. */
     readonly lastId: string
+    /** The next connection starts without a Last-Event-ID. */
+    forgetLastEventId(): void
     /** Present only when recording is on. */
     readonly recorder: Recorder | undefined
     readonly store: CaptureStore | undefined
@@ -133,6 +135,7 @@ export function createObservedStream(options: ObservedStreamOptions): ObservedSt
         stop: () => { client.stop(); batcher?.stop() },
         get isRunning() { return client.isRunning },
         get lastId() { return client.lastId },
+        forgetLastEventId: () => client.forgetLastEventId(),
         recorder,
         store,
         flushObservations: () => batcher?.flush(),
