@@ -15,8 +15,8 @@ export default defineConfig({
             // Measure everything we ship, not only the files tests happen to import.
             include: ['src/**/*.{ts,tsx}', 'lib/**/*.js'],
             exclude: ['src/**/*.test.*', 'src/**/__tests__/**', 'src/test/**', 'src/perf/**', 'src/tests/**', 'src/types/**'],
-            // Ratchet: raise these as coverage improves; CI fails if they drop.
-            thresholds: { lines: 42, statements: 41, functions: 31, branches: 24 },
+            // Ratchet: set just under the current level (66.6% statements, 49.1% branches) so coverage can only go up.
+            thresholds: { lines: 65, statements: 64, functions: 50, branches: 47 },
         },
     },
 })
