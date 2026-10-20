@@ -91,6 +91,7 @@ jobs:
   e2e-other-browsers:
     name: Playwright (Firefox, WebKit)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     # Informational for now, like the Chromium job: the whole suite passes locally in both, this keeps it that way.
     continue-on-error: true
     env:

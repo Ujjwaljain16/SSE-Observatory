@@ -57,7 +57,7 @@ export const MockServerPanel = ({
                     <h2 className={`text-xl font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
                         Mock Server Engine
                     </h2>
-                    <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                    <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                         Replay exported records to local applications
                     </p>
                 </div>
@@ -71,11 +71,11 @@ export const MockServerPanel = ({
                     : 'border-slate-300 bg-slate-50 hover:bg-slate-100 hover:border-purple-400'
                 }
             `}>
-                <Upload className={`w-8 h-8 mb-3 ${isDark ? 'text-slate-500' : 'text-slate-400'}`} />
+                <Upload className={`w-8 h-8 mb-3 ${isDark ? 'text-slate-400' : 'text-slate-600'}`} />
                 <h3 className={`text-lg font-semibold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
                     {fileName ? fileName : 'Upload .sse-record File'}
                 </h3>
-                <p className={`text-sm mb-4 ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
+                <p className={`text-sm mb-4 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                     {totalEvents > 0 ? `${totalEvents} events loaded` : "Drag and drop or click to browse"}
                 </p>
 
@@ -149,7 +149,7 @@ export const MockServerPanel = ({
                                     onClick={() => onSetSpeed(s)}
                                     className={`flex-1 py-2 text-xs font-bold transition-all
                                         ${speedMs === s
-                                            ? 'bg-sky-500 text-white'
+                                            ? 'bg-sky-700 text-white'
                                             : isDark ? 'bg-slate-800 text-slate-400 hover:bg-slate-700' : 'bg-white text-slate-600 hover:bg-slate-50'
                                         }
                                         ${s !== 2 && (isDark ? 'border-r border-slate-700' : 'border-r border-slate-300')}
@@ -170,8 +170,8 @@ export const MockServerPanel = ({
                     <h4 className={`text-sm font-bold mb-3 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Connection Credentials</h4>
 
                     <div className="mb-4">
-                        <label className={`block text-xs font-semibold mb-1 ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>Mock URL</label>
-                        <code className={`block w-full text-xs p-2.5 rounded-lg border overflow-x-auto whitespace-nowrap
+                        <label className={`block text-xs font-semibold mb-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>Mock URL</label>
+                        <code tabIndex={0} className={`block w-full text-xs p-2.5 rounded-lg border overflow-x-auto whitespace-nowrap
                             ${isDark ? 'bg-black/50 border-slate-700 text-sky-400' : 'bg-white border-slate-300 text-blue-600'}
                         `}>
                             {mockUrl}
@@ -179,11 +179,11 @@ export const MockServerPanel = ({
                     </div>
 
                     <div>
-                        <label className={`block text-xs font-semibold mb-1 flex items-center gap-1 ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
+                        <label className={`block text-xs font-semibold mb-1 flex items-center gap-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                             Test via cURL
                         </label>
-                        <code className={`block w-full text-xs p-2.5 rounded-lg border overflow-x-auto whitespace-nowrap
-                            ${isDark ? 'bg-black/50 border-slate-700 text-emerald-400' : 'bg-white border-slate-300 text-emerald-600'}
+                        <code tabIndex={0} className={`block w-full text-xs p-2.5 rounded-lg border overflow-x-auto whitespace-nowrap
+                            ${isDark ? 'bg-black/50 border-slate-700 text-emerald-400' : 'bg-white border-slate-300 text-emerald-700'}
                         `}>
                             {curlCommand}
                         </code>

@@ -41,9 +41,11 @@ So recording keeps about 10 MB (the store's design cap) and adds about 45 MB of 
 
 To turn recording off (the viewer is unaffected; the diagnostics then have nothing to read), run `localStorage.setItem('sse.recording', 'off')` in the page's console and reconnect. When several tabs share one connection, the tab that opens it decides for all of them.
 
-## 8. Capture size limits
+## 8. Capture size limits, and the mock API on Vercel
 
-A capture upload to the mock server is limited to 20 MB (raw NDJSON) or 10 MB (JSON body). On Vercel, functions accept request bodies of about 4.5 MB, so larger captures need a self-hosted server. Wire bytes make a capture roughly a third larger than the stream it holds (Base64), and a full-fidelity capture is never to be shared: redact it first.
+A capture upload to the mock server is limited to 20 MB (raw NDJSON) or 10 MB (JSON body). On Vercel, functions accept request bodies of about 4.5 MB (a larger upload gets `413 FUNCTION_PAYLOAD_TOO_LARGE` before it reaches the app), so larger captures need a self-hosted server.
+
+On Vercel the upload and the stream are different functions with separate memory, so the mock API **needs a working KV store** (`KV_REST_API_URL`); without one the upload is refused with a 503 that says so. Checked against a real preview deployment: NDJSON and JSON uploads are accepted, the stream finds a session only through KV, and a KV store that is configured but unreachable also gives a 503 ("Mock storage unavailable"). Wire bytes make a capture roughly a third larger than the stream it holds (Base64), and a full-fidelity capture is never to be shared: redact it first.
 
 ## 9. The CLI reads whole files and uses Node's fetch
 

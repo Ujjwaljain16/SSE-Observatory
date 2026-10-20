@@ -39,3 +39,15 @@ describe('mock session upload without a body parser in front', () => {
         expect((await r.json()).error).toMatch(/Line 2/)
     })
 })
+
+describe('the mock API on Vercel without KV', () => {
+    it('refuses an upload that could never be streamed, and says what is missing', async () => {
+        const vercel = http.createServer((req, res) => { void handleMockSession(req, res, { config, env: { VERCEL: '1', NODE_ENV: 'production', ENABLE_MOCK_API: '1' } }) })
+        await new Promise<void>((r) => vercel.listen(0, '127.0.0.1', () => r()))
+        const url = `http://127.0.0.1:${(vercel.address() as AddressInfo).port}/api/mock/session`
+        const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/x-ndjson', 'Sec-Fetch-Site': 'same-origin' }, body: capture })
+        vercel.closeAllConnections(); vercel.close()
+        expect(r.status).toBe(503)
+        expect((await r.json()).error).toMatch(/needs a KV store/)
+    })
+})

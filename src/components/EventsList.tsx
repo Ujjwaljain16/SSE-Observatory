@@ -133,9 +133,9 @@ export const EventsList = memo(function EventsList({
                         ${isDark ? 'bg-slate-800/50' : 'bg-slate-100'}
                     `}>
                         {connected ? (
-                            <Radio className={`w-10 h-10 ${isDark ? 'text-slate-600' : 'text-slate-400'}`} />
+                            <Radio className={`w-10 h-10 ${isDark ? 'text-slate-600' : 'text-slate-600'}`} />
                         ) : (
-                            <Inbox className={`w-10 h-10 ${isDark ? 'text-slate-600' : 'text-slate-400'}`} />
+                            <Inbox className={`w-10 h-10 ${isDark ? 'text-slate-600' : 'text-slate-600'}`} />
                         )}
                     </div>
                     <p className={`text-base font-medium mb-2 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
@@ -145,7 +145,7 @@ export const EventsList = memo(function EventsList({
                                 : 'Waiting for events...'
                             : 'No events yet'}
                     </p>
-                    <p className={`text-sm ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                    <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                         {connected
                             ? 'Events will appear here as they arrive'
                             : 'Connect to an SSE endpoint to start monitoring'}
@@ -241,7 +241,7 @@ export const EventsList = memo(function EventsList({
 
                                                     <span className={`
                                                         inline-flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-lg
-                                                        ${isDark ? 'text-slate-400' : 'text-slate-500'}
+                                                        ${isDark ? 'text-slate-400' : 'text-slate-600'}
                                                     `}>
                                                         <Clock className="w-3 h-3" />
                                                         {event.timestamp}
@@ -268,7 +268,7 @@ export const EventsList = memo(function EventsList({
                                                     </span>
 
                                                     {isNewest && (
-                                                        <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-semibold border border-emerald-500/30 animate-pulse">
+                                                        <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 font-semibold border border-emerald-500/30 motion-safe:animate-pulse">
                                                             NEW
                                                         </span>
                                                     )}

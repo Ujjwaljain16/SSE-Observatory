@@ -70,7 +70,7 @@ export const CustomFilters = memo(function CustomFilters({
                         <h3 className={`text-base font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
                             Field Filters
                         </h3>
-                        <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                        <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                             Filter by specific field values
                         </p>
                     </div>
@@ -85,7 +85,7 @@ export const CustomFilters = memo(function CustomFilters({
                         <div className={`text-lg font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
                             {eventsLength}
                         </div>
-                        <div className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Total</div>
+                        <div className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>Total</div>
                     </div>
                     {customFilters.some(f => (f.isRegex ? !!f.regexPattern : f.activeValues.size > 0)) && (
                         <>
@@ -94,7 +94,7 @@ export const CustomFilters = memo(function CustomFilters({
                                 <div className="text-lg font-bold text-amber-400">
                                     {filteredEventsLength}
                                 </div>
-                                <div className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Filtered</div>
+                                <div className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>Filtered</div>
                             </div>
                         </>
                     )}
@@ -130,7 +130,7 @@ export const CustomFilters = memo(function CustomFilters({
                         px-5 py-3.5 rounded-xl font-bold transition-all duration-300
                         flex items-center gap-2 hover:scale-105
                         ${!newFilterField.trim()
-                            ? 'bg-slate-700/50 text-slate-500 cursor-not-allowed'
+                            ? 'bg-slate-700/50 text-slate-600 cursor-not-allowed'
                             : 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg shadow-blue-500/30 hover:shadow-blue-500/50'
                         }
                     `}
@@ -145,7 +145,7 @@ export const CustomFilters = memo(function CustomFilters({
             {customFilters.length === 0 ? (
                 <div className={`
                     text-center py-8 rounded-xl border-2 border-dashed
-                    ${isDark ? 'border-slate-700 text-slate-500' : 'border-slate-200 text-slate-400'}
+                    ${isDark ? 'border-slate-700 text-slate-400' : 'border-slate-200 text-slate-600'}
                 `}>
                     <div className="mb-2 flex justify-center">
                         <Target className="w-10 h-10 opacity-50" />
@@ -183,7 +183,7 @@ export const CustomFilters = memo(function CustomFilters({
                                         {!filter.isRegex && (
                                             <span className={`
                                                 text-xs px-2 py-0.5 rounded-full
-                                                ${isDark ? 'bg-slate-700 text-slate-400' : 'bg-slate-200 text-slate-500'}
+                                                ${isDark ? 'bg-slate-700 text-slate-400' : 'bg-slate-200 text-slate-600'}
                                             `}>
                                                 {availableValues.length} values
                                             </span>
@@ -267,7 +267,7 @@ export const CustomFilters = memo(function CustomFilters({
                                             />
                                             <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm opacity-60 font-mono">/i</span>
                                         </div>
-                                        <p className={`text-xs mt-2 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                                        <p className={`text-xs mt-2 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                                             Case-insensitive matching. Example: <code className="font-mono">error|warn</code> matches both.
                                         </p>
                                     </div>
@@ -275,7 +275,7 @@ export const CustomFilters = memo(function CustomFilters({
                                     availableValues.length === 0 ? (
                                         <p className={`
                                             text-xs text-center py-3
-                                            ${isDark ? 'text-slate-500' : 'text-slate-400'}
+                                            ${isDark ? 'text-slate-400' : 'text-slate-600'}
                                         `}>
                                             No values found for this field in current events
                                         </p>

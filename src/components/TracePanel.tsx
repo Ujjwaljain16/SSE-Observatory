@@ -53,24 +53,24 @@ export function TracePanel({ theme, trace, onClose }: TracePanelProps) {
                             <div className={`text-sm font-bold font-mono ${isDark ? 'text-white' : 'text-slate-900'}`}>
                                 {trace.id}
                             </div>
-                            <div className={`text-xs mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                            <div className={`text-xs mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                                 via <span className="font-mono text-indigo-400">{trace.field}</span>
                             </div>
                         </div>
                     </div>
                     <div className="flex items-center gap-4">
-                        <div className={`flex items-center gap-1 text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                        <div className={`flex items-center gap-1 text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                             <Clock className="w-3.5 h-3.5" />
                             {duration < 1000 ? `${duration}ms` : `${(duration / 1000).toFixed(2)}s`} total
                         </div>
-                        <div className={`flex items-center gap-1 text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                        <div className={`flex items-center gap-1 text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                             <Layers className="w-3.5 h-3.5" />
                             {trace.events.length} events
                         </div>
                         <button
                             onClick={onClose}
                             aria-label="Close trace"
-                            className={`p-1.5 rounded-lg transition-colors ${isDark ? 'hover:bg-slate-700 text-slate-400 hover:text-white' : 'hover:bg-slate-100 text-slate-500 hover:text-slate-900'
+                            className={`p-1.5 rounded-lg transition-colors ${isDark ? 'hover:bg-slate-700 text-slate-400 hover:text-white' : 'hover:bg-slate-100 text-slate-600 hover:text-slate-900'
                                 }`}
                         >
                             <X className="w-4 h-4" aria-hidden="true" />
@@ -117,14 +117,14 @@ export function TracePanel({ theme, trace, onClose }: TracePanelProps) {
                                             }`}>
                                             {event.parsedType ?? event.type}
                                         </span>
-                                        <span className={`font-mono text-xs shrink-0 ${isDark ? 'text-slate-500' : 'text-slate-400'
+                                        <span className={`font-mono text-xs shrink-0 ${isDark ? 'text-slate-400' : 'text-slate-600'
                                             }`}>
                                             {isFirst ? event.timestamp : relativeMs(trace.firstSeen, arrival)}
                                         </span>
                                     </div>
 
                                     {event.data && (
-                                        <pre className={`mt-1.5 text-xs overflow-x-auto rounded p-1.5 ${isDark ? 'bg-slate-900 text-slate-400' : 'bg-white text-slate-500'
+                                        <pre className={`mt-1.5 text-xs overflow-x-auto rounded p-1.5 ${isDark ? 'bg-slate-900 text-slate-400' : 'bg-white text-slate-600'
                                             }`}>
                                             {typeof event.data === 'string'
                                                 ? event.data.slice(0, 200)

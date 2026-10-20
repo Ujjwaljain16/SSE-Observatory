@@ -49,7 +49,7 @@ export const StreamLaneManager = ({
                     <h2 className={`text-lg font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
                         Stream Lanes
                     </h2>
-                    <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                    <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                         Connect multiple SSE endpoints and correlate events on one timeline
                     </p>
                 </div>
@@ -109,7 +109,7 @@ export const StreamLaneManager = ({
 
 
             {streams.length === 0 ? (
-                <div className={`text-center py-8 rounded-xl border border-dashed ${isDark ? 'border-slate-700 text-slate-500' : 'border-slate-300 text-slate-400'}`}>
+                <div className={`text-center py-8 rounded-xl border border-dashed ${isDark ? 'border-slate-700 text-slate-400' : 'border-slate-300 text-slate-600'}`}>
                     <Wifi className="w-8 h-8 mx-auto mb-2 opacity-30" />
                     <p className="text-sm">No streams configured. Add your first stream above.</p>
                 </div>
@@ -141,7 +141,7 @@ export const StreamLaneManager = ({
                                 <div className={`text-sm font-semibold truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
                                     {stream.name}
                                 </div>
-                                <div className={`text-xs truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                                <div className={`text-xs truncate ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                                     {stream.url}
                                 </div>
                                 {stream.error && (
@@ -168,7 +168,7 @@ export const StreamLaneManager = ({
                                     <button
                                         onClick={() => onConnectStream(stream.id)}
                                         disabled={stream.isLoading}
-                                        className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 disabled:opacity-50 transition-all"
+                                        className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/30 disabled:opacity-50 transition-all"
                                         aria-label="Connect" title="Connect"
                                     >
                                         <span key="conn-icon">
@@ -181,7 +181,7 @@ export const StreamLaneManager = ({
                                 )}
                                 <button
                                     onClick={() => onClearStreamEvents(stream.id)}
-                                    className={`p-1.5 rounded-lg transition-all ${isDark ? 'text-slate-400 hover:bg-slate-700' : 'text-slate-500 hover:bg-slate-200'}`}
+                                    className={`p-1.5 rounded-lg transition-all ${isDark ? 'text-slate-400 hover:bg-slate-700' : 'text-slate-600 hover:bg-slate-200'}`}
                                     aria-label="Clear events" title="Clear events"
                                 >
                                     <Trash2 className="w-3.5 h-3.5" />
