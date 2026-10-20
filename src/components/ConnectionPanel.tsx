@@ -234,6 +234,9 @@ export const ConnectionPanel = ({
             {/* Proxy Toggle */}
             <div className="mt-4 mb-2 flex items-center gap-3">
                 <button
+                    role="switch"
+                    aria-checked={useProxy}
+                    aria-label="Use server proxy"
                     onClick={() => onProxyToggle(!useProxy)}
                     className={`
                         relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 focus:outline-none
