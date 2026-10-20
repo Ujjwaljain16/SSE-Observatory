@@ -35,3 +35,29 @@ When a non-looping replay finishes, the server sends an `event: end` message so 
 ```
 
 `data` must be a string. `type` is merged into JSON payloads as a `type` field when the payload does not have one.
+
+## Replaying a capture (`.sse-capture` v2)
+
+The mock server also takes a [capture](/technical/capture-format), as raw NDJSON (`Content-Type: application/x-ndjson`) or a JSON envelope `{ "capture": "<ndjson text>" }`. Old `.sse-record` files keep working exactly as before.
+
+What is replayed depends on what the capture kept:
+
+| Capture holds | Replay | Response header |
+|---|---|---|
+| wire bytes (local full-fidelity capture) | each network read is written again at its recorded time, so lumps, frames split across reads and comments reproduce byte for byte | `X-Mock-Fidelity: chunk-faithful` |
+| redacted text per read (sanitized export) | the same, with the redacted text: timing-faithful, not byte-identical | `chunk-faithful` |
+| only events (an imported v1 recording), or the replay must change what is sent | frames are rebuilt from the events or cut out of the recorded text | `event-level` |
+
+A capture with no payload (nothing but metadata) is refused with a message saying so. The recorder keeps wire bytes only when asked; it is off by default because it makes captures large and able to hold secrets.
+
+**Reconnects.** Each request to a capture session gets the next recorded connection (the first request gets the first connection, the second the second, and the last one repeats), so a capture that contained a reconnect reproduces it. Add `connection=<n>` to pick one.
+
+Query parameters on `/api/mock/stream` for a capture session:
+
+| Parameter | Meaning |
+|---|---|
+| `speed`, `loop` | as before |
+| `honorLastEventId=1` | resume after the `Last-Event-ID` the client sent, across all recorded connections (event-level) |
+| `unknownId=from-start\|400\|ignore` | what to do with an id that is not in the capture (default `from-start`) |
+| `end=close\|hold\|rst\|end-event` | how a replay ends: a plain close (a client sees a dropped connection and reconnects, the default), keep the connection open, reset it, or send `event: end` |
+| `skipIds=a,b`, `dropAfter=<n>` | test aids: leave out frames with these ids; end the connection after n frames or reads |

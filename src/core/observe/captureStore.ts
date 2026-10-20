@@ -40,7 +40,7 @@ const digitsToHash = (text: string) => text.replace(/\d+/g, '#')
 // Calibrated against measured V8 heap use per retained record (object, map entry, strings), so the cap bounds real memory.
 function estimateBytes(o: Observation): number {
     switch (o.kind) {
-        case 'chunk': return 120
+        case 'chunk': return 120 + (o.b64?.length ?? 0) + (o.text?.length ?? 0)
         case 'event': return 120 + o.sseId.length + o.event.length + (o.dataHash ? 24 : 0) + (o.extracted ? 48 : 0)
         case 'comment': return 128 + o.text.length
         case 'violation': return 144 + o.detail.length

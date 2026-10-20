@@ -11,6 +11,7 @@ import { performanceClock, type Clock } from '../clock'
 import { DIAGNOSTIC_RESPONSE_HEADERS, type Extracted, type ObservationDraft } from '../observe/observation'
 import { redactUrl } from '../observe/redactUrl'
 import { utf8Length } from './utf8'
+import { bytesToBase64 } from '../capture/base64'
 import { violationSeverity, type ViolationCode } from './violations'
 
 export type SSEPhase = 'connecting' | 'open' | 'reconnecting' | 'ended' | 'failed' | 'stopped'
@@ -67,6 +68,11 @@ export interface SSEClientOptions {
      * text; this is where a PayloadProbe plugs in. Only called when an observer is attached.
      */
     describeEvent?: ((message: SSEMessage) => { dataHash?: string; extracted?: Extracted; payloadTruncated?: true }) | undefined
+    /**
+     * Put the wire bytes of every read (Base64) on its chunk record. Off by default: it is what makes a capture
+     * byte-exact, and also what makes it large and able to hold secrets, so only a local full-fidelity capture asks for it.
+     */
+    captureBytes?: boolean | undefined
 }
 
 class HttpError extends Error {
@@ -214,7 +220,7 @@ export class SSEClient {
                         const { done, value } = await reader.read()
                         if (done) break
                         const chunk = chunkIndex++
-                        if (watching) this.observe({ kind: 'chunk', bytes: value.length })
+                        if (watching) this.observe({ kind: 'chunk', bytes: value.length, ...(this.opts.captureBytes ? { b64: bytesToBase64(value) } : {}) })
                         // A burst can arrive as one multi-megabyte chunk. Parse it in pieces and give the page a
                         // turn whenever the budget is used up, instead of blocking it for the whole chunk.
                         // The budget counts parse time only, across reads: chunks that are already buffered resolve as
