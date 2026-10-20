@@ -8,7 +8,7 @@ import type { EventMessage } from '../types'
 import type { Observation } from '../core/observe/observation'
 
 export type SSEWorkerRequest =
-    | { type: 'connect'; url: string; token?: string | undefined; useProxy?: boolean | undefined }
+    | { type: 'connect'; url: string; token?: string | undefined; useProxy?: boolean | undefined; recording?: boolean | undefined }
     | { type: 'disconnect' }
     | { type: 'ping' }
 

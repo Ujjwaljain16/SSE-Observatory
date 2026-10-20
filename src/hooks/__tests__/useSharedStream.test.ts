@@ -54,6 +54,15 @@ describe('useSharedStream (SharedWorker transport)', () => {
         expect(entry.store.snapshot().map((o) => o.seq)).toEqual([0, 1])
     })
 
+    it('with recording turned off the connect message says so, and the in-page client is not observed', async () => {
+        localStorage.setItem('sse.recording', 'off')
+        try {
+            const hook = renderHook(() => useSharedStream())
+            act(() => { hook.result.current.connect('http://test.com', 'tok') })
+            expect(mockPort.postMessage).toHaveBeenCalledWith({ type: 'connect', url: 'http://test.com', token: 'tok', useProxy: true, recording: false })
+        } finally { localStorage.removeItem('sse.recording') }
+    })
+
     it('asks the worker to connect and reports the connecting state', () => {
         const { result } = setup()
         expect(mockPort.postMessage).toHaveBeenCalledWith({ type: 'connect', url: 'http://test.com', token: 'tok', useProxy: true })
