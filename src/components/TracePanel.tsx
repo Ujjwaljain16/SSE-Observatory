@@ -110,7 +110,7 @@ export function TracePanel({ theme, trace, onClose }: TracePanelProps) {
                                 </div>
 
 
-                                <div className={`flex-1 pb-3 rounded-lg px-3 py-2 text-sm ${isDark ? 'bg-slate-800 border border-slate-700' : 'bg-slate-50 border border-slate-200'
+                                <div className={`flex-1 min-w-0 pb-3 rounded-lg px-3 py-2 text-sm ${isDark ? 'bg-slate-800 border border-slate-700' : 'bg-slate-50 border border-slate-200'
                                     }`}>
                                     <div className="flex items-center justify-between gap-2">
                                         <span className={`font-semibold font-mono truncate ${isDark ? 'text-white' : 'text-slate-900'

@@ -115,7 +115,7 @@ export function AppLayout() {
 
 
                 <div className="flex justify-center mb-8">
-                    <div className={`flex p-1 rounded-xl transition-all ${theme === 'dark' ? 'bg-slate-800' : 'bg-slate-200'}`}>
+                    <div className={`flex max-w-full overflow-x-auto p-1 rounded-xl transition-all ${theme === 'dark' ? 'bg-slate-800' : 'bg-slate-200'}`}>
                         {([
                             { key: 'monitor', label: 'Monitor Mode', Icon: Activity, color: 'bg-blue-600' },
                             { key: 'multistream', label: 'Multi-Stream', Icon: Layers, color: 'bg-emerald-600' },
@@ -127,12 +127,12 @@ export function AppLayout() {
                                     setAppMode(key)
                                     if (key === 'mock' && connected) disconnect()
                                 }}
-                                className={`px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 ${appMode === key
+                                className={`px-2.5 sm:px-6 py-2 rounded-lg font-bold text-xs sm:text-sm whitespace-nowrap transition-all flex items-center gap-2 ${appMode === key
                                     ? `${color} text-white shadow-md`
                                     : theme === 'dark' ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-800'
                                     }`}
                             >
-                                <Icon className="w-4 h-4" /> {label}
+                                <Icon className="hidden sm:block w-4 h-4" /> {label}
                             </button>
                         ))}
                     </div>
@@ -254,7 +254,7 @@ export function AppLayout() {
                                 </div>
 
 
-                                <div className="flex gap-2">
+                                <div className="flex flex-wrap gap-2">
                                     {([
                                         { key: 'stats', label: 'Stats', Icon: BarChart2, active: showStats, onToggle: () => setShowStats(!showStats), activeColor: 'bg-blue-600' },
                                         { key: 'schema', label: 'Schema', Icon: Dna, active: showSchema, onToggle: () => setShowSchema(!showSchema), activeColor: 'bg-indigo-600' },
@@ -313,7 +313,7 @@ export function AppLayout() {
                                 </div>
 
 
-                                <div className="flex gap-2">
+                                <div className="flex flex-wrap gap-2">
                                     {([
                                         { fmt: 'json' as const, label: 'JSON', cls: 'bg-emerald-600 hover:bg-emerald-700' },
                                         { fmt: 'csv' as const, label: 'CSV', cls: 'bg-amber-600 hover:bg-amber-700' },

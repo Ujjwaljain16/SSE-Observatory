@@ -8,15 +8,15 @@ interface HeaderProps {
 
 export const Header = ({ theme, onToggleTheme }: HeaderProps) => {
     return (
-        <div className="flex items-center justify-between mb-10 animate-fade-in">
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-10 animate-fade-in">
             <div className="relative">
                 {/* Decorative glow */}
                 <div className="absolute -inset-4 bg-gradient-to-r from-slate-600/10 via-slate-500/10 to-slate-400/10 blur-3xl opacity-40 -z-10" />
 
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-3 sm:gap-4">
                     {/* Animated Logo */}
                     <div className={`
-                        w-16 h-16 rounded-2xl flex items-center justify-center
+                        w-12 h-12 sm:w-16 sm:h-16 shrink-0 rounded-2xl flex items-center justify-center
                         bg-gradient-to-br from-sky-500 via-blue-500 to-cyan-500
                         shadow-lg shadow-blue-500/30 hover:shadow-blue-500/50
                         transition-all duration-300 hover:scale-105 hover:rotate-3
@@ -26,14 +26,14 @@ export const Header = ({ theme, onToggleTheme }: HeaderProps) => {
 
                     <div>
                         <h1 className={`
-                            text-4xl md:text-5xl font-extrabold tracking-tight
+                            text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight
                             bg-gradient-to-r from-sky-400 via-blue-400 to-cyan-400
                             bg-clip-text text-transparent
                             drop-shadow-sm
                         `}>
                             SSE Observatory
                         </h1>
-                        <p className={`text-base mt-1 flex items-center gap-2 ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
+                        <p className={`text-sm sm:text-base mt-1 flex items-center gap-2 ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
                             }`}>
                             <span className="live-dot" />
                             Real-time event monitoring & debugging
