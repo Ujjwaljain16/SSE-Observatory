@@ -13,6 +13,7 @@ function host(files: Record<string, string> = {}, env: Record<string, string> = 
         out: (t) => { out += t }, err: (t) => { err += t },
         readText: async (p) => { if (p in files) return files[p]!; throw new Error('ENOENT') },
         writeText: async (p, t) => { written[p] = t },
+        listDir: async (dir) => Object.keys(files).filter((f) => f.startsWith(`${dir}/`) && !f.slice(dir.length + 1).includes('/')).map((f) => f.slice(dir.length + 1)),
         env, ...(signal ? { signal } : {}),
     }
     return { io, written, get out() { return out }, get err() { return err }, all: () => out + err + Object.values(written).join('\n') }
@@ -35,6 +36,16 @@ describe('sse-doctor test', () => {
         expect(await main(['test', 'bad.json'], bad.io)).toBe(EXIT.gateFailed)
         expect(bad.out).toContain('FAIL')
         expect(bad.out).toMatch(/no_unexplained_sequence_gaps: .*4-6|numbers between/)
+    })
+
+    it('expands a * in the last path segment where the shell does not (Windows), in order, and says when nothing matches', async () => {
+        const ok = resumeScenario('fixture://f06-resumes?scale=0.05')
+        const h = host({ 'sc/b.json': ok, 'sc/a.json': ok, 'sc/notes.txt': 'x' })
+        expect(await main(['test', 'sc/*.json', '--format', 'json'], h.io)).toBe(EXIT.ok)
+        expect(JSON.parse(h.out).scenarios.map((s: { file: string }) => s.file)).toEqual(['sc/a.json', 'sc/b.json'])
+        const none = host({ 'sc/a.txt': 'x' })
+        expect(await main(['test', 'sc/*.json'], none.io)).toBe(EXIT.usage)
+        expect(none.err).toContain('No file matches')
     })
 
     it('a sequence check without a declared contract is inconclusive (exit 4), never a silent pass, unless allowed', async () => {

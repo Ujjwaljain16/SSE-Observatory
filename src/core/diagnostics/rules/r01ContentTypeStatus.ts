@@ -28,6 +28,7 @@ function statusGuess(status: number): Deduction | undefined {
     const make = (statement: string, alternatives: string[]): Deduction => ({ statement, confidence: 'low', basis: [], alternatives })
     if (status === 401 || status === 403) return make('Likely: the credentials were missing, expired or not accepted for this stream.', ['A proxy or gateway in front of the stream rejected the request.', 'The credential is valid but lacks permission for this stream.'])
     if (status === 404) return make('Likely: the URL path is wrong or the stream is not deployed there.', ['A proxy routes this path nowhere.', 'The resource exists only for other credentials.'])
+    if (status === 204) return make('Likely: the server has nothing to stream for this request and told the client not to reconnect (HTTP 204).', ['The stream is finished and the server closes it this way on purpose.', 'The request lacks a parameter or credential that selects a stream.'])
     if (status === 429) return make('Likely: the server or a gateway is rate limiting this client.', ['Too many reconnect attempts in a short time.'])
     if (status >= 500 && status <= 599) return make('Likely: the server or the proxy in front of it failed or was unreachable.', ['A deploy or restart was in progress.', 'The upstream timed out behind a gateway.'])
     return undefined

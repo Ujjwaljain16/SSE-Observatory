@@ -92,10 +92,13 @@ export class SSEParser {
     /** `chunkIndex` labels any violation noticed while parsing this piece; by default chunks are numbered by call. */
     feed(chunk: Uint8Array | string, chunkIndex?: number): void {
         this.currentChunk = chunkIndex ?? this.feedCount++
+        // TextDecoder drops a leading byte order mark by itself, so for bytes it has to be noticed before decoding.
+        const startsWithBom = typeof chunk !== 'string' && !this.sawFirstChunk && chunk.length >= 3 && chunk[0] === 0xef && chunk[1] === 0xbb && chunk[2] === 0xbf
         let text = typeof chunk === 'string' ? chunk : this.decoder.decode(chunk, { stream: true })
-        if (!this.sawFirstChunk && text.length > 0) {
+        if (!this.sawFirstChunk && (text.length > 0 || startsWithBom)) {
             this.sawFirstChunk = true
-            if (text.charCodeAt(0) === 0xfeff) {
+            if (startsWithBom) this.violation('BOM_STRIPPED', 'A UTF-8 byte order mark was removed from the start of the stream.')
+            else if (text.charCodeAt(0) === 0xfeff) {
                 text = text.slice(1)
                 this.violation('BOM_STRIPPED', 'A UTF-8 byte order mark was removed from the start of the stream.')
             }
@@ -107,11 +110,14 @@ export class SSEParser {
             this.pendingCR = false
             if (this.diagnostics && text.length + (crlf ? 1 : 0) > 0) this.noteLineEnding(crlf ? 'CRLF' : 'CR')
         }
+        // What is left in the buffer has no line ending in it, so only the new text needs scanning. Scanning the whole buffer
+        // again for every piece made one very long line quadratic (a 20 MB line without a newline took many seconds).
+        const scanFrom = this.buffer.length
         this.buffer += text
 
         let start = 0
         const buf = this.buffer
-        for (let i = 0; i < buf.length; i++) {
+        for (let i = scanFrom; i < buf.length; i++) {
             const c = buf.charCodeAt(i)
             if (c === 10 || c === 13) {
                 this.processLine(buf.slice(start, i))

@@ -131,7 +131,9 @@ const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'obj
 
 /** Reads a capture. A damaged or unfinished file is read as far as it goes, with warnings; a file that is not a capture throws. */
 export function parseCapture(text: string): ParsedCapture {
-    const raw = text.split('\n')
+    // A file that went through an editor, git on Windows or a PowerShell redirect may carry a byte order mark and CRLF line
+    // endings. Neither is part of the format, and neither may make a good file look tampered with.
+    const raw = (text.charCodeAt(0) === 0xfeff ? text.slice(1) : text).split('\n').map((line) => (line.endsWith('\r') ? line.slice(0, -1) : line))
     while (raw.length > 0 && raw[raw.length - 1]!.trim() === '') raw.pop()
     if (raw.length === 0) throw new CaptureFormatError('the file is empty')
 
