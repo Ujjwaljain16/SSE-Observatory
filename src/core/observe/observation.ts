@@ -35,10 +35,15 @@ export interface Extracted {
 export type ObservationBody =
     | { kind: 'connect'; attempt: number; url: string; method: string; headerNames: string[]; sentLastEventId: string }
     | { kind: 'response'; status: number; contentType: string; redirected: boolean; headers: Record<string, string>; ttfbMs: number }
-    | { kind: 'chunk'; bytes: number }
+    /**
+     * `b64` (the wire bytes, Base64) appears only in a local full-fidelity capture; `text` (decoded and redacted) only in a
+     * sanitized one. `bytes` is always the original byte count. The live recorder sets neither.
+     */
+    | { kind: 'chunk'; bytes: number; b64?: string | undefined; text?: string | undefined }
     | { kind: 'comment'; text: string; source: 'proxy' | 'upstream' }
     | { kind: 'retry'; ms: number }
-    | { kind: 'event'; event: string; sseId: string; dataBytes: number; dataHash?: string | undefined; extracted?: Extracted | undefined; payloadTruncated?: boolean | undefined }
+    /** `data` is the payload text, kept only where there are no chunks to rebuild it from (an imported v1 recording). */
+    | { kind: 'event'; event: string; sseId: string; dataBytes: number; dataHash?: string | undefined; extracted?: Extracted | undefined; payloadTruncated?: boolean | undefined; data?: string | undefined }
     | { kind: 'violation'; code: ViolationCode; severity: ViolationSeverity; detail: string; chunk?: number | undefined }
     | { kind: 'phase'; phase: SSEPhase; info: SSEPhaseInfo }
     /** Many identical comments (a heartbeat) folded into one record when the store is under memory pressure. */
