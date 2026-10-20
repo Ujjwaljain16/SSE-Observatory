@@ -1,25 +1,17 @@
-// sse-doctor entry point. `main` takes argv and an output sink instead of touching process.*, so the whole CLI can be
-// tested in-process (see __tests__/cli.test.ts). bin.ts is the thin Node wrapper.
+// sse-doctor entry point. `main` takes argv and an io object instead of touching process.*, so the whole CLI can be
+// tested in-process (see __tests__). bin.ts is the thin Node wrapper.
 
-import { SSEParser } from '../core/sse/sseParser'
+import { parseArgs } from './args'
+import { analyzeCommand, compareCommand, curlCommand, probeCommand, redactCommand, reportCommand } from './commands'
+import { CliError, EXIT, type CliIo } from './io'
+import { SecretRegistry, scrubbedIo } from './secretRegistry'
+import { selftestChecks } from './selftest'
+
+export { EXIT } from './io'
+export type { CliIo } from './io'
 
 /** Injected by scripts/build-cli.mjs at bundle time; undefined when running from source (tests). */
 declare const __VERSION__: string | undefined
-
-export interface CliIo {
-    out(text: string): void
-    err(text: string): void
-}
-
-/** Exit codes shared by every command (see docs/guide/cli-ci.md once it exists). */
-export const EXIT = {
-    ok: 0,
-    gateFailed: 1,
-    usage: 2,
-    couldNotRun: 3,
-    inconclusive: 4,
-    interrupted: 130,
-} as const
 
 export const version = (): string => (typeof __VERSION__ === 'undefined' ? 'dev' : __VERSION__)
 
@@ -28,48 +20,68 @@ const HELP = `sse-doctor ${version()}
 Usage: sse-doctor <command> [options]
 
 Commands:
-  selftest        check that this build of the tool works
-  --version       print the version
-  --help          print this help
+  probe <url>            connect, watch the stream, analyze it and print the findings
+  analyze <capture>      analyze a saved capture (.sse-capture, or an old .sse-record)
+  report <capture>       write a shareable report (md, html or json); needs a redacted capture
+  compare <a> <b>        compare two saved captures
+  curl <capture|url>     print a curl command that reproduces the request, with secrets as variables
+  redact <capture>       write a copy that is safe to share (--output <file>)
+  selftest               check that this build of the tool works
+  --version, --help
 
-More commands (probe, analyze, test, ...) arrive in later releases.
+Options:
+  --format human|json|md|junit   how to print findings (default human)
+  --output <file>                write to a file (report, redact)
+  --fail-on <severity>           exit 1 when an open finding is at least this severe (default error)
+  --profile <file.json>          a stream profile: sequence contract, delivery, expected cadence
+  --quiet, --verbose, --no-color
+
+probe options:
+  --duration <s>  --max-events <n>  --idle-timeout <s>   when to stop (default 30 s)
+  --out <file>                    save the capture (redacted unless --no-redact)
+  --auth-env VAR                  send Authorization: Bearer $VAR
+  --header-env Name=VAR           send a header from an environment variable (repeatable)
+  --query-env param=VAR           add a query parameter from an environment variable (repeatable)
+  --cookie-env VAR                send a Cookie header from an environment variable
+  Secrets belong in environment variables. Every value is scrubbed from all output.
+
+Exit codes: 0 passed, 1 findings at or above --fail-on, 2 usage error, 3 could not run, 4 inconclusive, 130 interrupted.
 `
 
-/** The checks behind `selftest`. Later phases add the fixture matrix; for now it proves the bundled core runs. */
-function selftestChecks(): Array<{ name: string; run(): string | null }> {
-    return [
-        {
-            name: 'SSE parser reads a frame split across chunks',
-            run() {
-                const seen: string[] = []
-                const parser = new SSEParser({ onMessage: (m) => seen.push(`${m.event}:${m.data}:${m.id}`) })
-                for (const piece of ['event: tick\nid: 7\nda', 'ta: hel', 'lo\n\n']) parser.feed(piece)
-                return seen.length === 1 && seen[0] === 'tick:hello:7' ? null : `unexpected result ${JSON.stringify(seen)}`
-            },
-        },
-    ]
+async function selftest(io: CliIo): Promise<number> {
+    let failed = 0
+    for (const check of selftestChecks()) {
+        const problem = check.run()
+        if (problem === null) io.out(`ok   ${check.name}\n`)
+        else { failed++; io.err(`FAIL ${check.name}: ${problem}\n`) }
+    }
+    io.out(failed === 0 ? 'selftest passed\n' : `selftest failed (${failed})\n`)
+    return failed === 0 ? EXIT.ok : EXIT.gateFailed
 }
 
-export async function main(argv: string[], io: CliIo): Promise<number> {
-    const [command] = argv
-    if (command === undefined || command === '--help' || command === '-h' || command === 'help') {
-        io.out(HELP)
-        return EXIT.ok
-    }
-    if (command === '--version' || command === '-v') {
-        io.out(`${version()}\n`)
-        return EXIT.ok
-    }
-    if (command === 'selftest') {
-        let failed = 0
-        for (const check of selftestChecks()) {
-            const problem = check.run()
-            if (problem === null) io.out(`ok   ${check.name}\n`)
-            else { failed++; io.err(`FAIL ${check.name}: ${problem}\n`) }
+export async function main(argv: string[], rawIo: CliIo): Promise<number> {
+    const secrets = new SecretRegistry()
+    const io = scrubbedIo(rawIo, secrets)
+    try {
+        if (argv.includes('--version') || argv.includes('-v')) { io.out(`${version()}\n`); return EXIT.ok }
+        if (argv.length === 0 || argv.includes('--help') || argv.includes('-h') || argv[0] === 'help') { io.out(HELP); return EXIT.ok }
+        const args = parseArgs(argv)
+        const command = args.positionals[0]
+        switch (command) {
+            case 'selftest': return await selftest(io)
+            case 'analyze': return await analyzeCommand(io, args)
+            case 'report': return await reportCommand(io, args)
+            case 'redact': return await redactCommand(io, args)
+            case 'compare': return await compareCommand(io, args)
+            case 'curl': return await curlCommand(io, args)
+            case 'probe': return await probeCommand(io, args, secrets)
+            default:
+                io.err(`Unknown command: ${command}\nRun "sse-doctor --help" for usage.\n`)
+                return EXIT.usage
         }
-        io.out(failed === 0 ? 'selftest passed\n' : `selftest failed (${failed})\n`)
-        return failed === 0 ? EXIT.ok : EXIT.gateFailed
+    } catch (error) {
+        if (error instanceof CliError) { io.err(`${error.message}\n`); return error.exit }
+        io.err(`sse-doctor could not finish: ${error instanceof Error ? error.message : String(error)}\n`)
+        return EXIT.couldNotRun
     }
-    io.err(`Unknown command: ${command}\nRun "sse-doctor --help" for usage.\n`)
-    return EXIT.usage
 }
