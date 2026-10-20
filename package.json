@@ -65,7 +65,7 @@
     "fast-check": "^4.10.2",
     "globals": "^16.0.0",
     "jsdom": "^28.1.0",
-    "lucide-react": "^0.563.0",
+    "lucide-react": "^1.59.0",
     "microdiff": "^1.5.0",
     "postcss": "^8.4.32",
     "react": "^18.2.0",
