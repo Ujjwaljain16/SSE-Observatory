@@ -41,6 +41,7 @@ export default defineConfig({
                     text: 'Architecture',
                     items: [
                         { text: 'WebWorkers & Ring Buffers', link: '/technical/architecture' },
+                        { text: 'Proxy Diagnostics', link: '/technical/proxy-diagnostics' },
                         { text: 'Known Limitations', link: '/technical/limitations' }
                     ]
                 }

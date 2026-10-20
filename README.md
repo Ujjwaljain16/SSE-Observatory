@@ -178,6 +178,7 @@ The built-in proxy (`/api/sse`) relays browser requests to third-party SSE endpo
 | `PROXY_ALLOWED_ORIGINS` | Extra browser origins allowed to use the proxy (the app's own origin is always allowed). |
 | `ALLOW_PRIVATE_TARGETS=1` | Self-hosting only: allow private-network targets. |
 | `MAX_STREAM_SECONDS`, `MAX_STREAM_MB`, `MAX_CONCURRENT_STREAMS` | Per-stream duration and byte caps and a per-instance concurrency cap. Vercel Hobby streams are capped at 55 s; the browser reconnects automatically. |
+| `PROXY_DIAGNOSTICS=0` | Turn off the tagged proxy comments (`: sse-proxy hb up_idle=... n=...`) and the `X-SSE-*` response headers; the stream is then exactly the original output. On by default, see [Proxy diagnostics](docs/technical/proxy-diagnostics.md). |
 | `ENABLE_MOCK_API=1` | Enable the mock replay API in production (sessions are private and expire after 1 h; attach KV via `KV_REST_API_URL` for multi-instance deployments). |
 | `HOST`, `PORT`, `TRUST_PROXY`, `RATE_LIMIT_MAX` | Express server settings (`HOST=0.0.0.0` in containers; set `TRUST_PROXY` behind a load balancer). |
 | `VITE_SENTRY_DSN` / `SENTRY_DSN` | Optional error reporting; disabled unless set. Session replay is not used. |
