@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import type { EventMessage } from '../types'
 import { FifoQueue } from '../utils/fifoQueue'
 import { buildEvent, finalizeEvent, type IncomingSSE } from '../utils/buildEvent'
+import { MAIN_STREAM, observationRegistry } from '../doctor/observationRegistry'
 
 /**
  * Turns raw SSE messages into the newest-first, capped event buffer the UI renders.
@@ -10,6 +11,8 @@ import { buildEvent, finalizeEvent, type IncomingSSE } from '../utils/buildEvent
  *    burst of thousands of events costs one React render, not thousands
  *  - interceptors run sequentially, in arrival order (no reordering from async completion)
  *  - the queue is bounded; if the page cannot keep up the oldest queued messages are dropped and counted
+ *  - each flushed slice reports how long its oldest message waited (page-domain `consumer` sample), so a slow page can be
+ *    told apart from a slow network
  */
 
 const MAX_QUEUE = 20_000
@@ -26,9 +29,11 @@ export interface IngestOptions {
     maxEvents: number
     applyInterceptors?: Interceptor | undefined
     onEventPersist?: ((event: EventMessage) => void) | undefined
+    /** Which stream's observation entry receives the consumer samples. */
+    streamId?: string | undefined
 }
 
-export function useEventIngest({ maxEvents, applyInterceptors, onEventPersist }: IngestOptions) {
+export function useEventIngest({ maxEvents, applyInterceptors, onEventPersist, streamId = MAIN_STREAM }: IngestOptions) {
     const [events, setEvents] = useState<EventMessage[]>([])
     const [droppedCount, setDroppedCount] = useState(0)
     // Total events accepted since the last clear. Unlike events.length it keeps growing once the ring buffer is full.
@@ -38,6 +43,10 @@ export function useEventIngest({ maxEvents, applyInterceptors, onEventPersist }:
     const [epoch, setEpoch] = useState(0)
 
     const queue = useRef(new FifoQueue<IncomingSSE>())
+    // When each queued message was pushed (page clock), kept in step with `queue`; numbers only, so no per-message allocation.
+    const pushedAt = useRef(new FifoQueue<number>())
+    const streamIdRef = useRef(streamId)
+    streamIdRef.current = streamId
     const scheduled = useRef<{ raf?: number; timer?: ReturnType<typeof setTimeout> } | null>(null)
     const processing = useRef(false)
     const generation = useRef(0)
@@ -59,7 +68,12 @@ export function useEventIngest({ maxEvents, applyInterceptors, onEventPersist }:
             // (the finally block below schedules the next one) instead of blocking the page in one long task.
             const start = performance.now()
             const accepted: EventMessage[] = [] // oldest → newest
+            let oldestPushedAt = -1
+            let taken = 0
             while (queue.current.length > 0 && performance.now() - start < SLICE_BUDGET_MS) {
+                const times = pushedAt.current.take(CHUNK)
+                if (oldestPushedAt < 0 && times.length > 0) oldestPushedAt = times[0]!
+                taken += times.length
                 for (const incoming of queue.current.take(CHUNK)) {
                     let event: EventMessage | null = buildEvent(incoming)
                     const intercept = interceptorRef.current
@@ -73,6 +87,10 @@ export function useEventIngest({ maxEvents, applyInterceptors, onEventPersist }:
                 }
             }
             if (gen !== generation.current) return // cleared or reconnected while we were awaiting
+            if (taken > 0 && oldestPushedAt >= 0) {
+                const processedT = performance.now()
+                observationRegistry.recordConsumer(streamIdRef.current, { kind: 'consumer', n: taken, queueDepth: queue.current.length, receivedT: oldestPushedAt, processedT, lagMs: processedT - oldestPushedAt })
+            }
             if (accepted.length > 0) {
                 setReceivedCount((c) => c + accepted.length)
                 setEvents((prev) => {
@@ -112,10 +130,12 @@ export function useEventIngest({ maxEvents, applyInterceptors, onEventPersist }:
     }, [flush])
 
     const push = useCallback((incoming: IncomingSSE | IncomingSSE[]) => {
-        if (Array.isArray(incoming)) for (const item of incoming) queue.current.push(item)
-        else queue.current.push(incoming)
+        const now = performance.now()
+        if (Array.isArray(incoming)) for (const item of incoming) { queue.current.push(item); pushedAt.current.push(now) }
+        else { queue.current.push(incoming); pushedAt.current.push(now) }
         if (queue.current.length > MAX_QUEUE) {
             const drop = queue.current.dropOldest(queue.current.length - MAX_QUEUE)
+            pushedAt.current.dropOldest(drop)
             droppedRef.current += drop
             setDroppedCount(droppedRef.current)
         }
@@ -134,6 +154,7 @@ export function useEventIngest({ maxEvents, applyInterceptors, onEventPersist }:
     const clear = useCallback(() => {
         generation.current++
         queue.current.clear()
+        pushedAt.current.clear()
         cancelScheduled()
         droppedRef.current = 0
         setDroppedCount(0)
@@ -146,6 +167,7 @@ export function useEventIngest({ maxEvents, applyInterceptors, onEventPersist }:
     const replace = useCallback((next: EventMessage[]) => {
         generation.current++
         queue.current.clear()
+        pushedAt.current.clear()
         cancelScheduled()
         setEpoch((e) => e + 1)
         setEvents(next.slice(0, maxRef.current))
