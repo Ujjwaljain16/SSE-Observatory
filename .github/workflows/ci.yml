@@ -31,6 +31,10 @@ jobs:
       - run: npm run typecheck
       - run: npm run test:coverage
       - run: npm run build
+      # The CLI package: build it, run the built bundle, then install the packed tarball into a clean directory.
+      - run: npm run build:cli
+      - run: npm run doctor:selftest
+      - run: npm run cli:check
 
   audit:
     name: Dependency audit (runtime, high+)

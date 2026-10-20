@@ -57,3 +57,6 @@ dist-ssr/
 docs/.vitepress/cache/
 docs/.vitepress/dist/
 vite.config.d.ts
+
+# Generated sse-doctor package (npm run build:cli)
+dist-cli/
