@@ -26,14 +26,16 @@ describe('FifoQueue', () => {
     it('stays correct across compaction while pushing and taking interleaved', () => {
         const q = new FifoQueue<number>()
         let next = 0
-        let expected = 0
+        // Compare in one assertion at the end: 125k individual expect() calls made this test take seconds under coverage.
+        const out: number[] = []
         for (let round = 0; round < 50; round++) {
             for (let i = 0; i < 3000; i++) q.push(next++)
-            for (const v of q.take(2500)) expect(v).toBe(expected++)
+            out.push(...q.take(2500))
         }
-        expect(q.length).toBe(next - expected)
-        for (const v of q.take(q.length)) expect(v).toBe(expected++)
-        expect(expected).toBe(next)
+        expect(q.length).toBe(next - out.length)
+        out.push(...q.take(q.length))
+        expect(out).toHaveLength(next)
+        expect(out.every((v, i) => v === i)).toBe(true) // strict FIFO order, nothing lost or repeated across compactions
     })
 
     it('clear empties it', () => {

@@ -89,7 +89,7 @@ describe('createObservedStream', () => {
 
     it('callbacks set in clientOptions cannot replace the stream\'s own', () => {
         const stolen: string[] = []
-        const { client, messages } = build({ clientOptions: { onMessage: (m) => stolen.push(m.data) } as never })
+        const { client, messages } = build({ clientOptions: { onMessage: (m: { data: string }) => stolen.push(m.data) } as never })
         client.deliver('x', 'hello')
         expect(stolen).toEqual([])
         expect(messages).toHaveLength(1)
