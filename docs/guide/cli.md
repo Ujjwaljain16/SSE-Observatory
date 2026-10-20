@@ -32,7 +32,7 @@ Options for every command: `--format human|json|md|junit`, `--fail-on info|warni
 | 1 | an open finding at or above `--fail-on` |
 | 2 | wrong usage, or an input that is not a capture |
 | 3 | could not run (file unreadable, connection failed without a diagnosis) |
-| 4 | inconclusive (reserved for scenario checks) |
+| 4 | inconclusive: no check failed, but a scenario check could not be decided |
 | 130 | interrupted |
 
 ## Secrets
