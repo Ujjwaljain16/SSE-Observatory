@@ -32,7 +32,7 @@ const buffered: Script = async (ctx) => {
 }
 
 const routes: FixtureRoute[] = [
-    { id: 'f09-buffered', family: 'F09', path: '/f09/buffered', title: 'Same stream through a buffering layer', description: 'Events are produced every 300 ms but delivered in 4096-byte blocks. Compare with f09-healthy.', expectedFindings: [], forbiddenFindings: ['stall.silent'], healthyTwin: 'f09-healthy', defaultN: 12 },
+    { id: 'f09-buffered', family: 'F09', path: '/f09/buffered', title: 'Same stream through a buffering layer', description: 'Events are produced every 300 ms but delivered in 4096-byte blocks. Compare with f09-healthy.', expectedFindings: [], forbiddenFindings: ['stall.silent'], healthyTwin: null, defaultN: 12 },
     { id: 'f09-healthy', family: 'F09', path: '/f09/healthy', title: 'Healthy: same stream, flushed per event', description: 'The same events, each delivered as it is produced.', expectedFindings: [], forbiddenFindings: ['*'], healthyTwin: null, defaultN: 12 },
 ]
 

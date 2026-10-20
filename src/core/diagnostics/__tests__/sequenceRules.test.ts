@@ -98,11 +98,10 @@ describe('R09 without a declared contract', () => {
         expect(a.coverage.find((c) => c.ruleId === 'seq.integrity')!.notes.join(' ')).toMatch(/not verified/)
     })
 
-    it('hints, at info level only, that ids which count up could be declared', () => {
+    it('notes, in the coverage and never as a finding, that ids which count up could be declared', () => {
         const a = run(frames(healthyStart(), Array.from({ length: 12 }, (_, i) => i + 1)), NO_CONTRACT)
-        const hint = find(a.findings, 'seq.integrity:hint')!
-        expect(hint.severity).toBe('info')
-        expect(hint.nextCheck?.description).toContain('useSseId')
+        expect(keys(a.findings)).toEqual([])
+        expect(a.coverage.find((c) => c.ruleId === 'seq.integrity')!.notes.join(' ')).toContain('useSseId')
     })
 
     it('stays silent for opaque ids', () => {

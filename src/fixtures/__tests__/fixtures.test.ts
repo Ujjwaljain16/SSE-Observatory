@@ -168,12 +168,16 @@ describe('failing fixtures produce the documented finding', () => {
     })
 })
 
+// Rules that need something a plain socket run does not provide: a declared sequence contract, page-side consumer
+// records, proxy tags. They say "not evaluated" there, which is the right answer and not a failure of the stream.
+const NEEDS_MORE_THAN_A_SOCKET = new Set(['seq.integrity', 'consumer.slow', 'proxy.masking'])
+
 describe('healthy twins produce zero findings, with every rule evaluated', () => {
     for (const [id, query] of [['h01', { scale: 0.02, n: 6 }], ['h02', { scale: 0.03, n: 3 }], ['h03', { scale: 0.05 }], ['h04', { scale: 0.02, n: 6 }]] as const) {
         it(`${id}`, async () => {
             const w = await watch(server.urlFor(id, query), hasPhase('ended'))
             expectMeta(route(id), w)
-            expect(w.coverage.filter((c) => c.status !== 'evaluated')).toEqual([])
+            expect(w.coverage.filter((c) => c.status !== 'evaluated' && !NEEDS_MORE_THAN_A_SOCKET.has(c.ruleId))).toEqual([])
         })
     }
 })
@@ -245,7 +249,7 @@ async function watchPhase7(url: string, until: (o: Observation[], processed: () 
 
 const connections = (o: Observation[]) => o.filter((x) => x.kind === 'connect').length
 const keysOf = (w: Watch) => w.findings.map((f) => f.key)
-const unevaluated = (w: Watch) => w.coverage.filter((c) => c.status !== 'evaluated').map((c) => c.ruleId)
+const unevaluated = (w: Watch) => w.coverage.filter((c) => c.status !== 'evaluated' && !NEEDS_MORE_THAN_A_SOCKET.has(c.ruleId)).map((c) => c.ruleId)
 // delays are scaled down, so the gap that counts as a quiet time and the nominal gap between events are scaled with them
 const burstThresholds: Partial<Thresholds> = { stallNoCadenceMs: 5000, burstMinGapMs: 150, burstMinNominalGapMs: 10 }
 

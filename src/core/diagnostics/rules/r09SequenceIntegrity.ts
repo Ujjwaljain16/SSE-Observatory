@@ -9,7 +9,7 @@ import { ev, plural } from './util'
  *
  * Only under a DECLARED sequence contract (profile.sequence). Numbers that merely look sequential prove nothing: a
  * server may legitimately send 104 and then 111. Without a contract the rule says continuity cannot be verified, and at
- * most hints that the ids look sequential and could be declared. A gap is confirmed after a reorder window, so a late
+ * most notes (in its coverage, not as a finding) that the ids look sequential and could be declared. A gap is confirmed after a reorder window, so a late
  * event that fills it is not reported as loss. Numbering is tracked per partition when the profile names one.
  * A jump on the first event of a new connection belongs to the resume rule (R08), not here.
  */
@@ -158,14 +158,6 @@ export const sequenceIntegrity: Rule = {
             }
         }
 
-        const hintDraft = (t: number, e: Evidence): FindingDraft => ({
-            key: 'seq.integrity:hint', severity: 'info', title: 'Ids look sequential', summary: 'The event ids count up by one. Declare them as the sequence to have gaps and duplicates checked.',
-            facts: [{ text: `${HINT_RUN} event ids in a row increase by exactly 1.`, evidence: [e] }], deductions: [],
-            nextCheck: { description: 'Declare the sequence in the stream profile: { "sequence": { "useSseId": true, "policy": "consecutive" } }.' },
-            limits: ['Without a declared sequence contract continuity is not judged: ids that look sequential may not be, and a jump may be intended.'],
-            status: 'open', firstSeenT: t, lastSeenT: t, occurrences: 1,
-        })
-
         const stateFor = (key: string): PartitionState | undefined => {
             let st = partitions.get(key)
             if (!st && partitions.size >= MAX_PARTITIONS) { overflowed = true; return undefined }
@@ -193,7 +185,7 @@ export const sequenceIntegrity: Rule = {
                     const id = /^\d{1,15}$/.test(o.sseId) ? Number(o.sseId) : undefined
                     run = id !== undefined && lastId !== undefined && id === lastId + 1 ? run + 1 : 1
                     lastId = id
-                    if (!hinted && run >= HINT_RUN) { hinted = true; return [hintDraft(o.t, ev(o.seq, o.t, 'tenth consecutive id'))] }
+                    if (run >= HINT_RUN) hinted = true
                     return
                 }
                 const raw = o.extracted?.seq
@@ -227,7 +219,11 @@ export const sequenceIntegrity: Rule = {
                 return drafts
             },
             coverage(_model: StreamModel) {
-                if (!contract) return { evaluated: false, notes: ['Continuity is not verified: no sequence contract is declared for this stream, and ids alone prove nothing.'] }
+                if (!contract) {
+                    // A hint, not a finding: a healthy stream must not carry findings, and the ids may be sequential by accident.
+                    const hint = hinted ? [' The event ids count up by one; declare them as the sequence ({ "sequence": { "useSseId": true, "policy": "consecutive" } }) to have gaps and duplicates checked.'] : []
+                    return { evaluated: false, notes: [`Continuity is not verified: no sequence contract is declared for this stream, and ids alone prove nothing.${hint.join('')}`] }
+                }
                 if (events > 0 && unreadable.count === events) return { evaluated: false, notes: ['None of the events carried a readable sequence number at the declared place.'] }
                 return { evaluated: true, notes: unreadable.count > 0 ? [`${plural(unreadable.count, 'event')} had no readable sequence number and were skipped.`] : [] }
             },

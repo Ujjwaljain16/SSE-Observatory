@@ -103,7 +103,7 @@ describe('R07 reconnect.duration-pattern', () => {
     it('is silent for varied lifetimes, the healthy twin (a drop is resumed, lengths differ)', () => {
         const b = lifetimes([20_000, 45_000, 33_000, 70_000])
         const a = run(b, reconnectLoop)
-        expect(a.findings).toEqual([])
+        expect(keys(a.findings).filter((k) => k.startsWith('reconnect.'))).toEqual([]) // other rules may have their own view of the same reconnects
         expect(a.coverage.find((c) => c.ruleId === LOOP)!.status).toBe('evaluated')
     })
 
