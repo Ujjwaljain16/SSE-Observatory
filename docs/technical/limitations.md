@@ -20,6 +20,8 @@ Some browsers and embedded webviews do not provide a working SharedWorker. The a
 
 An interceptor call is killed after 100 ms. Heavy transformations on very hot streams add up: keep interceptors small, or move the logic upstream.
 
+The sandbox limits **time**, not **memory**. Browsers have no per-worker memory cap, so interceptor code that allocates without bound (for example pushing large strings into an ever-growing array) can use up the page's memory within its 100 ms budget and crash the tab. Interceptors are code you run yourself; treat that as a self-inflicted limit, and do not paste untrusted snippets.
+
 ## 6. Mock sessions are ephemeral
 
 Mock replay sessions live in server memory (or KV when configured) for one hour. A server restart on a single-instance setup discards them; upload the recording again.

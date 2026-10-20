@@ -15,8 +15,10 @@ test.describe('Interceptor Meltdown', () => {
         const editor = page.locator('textarea').first()
         await expect(editor).toBeVisible({ timeout: 5000 })
 
-        // Memory-hungry, never-ending user code
-        await editor.fill('const a = []\nwhile (true) { a.push("x".repeat(10000)) }\nreturn event')
+        // Never-ending user code with allocation churn. The array is bounded on purpose: a browser has no per-worker
+        // memory limit, so truly unbounded allocation can take the whole tab down (it crashed the CI runner). That is a
+        // documented limit of the sandbox, not something this test should provoke.
+        await editor.fill('const a = []\nwhile (true) { a.push("x".repeat(1000)); if (a.length > 2000) a.length = 0 }\nreturn event')
 
         // The worker is killed after its time budget and the reason is shown
         await expect(page.locator('text=/exceeded 100ms/i').first()).toBeVisible({ timeout: 15000 })

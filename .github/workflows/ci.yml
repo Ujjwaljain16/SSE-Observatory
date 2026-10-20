@@ -57,7 +57,8 @@ jobs:
   e2e:
     name: Playwright (dev servers)
     runs-on: ubuntu-latest
-    # Informational until the suite is stabilised (several specs are skipped or weak - see audit).
+    # Informational until the suite is stable: it passes locally and on PRs, but a cold shared runner still flakes now
+    # and then. Make it blocking after a run of consecutive green builds on main.
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
