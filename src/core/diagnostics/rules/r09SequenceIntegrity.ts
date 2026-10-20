@@ -49,7 +49,7 @@ export const sequenceIntegrity: Rule = {
         // Highest number a partition had when its current connection began: what a resume may legitimately replay.
         const replayCeiling = new Map<string, number | undefined>()
         let overflowed = false
-        let unreadable = empty()
+        const unreadable = empty()
         let totalMissing = 0
         const agg = { gap: empty(), duplicate: empty(), replay: empty(), conflict: empty(), regression: empty(), reorder: empty() }
         let run = 0
