@@ -62,6 +62,36 @@ export default [
         },
     },
 
+    // The shared core, the Node CLI and the fixture servers run without a DOM. tsconfig.core.json already fails the
+    // typecheck on DOM names; this also blocks the browser globals that the block above adds, and keeps React and the
+    // app layers out of code the CLI bundles.
+    {
+        files: ['src/core/**/*.ts', 'src/cli/**/*.ts', 'src/fixtures/**/*.ts'],
+        ignores: ['**/__tests__/**', '**/*.test.ts'],
+        rules: {
+            'no-restricted-globals': ['error',
+                ...['window', 'document', 'localStorage', 'sessionStorage', 'self', 'navigator', 'indexedDB', 'location', 'Worker', 'SharedWorker', 'requestAnimationFrame', 'cancelAnimationFrame']
+                    .map((name) => ({ name, message: 'Not available in the shared core, CLI or fixtures (they run without a DOM).' })),
+            ],
+            'no-restricted-imports': ['error', {
+                patterns: [{
+                    group: ['react', 'react-dom', 'react/*', 'react-dom/*', '**/components/**', '**/hooks/**', '**/context/**', '**/workers/**', '**/utils/**'],
+                    message: 'Core, CLI and fixtures must not import React or the app layers. Put shared logic in src/core.',
+                }],
+            }],
+        },
+    },
+
+    // And the other way round: the browser bundle must never pull in the Node-only CLI or fixture servers.
+    {
+        files: ['src/components/**/*.{ts,tsx}', 'src/hooks/**/*.{ts,tsx}', 'src/workers/**/*.ts', 'src/context/**/*.{ts,tsx}', 'src/utils/**/*.ts', 'src/doctor/**/*.{ts,tsx}'],
+        rules: {
+            'no-restricted-imports': ['error', {
+                patterns: [{ group: ['**/cli/**', '**/fixtures/**'], message: 'The CLI and fixture servers are Node-only and must not end up in the browser bundle.' }],
+            }],
+        },
+    },
+
     // Tests may be looser
     {
         files: ['**/*.{test,spec}.{ts,tsx}', 'src/test/**', 'e2e/**'],

@@ -32,7 +32,7 @@
     "screenshots": "node scripts/screenshots.mjs",
     "demo": "node test-servers/demo-server.js",
     "test:all": "npm run test && npm run test:e2e",
-    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.core.json --noEmit && tsc -p tsconfig.test.json --noEmit",
     "verify": "npm run lint && npm run typecheck && npm run test:coverage && npm run build"
   },
   "dependencies": {
