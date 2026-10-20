@@ -5,6 +5,7 @@
 // (tests and tooling only; zod is too heavy to ship inside a worker).
 
 import type { EventMessage } from '../types'
+import type { Observation } from '../core/observe/observation'
 
 export type SSEWorkerRequest =
     | { type: 'connect'; url: string; token?: string | undefined; useProxy?: boolean | undefined }
@@ -18,6 +19,8 @@ export type SSEWorkerResponse =
     | { type: 'disconnected' }
     | { type: 'event'; payload: RawFrame }
     | { type: 'catchup'; events: RawFrame[] }
+    /** Observation records for the connection. `replace` means the batch is the whole retained history (sent to a late joiner). */
+    | { type: 'observations'; key: string; captureId: string; batch: Observation[]; replace?: boolean | undefined }
     | { type: 'error'; message: string }
 
 export type FilterWorkerRequest =

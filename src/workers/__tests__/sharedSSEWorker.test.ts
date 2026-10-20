@@ -102,6 +102,42 @@ describe('sharedSSEWorker.ts - multi-tab bookkeeping', () => {
         expect(msgs[0].payloads[999].data).toBe('e999')
     })
 
+    it('records what its client observes and broadcasts it to every tab in batches, tagged with an opaque capture id', () => {
+        const a = newPort(); const b = newPort()
+        connect(a, '/events', 'secret-token'); connect(b, '/events', 'secret-token')
+        const client = FakeClient.instances[0]
+        client.opts.onObservation!({ kind: 'chunk', bytes: 10 })
+        client.opts.onObservation!({ kind: 'comment', text: 'hb', source: 'upstream' })
+        for (const p of [a, b]) expect(p.received().filter((m) => m.type === 'observations')).toHaveLength(0) // batched, not yet
+        vi.advanceTimersByTime(100)
+        for (const p of [a, b]) {
+            const msgs = p.received().filter((m) => m.type === 'observations')
+            expect(msgs).toHaveLength(1)
+            expect(msgs[0].batch.map((o: { kind: string; seq: number }) => [o.seq, o.kind])).toEqual([[0, 'chunk'], [1, 'comment']])
+            expect(msgs[0].replace).toBeUndefined()
+            expect(msgs[0].key).toBe('/events::secret-token') // the existing routing key, as the other messages carry
+            // the capture id is random: it must not reveal the URL or token the connection is keyed by
+            expect(msgs[0].captureId).not.toMatch(/events|secret|token/)
+        }
+        expect(a.received().find((m) => m.type === 'observations').captureId).toBe(b.received().find((m) => m.type === 'observations').captureId)
+    })
+
+    it('sends a tab that joins late the retained history, marked replace', () => {
+        const a = newPort()
+        connect(a)
+        const client = FakeClient.instances[0]
+        client.opts.onObservation!({ kind: 'chunk', bytes: 10 })
+        client.opts.onObservation!({ kind: 'chunk', bytes: 20 })
+        vi.advanceTimersByTime(100)
+        const b = newPort()
+        connect(b)
+        const history = b.received().find((m) => m.type === 'observations')
+        expect(history.replace).toBe(true)
+        expect(history.batch.map((o: { kind: string; bytes: number }) => o.bytes)).toEqual([10, 20])
+        // a tab that joined first only got the live batch, not a replacement
+        expect(a.received().filter((m) => m.type === 'observations' && m.replace)).toHaveLength(0)
+    })
+
     it('answers a ping with a pong so a tab can tell the worker is alive', () => {
         const a = newPort()
         connect(a)

@@ -24,15 +24,29 @@ export interface Stamp {
     domain?: 'transport' | 'page' | undefined
 }
 
+/** Values read from a payload by the PayloadProbe, according to the stream profile. Rules read these, never raw text. */
+export interface Extracted {
+    seq?: number | string | undefined
+    ts?: number | undefined
+    partition?: string | undefined
+    isHeartbeat?: boolean | undefined
+}
+
 export type ObservationBody =
     | { kind: 'connect'; attempt: number; url: string; method: string; headerNames: string[]; sentLastEventId: string }
     | { kind: 'response'; status: number; contentType: string; redirected: boolean; headers: Record<string, string>; ttfbMs: number }
     | { kind: 'chunk'; bytes: number }
     | { kind: 'comment'; text: string; source: 'proxy' | 'upstream' }
     | { kind: 'retry'; ms: number }
-    | { kind: 'event'; event: string; sseId: string; dataBytes: number }
+    | { kind: 'event'; event: string; sseId: string; dataBytes: number; dataHash?: string | undefined; extracted?: Extracted | undefined; payloadTruncated?: boolean | undefined }
     | { kind: 'violation'; code: ViolationCode; severity: ViolationSeverity; detail: string; chunk?: number | undefined }
     | { kind: 'phase'; phase: SSEPhase; info: SSEPhaseInfo }
+    /** Many identical comments (a heartbeat) folded into one record when the store is under memory pressure. */
+    | { kind: 'heartbeatSeries'; text: string; source: 'proxy' | 'upstream'; count: number; firstT: Mono; lastT: Mono; minGapMs: number; maxGapMs: number; meanGapMs: number }
+    /** The store dropped detail to stay within its memory cap. Nothing is dropped silently: this says what and how much. */
+    | { kind: 'truncated'; what: 'chunk' | 'event' | 'heartbeat' | 'violation'; dropped: number }
+    /** Page domain: how long events waited between arriving at the page and being processed. receivedT/processedT share the page clock. */
+    | { kind: 'consumer'; n: number; queueDepth: number; receivedT: number; processedT: number; lagMs: number; firstObsSeq?: number | undefined; lastObsSeq?: number | undefined }
     | { kind: 'reconnect'; attempt: number; delayMs: number; reason: string; lastEventIdSent: string; serverRetryMs?: number | undefined; status?: number | undefined }
 
 export type Observation = Stamp & ObservationBody

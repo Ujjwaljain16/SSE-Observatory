@@ -38,6 +38,18 @@ describe('FifoQueue', () => {
         expect(out.every((v, i) => v === i)).toBe(true) // strict FIFO order, nothing lost or repeated across compactions
     })
 
+    it('shift takes one item at a time, oldest first, and reports empty with undefined', () => {
+        const q = new FifoQueue<string>()
+        expect(q.shift()).toBeUndefined()
+        q.push('a'); q.push('b')
+        expect(q.shift()).toBe('a')
+        expect(q.length).toBe(1)
+        expect(q.shift()).toBe('b')
+        expect(q.shift()).toBeUndefined()
+        q.push('c')
+        expect(q.shift()).toBe('c')
+    })
+
     it('clear empties it', () => {
         const q = new FifoQueue<string>()
         q.push('a'); q.push('b')

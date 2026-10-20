@@ -10,4 +10,6 @@ export interface IncomingSSE {
     arrivalTime: number
     /** Monotonic sequence assigned by the SharedWorker (used to drop duplicates on catch-up). */
     seq?: number
+    /** Sequence number of this event's observation record, when recording is on (lets evidence point at the event). */
+    obsSeq?: number
 }
