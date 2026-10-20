@@ -102,13 +102,13 @@ describe('streamProxy', () => {
         }
         const r = await get(portOf(proxy), target())
         expect(r.body).toContain('data: {"a":1}\n\n')
-        expect(r.body).not.toMatch(/data: \{"a":[^\n]*keep-alive/)
+        expect(r.body).not.toMatch(/data: \{"a":[^\n]*sse-proxy/)
     })
 
-    it('does send keep-alive comments while idle between events', async () => {
+    it('does send tagged heartbeat comments while idle between events', async () => {
         upstreamHandler = (_req, res) => { res.writeHead(200, sseHead); res.write('data: x\n\n'); setTimeout(() => res.end(), 200) }
         const r = await get(portOf(proxy), target())
-        expect(r.body).toContain(': keep-alive\n\n')
+        expect(r.body).toMatch(/: sse-proxy hb up_idle=\d+ n=1\n\n/)
     })
 
     it('enforces the byte cap', async () => {
@@ -182,6 +182,110 @@ describe('streamProxy', () => {
             req.end()
         })
         expect(r).toBe(405)
+    })
+})
+
+describe('streamProxy diagnostics tags', () => {
+    const commentsOf = (body: string) => body.split('\n\n').filter((b) => b.startsWith(': ')).map((b) => b.slice(2))
+    const heartbeats = (body: string) => commentsOf(body).map((c) => /^sse-proxy hb up_idle=(\d+) n=(\d+)$/.exec(c)).filter((m): m is RegExpExecArray => !!m)
+
+    it('sets the X-SSE-* headers with the upstream facts', async () => {
+        upstreamHandler = (_req, res) => { res.writeHead(200, { ...sseHead, 'Content-Encoding': 'identity' }); setTimeout(() => res.end('data: x\n\n'), 20) }
+        proxyConfig = devConfig({ maxDurationMs: 5000 })
+        const r = await get(portOf(proxy), target())
+        expect(r.headers['x-sse-proxy']).toBe('observatory/1')
+        expect(r.headers['x-sse-proxy-heartbeat-ms']).toBe('30')
+        expect(r.headers['x-sse-proxy-max-duration']).toBe('5000')
+        expect(r.headers['x-sse-upstream-status']).toBe('200')
+        expect(r.headers['x-sse-upstream-content-type']).toBe('text/event-stream')
+        expect(r.headers['x-sse-upstream-encoding']).toBe('identity')
+        expect(Number(r.headers['x-sse-upstream-ttfb-ms'])).toBeGreaterThanOrEqual(0)
+    })
+
+    it('reports uncapped streams as 0 and a missing encoding as empty', async () => {
+        upstreamHandler = (_req, res) => { res.writeHead(200, sseHead); res.end('data: x\n\n') }
+        const r = await get(portOf(proxy), target())
+        expect(r.headers['x-sse-proxy-max-duration']).toBe('0')
+        expect(r.headers['x-sse-upstream-encoding']).toBe('')
+    })
+
+    it('writes one meta comment right after the ping, before any forwarded event', async () => {
+        upstreamHandler = (_req, res) => { res.writeHead(200, sseHead); setTimeout(() => res.end('data: x\n\n'), 10) }
+        proxyConfig = devConfig({ maxDurationMs: 7000 })
+        const r = await get(portOf(proxy), target())
+        const metas = commentsOf(r.body).filter((c) => c.startsWith('sse-proxy-meta '))
+        expect(metas).toHaveLength(1)
+        expect(r.body.indexOf(': sse-proxy-ping')).toBeLessThan(r.body.indexOf(': sse-proxy-meta'))
+        expect(r.body.indexOf(': sse-proxy-meta')).toBeLessThan(r.body.indexOf('data: x'))
+        const meta = JSON.parse(metas[0]!.slice('sse-proxy-meta '.length))
+        expect(meta).toMatchObject({ status: 200, contentType: 'text/event-stream', encoding: '', heartbeatMs: 30, maxDurationMs: 7000 })
+        expect(meta.ttfbMs).toBeGreaterThanOrEqual(0)
+    })
+
+    it('up_idle grows while the upstream is silent and the proxy keeps heartbeating', async () => {
+        upstreamHandler = (_req, res) => { res.writeHead(200, sseHead); res.write('data: x\n\n'); setTimeout(() => res.end(), 260) }
+        const r = await get(portOf(proxy), target())
+        const hbs = heartbeats(r.body)
+        expect(hbs.length).toBeGreaterThanOrEqual(4)
+        hbs.forEach((m, i) => expect(Number(m[2])).toBe(i + 1))
+        const idle = hbs.map((m) => Number(m[1]))
+        expect(idle[idle.length - 1]!).toBeGreaterThan(idle[0]!)
+        expect(idle[idle.length - 1]!).toBeGreaterThan(150)
+        expect([...idle].sort((a, b) => a - b)).toEqual(idle)
+    })
+
+    it('up_idle resets when upstream bytes arrive', async () => {
+        upstreamHandler = (_req, res) => {
+            res.writeHead(200, sseHead)
+            res.flushHeaders() // without this Node holds the headers back until the first write
+            setTimeout(() => res.write('data: a\n\n'), 150)
+            setTimeout(() => res.end(), 200)
+        }
+        const r = await get(portOf(proxy), target())
+        const idle = heartbeats(r.body).map((m) => Number(m[1]))
+        const peak = Math.max(...idle)
+        expect(peak).toBeGreaterThan(90)
+        expect(idle[idle.length - 1]!).toBeLessThan(peak)
+    })
+
+    it('never injects tags inside an event and leaves forwarded bytes unchanged', async () => {
+        const events = 'id: 1\nevent: tick\ndata: {"a":1}\n\ndata: tail\n\n'
+        upstreamHandler = (_req, res) => {
+            res.writeHead(200, sseHead)
+            res.write('id: 1\nevent: tick\ndata: {"a":')
+            setTimeout(() => res.write('1}\n\ndata: ta'), 120)
+            setTimeout(() => res.end('il\n\n'), 240)
+        }
+        const r = await get(portOf(proxy), target())
+        // Removing every proxy-written comment must give back exactly what the upstream sent.
+        expect(r.body.replace(/: sse-proxy[^\n]*\n\n/g, '')).toBe(events)
+        expect(r.body).toContain('id: 1\nevent: tick\ndata: {"a":1}\n\n')
+    })
+
+    it('writes a cap tag before the retry line at the duration cap', async () => {
+        proxyConfig = devConfig({ maxDurationMs: 100 })
+        upstreamHandler = (_req, res) => { res.writeHead(200, sseHead); res.write('data: x\n\n') }
+        const r = await get(portOf(proxy), target())
+        const m = /: sse-proxy cap duration=(\d+)\n\nretry: 1000\n\n/.exec(r.body)
+        expect(m).not.toBeNull()
+        expect(Number(m![1])).toBeGreaterThanOrEqual(90)
+    })
+
+    it('PROXY_DIAGNOSTICS=0 gives the original output and no X-SSE-* headers', async () => {
+        proxyConfig = { ...loadConfig({ PROXY_DIAGNOSTICS: '0' }), heartbeatMs: 30, maxDurationMs: 150 }
+        expect(proxyConfig.diagnostics).toBe(false)
+        upstreamHandler = (_req, res) => { res.writeHead(200, sseHead); res.write('data: x\n\n') }
+        const r = await get(portOf(proxy), target())
+        expect(Object.keys(r.headers).filter((h) => h.startsWith('x-sse-'))).toEqual([])
+        expect(r.body.startsWith(': sse-proxy-ping\n\ndata: x\n\n')).toBe(true)
+        expect(r.body).toContain(': keep-alive\n\n')
+        expect(r.body).not.toMatch(/sse-proxy (hb|cap)|sse-proxy-meta/)
+        expect(r.body.endsWith('retry: 1000\n\n')).toBe(true)
+    })
+
+    it('diagnostics default to on', () => {
+        expect(loadConfig({}).diagnostics).toBe(true)
+        expect(loadConfig({ PROXY_DIAGNOSTICS: '1' }).diagnostics).toBe(true)
     })
 })
 
