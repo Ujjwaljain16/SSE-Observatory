@@ -44,7 +44,7 @@ export type ObservationBody =
     /** Many identical comments (a heartbeat) folded into one record when the store is under memory pressure. */
     | { kind: 'heartbeatSeries'; text: string; source: 'proxy' | 'upstream'; count: number; firstT: Mono; lastT: Mono; minGapMs: number; maxGapMs: number; meanGapMs: number }
     /** The store dropped detail to stay within its memory cap. Nothing is dropped silently: this says what and how much. */
-    | { kind: 'truncated'; what: 'chunk' | 'event' | 'heartbeat'; dropped: number }
+    | { kind: 'truncated'; what: 'chunk' | 'event' | 'heartbeat' | 'violation'; dropped: number }
     /** Page domain: how long events waited between arriving at the page and being processed. receivedT/processedT share the page clock. */
     | { kind: 'consumer'; n: number; queueDepth: number; receivedT: number; processedT: number; lagMs: number; firstObsSeq?: number | undefined; lastObsSeq?: number | undefined }
     | { kind: 'reconnect'; attempt: number; delayMs: number; reason: string; lastEventIdSent: string; serverRetryMs?: number | undefined; status?: number | undefined }
