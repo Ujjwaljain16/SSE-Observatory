@@ -127,3 +127,12 @@ describe('PayloadProbe', () => {
         })
     })
 })
+
+describe('PayloadProbe: the SSE id as the sequence', () => {
+    it('counts an event only when it set its own id, not when it inherits the previous one', () => {
+        const probe = new PayloadProbe({ sequence: { useSseId: true } }, 1)
+        expect(probe.probe({ event: 'tick', data: 'x', id: '7', raw: 'id: 7\ndata: x' }).extracted?.seq).toBe(7)
+        expect(probe.probe({ event: 'end', data: 'done', id: '7', raw: 'event: end\ndata: done' }).extracted?.seq).toBeUndefined()
+        expect(probe.probe({ event: 'tick', data: 'x', id: '8' }).extracted?.seq).toBe(8) // no raw given: the id is taken as it is
+    })
+})

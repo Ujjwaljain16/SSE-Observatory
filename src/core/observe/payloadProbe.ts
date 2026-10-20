@@ -23,7 +23,14 @@ export interface PayloadProbeConfig {
     maxChars?: number | undefined
 }
 
-export interface ProbeInput { event: string; data: string; id: string }
+export interface ProbeInput {
+    event: string
+    data: string
+    /** The last event id in effect, which an event that sets none inherits from the one before. */
+    id: string
+    /** The event's field lines. When given, the SSE id counts as this event's own number only if the event set one itself. */
+    raw?: string | undefined
+}
 
 export interface ProbeResult {
     /** Equality hash, salted per capture: lets duplicates be found within one capture, and can't be looked up elsewhere. */
@@ -83,7 +90,9 @@ export class PayloadProbe {
             try { payload = JSON.parse(input.data); parsed = true } catch { /* not JSON: only the non-payload fields apply */ }
         }
 
-        if (config.sequence?.useSseId && input.id !== '') out.seq = /^\d{1,15}$/.test(input.id) ? Number(input.id) : input.id
+        // An event without its own `id:` (a heartbeat event, a closing `event: end`) inherits the previous id; counting it would look like a repeat.
+        const ownId = input.raw === undefined || /^id(:|$)/m.test(input.raw)
+        if (config.sequence?.useSseId && input.id !== '' && ownId) out.seq = /^\d{1,15}$/.test(input.id) ? Number(input.id) : input.id
         if (config.sequence?.field && parsed) {
             const value = getJsonPath(payload, config.sequence.field)
             if (typeof value === 'number' && Number.isFinite(value)) out.seq = value

@@ -44,7 +44,9 @@ export function createEngine(options: EngineOptions = {}): Engine {
     const thresholds = resolveThresholds(options.thresholds)
     const profile = options.profile ?? {}
     const model = new StreamModel(thresholds)
-    const entries: Entry[] = (options.rules ?? defaultRules).map((rule) => ({ rule, instance: rule.create({ thresholds, profile }) }))
+    // A rule listed twice (the default set plus the same rule added by hand) runs once.
+    const rules = [...new Map((options.rules ?? defaultRules).map((rule) => [rule.id, rule])).values()]
+    const entries: Entry[] = rules.map((rule) => ({ rule, instance: rule.create({ thresholds, profile }) }))
     const kept = new Map<string, Finding>()
     let provisional = new Map<string, Finding>()
     let ended = false
