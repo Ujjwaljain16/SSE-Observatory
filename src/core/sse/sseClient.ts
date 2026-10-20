@@ -8,7 +8,7 @@
 
 import { SSEParser, SSEParserError, type SSEMessage } from './sseParser'
 import { performanceClock, type Clock } from '../clock'
-import { DIAGNOSTIC_RESPONSE_HEADERS, type ObservationDraft } from '../observe/observation'
+import { DIAGNOSTIC_RESPONSE_HEADERS, type Extracted, type ObservationDraft } from '../observe/observation'
 import { redactUrl } from '../observe/redactUrl'
 import { utf8Length } from './utf8'
 import { violationSeverity, type ViolationCode } from './violations'
@@ -62,6 +62,11 @@ export interface SSEClientOptions {
      * another client was already reading, so the server can continue where that one stopped.
      */
     initialLastEventId?: string | undefined
+    /**
+     * Adds payload-derived fields (hash, extracted values) to each event record. The record itself carries no payload
+     * text; this is where a PayloadProbe plugs in. Only called when an observer is attached.
+     */
+    describeEvent?: ((message: SSEMessage) => { dataHash?: string; extracted?: Extracted; payloadTruncated?: true }) | undefined
 }
 
 class HttpError extends Error {
@@ -185,7 +190,7 @@ export class SSEClient {
                 this.emit('open', { attempt: 0 })
                 const parser = new SSEParser({
                     onMessage: (m) => {
-                        if (watching) this.observe({ kind: 'event', event: m.event, sseId: m.id, dataBytes: utf8Length(m.data) })
+                        if (watching) this.observe({ kind: 'event', event: m.event, sseId: m.id, dataBytes: utf8Length(m.data), ...this.opts.describeEvent?.(m) })
                         this.opts.onMessage(m)
                         if (stopEvents.has(m.event)) ended = true
                     },
