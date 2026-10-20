@@ -33,6 +33,8 @@ export interface ObservedStreamSinks {
 export interface RecordingOptions {
     /** Which payload fields to extract (sequence, timestamp, partition, heartbeat). Default: none, only a hash. */
     profile?: PayloadProbeConfig
+    /** Keep the wire bytes of every read, for a byte-exact local capture (default off). Counts against the memory cap. */
+    captureBytes?: boolean
     /** Memory cap for retained records (default 8 MiB). */
     capBytes?: number
     /** Time source for stamping; defaults to the real monotonic clock. */
@@ -121,6 +123,7 @@ export function createObservedStream(options: ObservedStreamOptions): ObservedSt
         onPhase: (phase, info) => sinks.onPhase(phase, info),
         ...(activeRecorder ? { onObservation: (draft) => { activeRecorder.record(draft) } } : {}),
         ...(activeProbe ? { describeEvent: (m: SSEMessage) => activeProbe.probe(m) } : {}),
+        ...(activeRecorder && recording?.captureBytes ? { captureBytes: true } : {}),
     }
     const client = clientFactory ? clientFactory(clientConfig) : new SSEClient(clientConfig)
 
