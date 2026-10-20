@@ -1,38 +1,22 @@
 import { useState, useMemo } from 'react'
-import { EventMessage } from '../types'
-import { QueryParser } from '../utils/queryParser'
+import { parseQuery, compileQuery } from '../utils/queryParser'
 
-export const useQueryParser = (events: EventMessage[]) => {
+/**
+ * Query box state plus live syntax validation. The query is evaluated by the filter engine
+ * (worker); here we only parse it to surface a readable error while the user types.
+ */
+export const useQueryParser = () => {
     const [query, setQuery] = useState('')
-    const [error, setError] = useState<string | null>(null)
 
-    const compiledFilter = useMemo(() => {
-        if (!query.trim()) {
-            setError(null)
-            return null
-        }
-
+    const error = useMemo<string | null>(() => {
+        if (!query.trim()) return null
         try {
-            const parser = new QueryParser(query)
-            const ast = parser.parse()
-            const filterFn = parser.compile(ast)
-            setError(null)
-            return filterFn
-        } catch (err) {
-            setError((err as Error).message)
+            compileQuery(parseQuery(query)) // compile too: catches invalid regular expressions
             return null
+        } catch (err) {
+            return (err as Error).message
         }
     }, [query])
 
-    const filteredEvents = useMemo(() => {
-        if (!compiledFilter) return events
-        return events.filter(compiledFilter)
-    }, [events, compiledFilter])
-
-    return {
-        query,
-        setQuery,
-        error,
-        filteredEvents
-    }
+    return { query, setQuery, error }
 }

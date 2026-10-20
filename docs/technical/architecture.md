@@ -1,29 +1,41 @@
-# Architecture & WebWorkers
+# Architecture
 
-Traditional browser dashboards struggle to render data streams exceeding `1,000` events per second without causing disastrous UI locking and dropped frames. SSE Observatory achieves throughputs pushing **thousands of EPS** entirely inside the browser by completely ditching singular-thread constraints.
+The app is a browser pipeline that keeps parsing, filtering and sandboxed code off the UI thread and keeps every buffer bounded.
 
-## WebWorker Thread Pool
+```text
+SSE source ──(optional /api/sse proxy)──► SSEClient ──► ingest queue ──► interceptors ──► ring buffer (1,000)
+                                                                              │                  │
+                                                                              ▼                  ├─► filter engine ─► virtualised list
+                                                                         IndexedDB (≤100k)       ├─► pattern / correlation / schema
+                                                                                                 └─► timeline canvas
+```
 
-To prevent the `window` DOM thread from locking the UI, calculations are dispatched to four custom `WebWorkers`.
+## Transport
 
-### 1. `sharedSSEWorker.ts`
-This is an exceedingly rare **SharedWorker singleton**. Instead of opening 5 duplicate SSE TCP sockets if you have 5 browser tabs open, the `SharedWorker` maintains exactly **1 connection**, and broadcasts raw string payloads up to all listening GUI contexts via `MessagePort` channels. It automatically handles ping heartbeats and Exponential Backoff reconnects.
+`SSEClient` is a `fetch`-based, spec-compliant SSE client (`SSEParser` handles `\r\n`, multi-line data, `retry:`, `id:`). It supports named events, `Last-Event-ID` resume, exponential backoff with jitter, and distinguishes fatal errors (bad URL, 401/403/404, wrong content type) from retryable ones. `event: end` or a `204` stops it for good.
 
-### 2. `timelineWorker.ts`
-When raw events arrive, they are instantly shipped to the Timeline Worker where they are mapped to `VirtualScroll` layout models to construct immutable state trees that the React layer renders seamlessly.
+When the **Use Server Proxy** switch is on, the request is sent as `POST /api/sse` with `{url, token}` in the body, so the token never appears in a URL or access log.
 
-### 3. `filterWorker.ts`
-When the UI specifies a complex DSL condition (e.g. `user.id == "123"`), the AST string is compiled and dispatched to the Filter Worker. 
+`sharedSSEWorker.ts` runs one `SSEClient` per url+token and fans events out to every tab over `MessagePort`s. Where SharedWorker is unavailable the same client runs in the page.
 
-The Filter worker runs a highly optimized structural loop over the Ring Buffer payload. Only the resulting `Ids` matching the queries are posted back to the main thread.
+## Ingest
 
-### 4. `interceptorWorker.ts`
-Creates a sequestered Javascript parsing Sandbox preventing XSS and catastrophic UI freezes. Incoming events are dispatched, subjected to the `eval()` User-Defined string, and parsed back into strictly typed `Event Payload` interfaces before being stored.
+`useEventIngest` queues incoming events and flushes them in time-boxed slices (about 8 ms) driven by `requestAnimationFrame` with a timer fallback, so a burst cannot block a frame. The queue is bounded; excess events are counted as dropped and shown in the UI. Interceptors run in order before events are stored.
 
-## Ring Buffer Eviction
+## Buffers and storage
 
-If processing is decoupled from rendering, what prevents the memory threshold causing browser out-of-memory (OOM) crashes on streams running for hours?
+- **Ring buffer:** the newest **1,000** events live in memory (newest first). Consumers detect new events by identity and see wholesale replacement (reconnect, history load) through an `epoch` counter.
+- **IndexedDB:** every event is also written in batches; the newest 100,000 are kept. **Load history** reads back what fits the viewer; **Export all** writes everything to a `.sse-record` file.
 
-The `useEventStorage` hook relies on a strict Ring Buffer limitation (defaulting to the most recent `5,000` payloads). When an event is pushed, the array is synchronously sliced to enforce maximum array length size limits.
+## Workers
 
-All dumped (older) events are cleanly piped down into an `IndexedDB` backend (utilizing `idbUtils`) preventing the `window` limit from exhausting, while retaining the historical context if the user selects the **Export Session Log** command.
+| Worker | Job |
+|---|---|
+| `sharedSSEWorker` | One connection per url+token, shared across tabs. |
+| `filterWorker` | Holds a bounded copy of the buffer and applies the query, search and field filters incrementally (`FilterEngine`). |
+| `interceptorWorker` | Runs user interceptors in a hardened global with a 100 ms kill timer (see the interceptor guide). |
+| `timelineWorker` | Draws the timeline on an `OffscreenCanvas` when available. |
+
+## Server
+
+`server.js` (Express) and the Vercel function in `api/` share the same code in `lib/`: the proxy (`lib/proxy`) and the mock replay API (`lib/mock`). The proxy is closed by default in production, blocks private/metadata addresses after DNS resolution and pins the connection to the validated IP, requires a same-origin browser request, only relays `200 text/event-stream` responses, and caps stream duration, bytes and concurrency. See the README for the environment variables.

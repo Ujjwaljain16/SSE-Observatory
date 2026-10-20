@@ -50,7 +50,7 @@ app.use('/api/', rateLimit({
 
 app.get('/healthz', (_req, res) => res.status(200).send('OK'))
 
-app.get('/api/sse', (req, res) => handleSseProxy(req, res, { config }))
+app.all('/api/sse', (req, res) => handleSseProxy(req, res, { config }))
 app.all('/api/mock/session', (req, res) => handleMockSession(req, res, { config, body: req.body }))
 app.get('/api/mock/stream', (req, res) => handleMockStream(req, res, { config }))
 

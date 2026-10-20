@@ -12,6 +12,7 @@ vi.mock('../../utils/idbUtils', () => ({
     deleteOldest: vi.fn(),
     clearStore: vi.fn(),
     getAllAfter: vi.fn(),
+    readAllNewestFirst: vi.fn(),
 }))
 
 describe('useEventStorage - Quota Failure & Initialization', () => {
@@ -87,6 +88,6 @@ describe('useEventStorage - Quota Failure & Initialization', () => {
         expect(console.warn).toHaveBeenCalledWith('[useEventStorage] Flush failed:', quotaError)
 
         // App is still running fine but IDB is disabled
-        expect(result.current.idbAvailable).toBe(false)
+        await waitFor(() => expect(result.current.idbAvailable).toBe(false))
     })
 })

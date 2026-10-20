@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { Database, Loader2, Brackets, Hash, Type, AlignLeft } from 'lucide-react'
 import type { Theme } from '../types'
 import { SchemaMap } from '../hooks/useSchemaInference'
@@ -20,7 +21,7 @@ const getTypeIcon = (type: string) => {
     }
 }
 
-export const SchemaAnalyzer = ({ theme, schema, isAnalyzing }: SchemaAnalyzerProps) => {
+export const SchemaAnalyzer = memo(function SchemaAnalyzer({ theme, schema, isAnalyzing }: SchemaAnalyzerProps) {
     const isDark = theme === 'dark'
     const fields = Object.entries(schema).sort((a, b) => a[0].localeCompare(b[0]))
 
@@ -118,4 +119,4 @@ export const SchemaAnalyzer = ({ theme, schema, isAnalyzing }: SchemaAnalyzerPro
             </div>
         </div>
     )
-}
+})

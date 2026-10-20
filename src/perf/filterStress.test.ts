@@ -45,6 +45,8 @@ describe('Filter Worker - Throughput Stress', () => {
             _searchIndex: `info ${i % 1000} auth`
         })) as any[]
 
+        sendRequest({ type: 'CONFIG', maxEvents: EVENTS_COUNT })
+
         // Send in 10 batches of 10k to simulate burst pressure
         for (let i = 0; i < 10; i++) {
             const batch = events.slice(i * 10000, (i + 1) * 10000)

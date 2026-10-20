@@ -1,184 +1,117 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { EventMessage } from '../types'
-import {
-    openDB,
-    putBatch,
-    getAllAfter,
-    countAll,
-    clearStore,
-    deleteOldest,
-} from '../utils/idbUtils'
+import { openDB, putBatch, countAll, clearStore, deleteOldest, readAllNewestFirst } from '../utils/idbUtils'
 
 const FLUSH_INTERVAL_MS = 100
 const FLUSH_BATCH_SIZE = 50
-const MAX_STORED_EVENTS = 100_000
+export const MAX_STORED_EVENTS = 100_000
 
 interface UseEventStorageReturn {
     idbAvailable: boolean
     totalStoredCount: number
     saveEvent: (event: EventMessage) => void
-    loadBefore: (afterArrivalTime?: number | null) => Promise<EventMessage[]>
+    /** Stored events, newest first: all of them (up to MAX_STORED_EVENTS) or only the newest `limit`. Resolves to [] when storage is unavailable. */
+    loadHistory: (limit?: number) => Promise<EventMessage[]>
     clearStorage: () => Promise<void>
-    replayFromStorage: () => Promise<EventMessage[]>
 }
 
+/**
+ * Cold storage: events are written to IndexedDB in small batches and the oldest are evicted beyond
+ * MAX_STORED_EVENTS. Everything degrades to "RAM only" if IndexedDB is unavailable or full.
+ */
 export const useEventStorage = (): UseEventStorageReturn => {
     const [idbAvailable, setIdbAvailable] = useState(false)
     const [totalStoredCount, setTotalStoredCount] = useState(0)
     const dbRef = useRef<IDBDatabase | null>(null)
     const writeQueueRef = useRef<EventMessage[]>([])
-    const flushTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+    const countRef = useRef(0)
+    const trimmingRef = useRef(false)
+
+    const trim = useCallback(async (db: IDBDatabase) => {
+        if (trimmingRef.current) return
+        trimmingRef.current = true
+        try {
+            const actual = await countAll(db)
+            if (actual > MAX_STORED_EVENTS) await deleteOldest(db, actual - MAX_STORED_EVENTS)
+            countRef.current = await countAll(db)
+            setTotalStoredCount(countRef.current)
+        } catch (e) {
+            console.warn('[useEventStorage] Eviction failed:', e)
+        } finally {
+            trimmingRef.current = false
+        }
+    }, [])
 
     const flush = useCallback(async () => {
         const db = dbRef.current
         const queue = writeQueueRef.current
         if (!db || queue.length === 0) return
-
         const batch = queue.splice(0, queue.length)
 
         try {
             await putBatch(db, batch)
-
-            setTotalStoredCount(prev => {
-                const newTotal = prev + batch.length
-
-                // If we estimate we exceeded max, trigger a real count and eviction in background
-                if (newTotal > MAX_STORED_EVENTS) {
-                    countAll(db).then(async actualTotal => {
-                        if (actualTotal > MAX_STORED_EVENTS) {
-                            await deleteOldest(db, actualTotal - MAX_STORED_EVENTS)
-                            const finalCount = await countAll(db)
-                            setTotalStoredCount(finalCount)
-                        } else {
-                            setTotalStoredCount(actualTotal)
-                        }
-                    }).catch(console.warn)
-                }
-
-                return newTotal
-            })
-
-        } catch (e: any) {
+            countRef.current += batch.length
+            setTotalStoredCount(countRef.current)
+            if (countRef.current > MAX_STORED_EVENTS) void trim(db) // side effects live here, not inside a state updater
+        } catch (e) {
             console.warn('[useEventStorage] Flush failed:', e)
-            if (e.name === 'QuotaExceededError') {
+            if ((e as DOMException)?.name === 'QuotaExceededError') {
                 setIdbAvailable(false)
                 window.dispatchEvent(new CustomEvent('idb-quota-exceeded'))
             }
         }
-    }, [])
+    }, [trim])
 
-    // Initialize IDB on mount
     useEffect(() => {
+        let cancelled = false
         openDB()
             .then(async (db) => {
+                if (cancelled) return
                 dbRef.current = db
                 setIdbAvailable(true)
-                const count = await countAll(db)
-                setTotalStoredCount(count)
+                countRef.current = await countAll(db)
+                if (!cancelled) setTotalStoredCount(countRef.current)
             })
             .catch((e) => {
                 console.warn('[useEventStorage] IDB unavailable, falling back to RAM-only mode:', e.message)
                 setIdbAvailable(false)
             })
 
-        // Set up periodic flush timer
-        flushTimerRef.current = setInterval(flush, FLUSH_INTERVAL_MS)
-
+        const timer = setInterval(() => void flush(), FLUSH_INTERVAL_MS)
         return () => {
-            if (flushTimerRef.current) clearInterval(flushTimerRef.current)
-            flush()
+            cancelled = true
+            clearInterval(timer)
+            void flush()
         }
     }, [flush])
 
-    /**
-     * Queues an event for batched writing.
-     * Triggers an immediate flush if the queue reaches FLUSH_BATCH_SIZE.
-     */
+    /** Queues an event for batched writing; flushes right away once a batch is full. */
     const saveEvent = useCallback((event: EventMessage) => {
         if (!idbAvailable) return
         writeQueueRef.current.push(event)
-        if (writeQueueRef.current.length >= FLUSH_BATCH_SIZE) {
-            flush()
+        if (writeQueueRef.current.length >= FLUSH_BATCH_SIZE) void flush()
+    }, [idbAvailable, flush])
+
+    const loadHistory = useCallback(async (limit: number = MAX_STORED_EVENTS): Promise<EventMessage[]> => {
+        const db = dbRef.current
+        if (!db || !idbAvailable) return []
+        try {
+            await flush() // include what is still queued
+            return await readAllNewestFirst(db, Math.min(limit, MAX_STORED_EVENTS))
+        } catch (e) {
+            console.warn('[useEventStorage] loadHistory failed:', e)
+            return []
         }
     }, [idbAvailable, flush])
 
-    /**
-     * Loads up to 500 events from IDB before a given arrivalTime cursor.
-     * Returns [] if IDB is unavailable or on error.
-     */
-    const loadBefore = useCallback(async (afterArrivalTime: number | null = null): Promise<EventMessage[]> => {
-        const db = dbRef.current
-        if (!db || !idbAvailable) return []
-        try {
-            return await getAllAfter(db, afterArrivalTime, 500)
-        } catch (e) {
-            console.warn('[useEventStorage] loadBefore failed:', e)
-            return []
-        }
-    }, [idbAvailable])
-
-    /**
-     * Wipes all stored events.
-     */
     const clearStorage = useCallback(async () => {
         const db = dbRef.current
         if (!db) return
+        writeQueueRef.current = []
         await clearStore(db)
+        countRef.current = 0
         setTotalStoredCount(0)
     }, [])
 
-    /**
-     * Loads ALL stored events for offline replay.
-     * Designed to feed into the mock stream playback system.
-     *
-     * Uses offset-based pagination instead of arrivalTime cursor, which prevents
-     * duplicate-timestamp events from being silently skipped.
-     */
-    const replayFromStorage = useCallback(async (): Promise<EventMessage[]> => {
-        const db = dbRef.current
-        if (!db || !idbAvailable) return []
-        try {
-            const MAX_REPLAY = 100_000
-            const PAGE_SIZE = 500
-            const allEvents: EventMessage[] = []
-            let page: EventMessage[]
-            let cursor: number | null = null
-
-            do {
-                page = await getAllAfter(db, cursor, PAGE_SIZE)
-                if (page.length === 0) break
-                allEvents.push(...page)
-                if (allEvents.length >= MAX_REPLAY) {
-                    console.warn('[useEventStorage] replayFromStorage hit MAX_REPLAY cap of', MAX_REPLAY)
-                    break
-                }
-                // Advance cursor past the last returned arrivalTime.
-                // To handle duplicate arrivalTime values correctly we also check
-                // if this page was a full page — if so, there may be more at the same timestamp.
-                // We bump the cursor by 1ms if the last page ended on the same arrivalTime as
-                // the overall last-seen, so we do NOT skip events with the same timestamp.
-                const lastArrival = page[page.length - 1].arrivalTime ?? null
-                if (lastArrival === cursor) {
-                    // Same timestamp as previous page end — no progress, stop to avoid infinite loop
-                    break
-                }
-                cursor = lastArrival
-            } while (page.length === PAGE_SIZE)
-
-            return allEvents
-        } catch (e) {
-            console.warn('[useEventStorage] replayFromStorage failed:', e)
-            return []
-        }
-    }, [idbAvailable])
-
-
-    return {
-        idbAvailable,
-        totalStoredCount,
-        saveEvent,
-        loadBefore,
-        clearStorage,
-        replayFromStorage,
-    }
+    return { idbAvailable, totalStoredCount, saveEvent, loadHistory, clearStorage }
 }

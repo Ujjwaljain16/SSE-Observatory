@@ -1,31 +1,23 @@
 # Pattern Detection
 
-Pattern detection is designed to monitor continuous event throughput for specific anomalous structural heuristics. Rather than actively filtering logs like the Query Engine, the Pattern Engine constantly iterates over the `Ring Buffer` via a Sliding Window Array. 
+Pattern rules watch the live stream and raise an alert when something notable happens. Each event is examined once per rule as it arrives, so the cost does not grow with the buffer size.
 
-## Defining Rules
+A rule's event type matches either the SSE event name or the `type` field of a JSON payload. `*` matches anything and `prefix*` matches a prefix (`payment_*`).
 
-In the `Patterns` panel, you can instruct the engine to track and flag specific criteria. 
+## Burst rules
 
-### Burst Rules (Frequency Spikes)
+A burst alert fires when **at least N** matching events arrive within a window of **T milliseconds**.
 
-A Burst Alert is tripped when a particular event type occurs **more than N times** inside of **T milliseconds**. 
+Built-in rules: *Error burst* (5 `error` in 10 s), *Retry storm* (3 `retry` in 5 s), *Alert burst* (10 `alert` in 2 s).
 
-Example: Detect if your Payment Service goes down.
-- **Trigger Condition:** `Event Type == "error"`
-- **Threshold Limit:** `> 5 Events`
-- **Time Window:** `10000ms` (10 seconds)
+A burst raises **one** alert per episode. The rule re-arms only after the rate drops below the threshold again, so a sustained storm does not flood you with alerts.
 
-If the observatory receives 6 error events within any rolling 10-second slice, the UI instantly throws a catastrophic visual `ALARM` block at the top of the interface. 
+## Sequence rules
 
-### Sequence Rules (Workflow Tracking)
+A sequence rule lists event types that must arrive **consecutively**, for example `payment_failed → retry_payment → retry_payment`. When the last type arrives and the previous events match the list in order, an alert is raised. Matches do not overlap: the events of one alert are not reused for the next.
 
-A Sequence Rule asserts that certain events must strictly follow one another in exact order across a defined timeframe. 
+## Good to know
 
-Example: Assert a Database transaction flow.
-- **Workflow:** `req_start` → `db_write` → `req_end`
-
-If `req_start` is seen, the engine expects the subsequent trace IDs. If `db_write` never triggers, but the stream receives a `req_end`, the Sequence Rule trips out of bounds.
-
-## Limitations
-
-Sequence tracking is computationally expensive. Running more than **5 concurrent sequence rules** over a stream pushing `10,000 EPS` will cause the generic UI thread to drop frames heavily. Stick to Burst Rules for high-frequency telemetry.
+- Editing, enabling or re-adding a rule re-evaluates it against what is currently in the buffer; other rules keep their state.
+- Detection state resets when the buffer is replaced (a new connection, or loading history).
+- Alerts keep the newest 50 matching events and the true count; the alert list keeps the latest 200.

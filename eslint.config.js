@@ -9,7 +9,7 @@ export default [
         ignores: [
             'dist/**', 'node_modules/**', 'coverage/**', 'public/**', 'docs/**',
             'playwright-report/**', 'test-results/**', 'blob-report/**', '.vercel/**',
-            'vite.config.js', 'audit-evidence/**', // vite.config.js is emitted by tsc -b
+            'vite.config.js', 'audit-evidence/**', '.agents/**', // vite.config.js is emitted by tsc -b
         ],
     },
 

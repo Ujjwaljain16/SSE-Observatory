@@ -1,35 +1,35 @@
 # Getting Started
 
-SSE Observatory is a high-performance observability tool built to inspect raw Server-Sent Event (SSE) streams in real time. It runs entirely in your browser using a combination of Web Workers, a SharedWorker, and IndexedDB to deliver a backend-free analytics experience.
+SSE Observatory is a browser-based tool for inspecting Server-Sent Event (SSE) streams in real time. Parsing, filtering and interceptors run in Web Workers; events are kept in a bounded in-memory buffer and mirrored to IndexedDB.
 
-## Installation 
+## Installation
 
-The tool is distributed as a Vite/React SPA. It requires **Node.js 18+**.
+Requires **Node.js 20+**.
 
 ```sh
 git clone https://github.com/Ujjwaljain16/SSE-Observatory.git
-cd sse-observatory
-npm install
+cd SSE-Observatory
+npm ci
 npm run dev
 ```
 
-Visit `http://localhost:3001` to view the Observatory.
+Open `http://localhost:3001`. `npm run dev` starts the Vite UI and the local API server (`server.js`, port 3000) that provides the stream proxy and mock replay API.
 
-## Connecting to a Stream
+## Connecting to a stream
 
-1. **Enter Endpoint:** Paste the absolute URL of the SSE stream into the **Connection Panel** on the left sidebar.
-2. **Authentication:** If the endpoint requires bearer authentication, paste the token into the auth input field. It will automatically attach an `Authorization: Bearer <token>` header to the stream.
-3. **Connect:** Click **Connect**. 
+1. **Endpoint:** paste the URL of the SSE stream into the **Connection** panel.
+2. **Authentication:** optional bearer token. It is sent as `Authorization: Bearer <token>` and, with the proxy on, in a POST body rather than the URL. Saved profiles do not store the token unless you tick **Remember token**.
+3. **Connect.** While connecting you can cancel; if the connection drops you will see a retry countdown.
 
-The Global Timeline will instantly populate as raw Byteframes begin processing.
+Leave **Use Server Proxy** on for endpoints that do not send CORS headers. Turn it off to connect straight from the browser (the endpoint must allow your origin).
 
-## The Testing Suite
+## Try it with the test servers
 
-To familiarize yourself with the platform, we recommend connecting the Observatory to one of the provided test servers instead of a production endpoint. 
+In another terminal:
 
-Open a separate terminal window and run:
+- `npm run simple`: clean heartbeats
+- `npm run chaos`: dropped connections, latency and bursts
 
-- `npm run simple` (Clean Heartbeats)
-- `npm run chaos` (Simulated Connection Droppages / Latency Issues)
+Run `npm run dev:all` to start the app and the chaos server together. More scenarios live in `test-servers/` (multi-stream, patterns, interceptors).
 
-Navigate the UI to watch how the generic Ring Buffer ingests, parses, and formats the outputs.
+Local test servers are reachable through the proxy in development. In production the proxy refuses private addresses, so connect directly or self-host with `ALLOW_PRIVATE_TARGETS=1`.

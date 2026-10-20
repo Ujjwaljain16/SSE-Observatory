@@ -1,66 +1,50 @@
 /**
- * sseProxyUrl.ts — Single source of truth for SSE proxy URL construction.
+ * Builds the HTTP request used to open a stream. Single source of truth, shared by the SharedWorker,
+ * the in-page fallback and the multi-stream lanes.
  *
- * Previously, URL-building logic was duplicated in four places:
- *   useEventStream.ts, useSharedStream.ts, useMultiStream.ts, sharedSSEWorker.ts
- *
- * This utility centralises the logic:
- *   - Local URLs (starting with `/` or `http://localhost:3001`) are used directly
- *     (their pathname is extracted for fetch-API compatibility)
- *   - All other URLs are proxied through the Vite dev-server at `/api/sse?url=…`
- *
- * NOTE: sharedSSEWorker.ts runs as a SharedWorker bundle and CANNOT import this
- * utility because Workers are bundled separately by Vite. Its copy of this logic
- * is kept in sync manually (see the comment in sharedSSEWorker.ts).
+ *  - same-origin / relative URLs are requested directly (Vite dev proxy, mock server, ...)
+ *  - "Use Server Proxy" off → direct request to the target (needs CORS on the target)
+ *  - "Use Server Proxy" on  → POST /api/sse with {url, token}; the token travels in the body, never in a URL
  */
 
-const LOCAL_ORIGINS = [
-    'http://localhost:3001', 'http://127.0.0.1:3001',
-    'http://localhost:4000', 'http://127.0.0.1:4000',
-]
+import type { SSERequestInit } from './sseClient'
 
-export function buildSSEProxyUrl(rawUrl: string): string {
-    // Relative paths connect directly (handled by the dev server)
-    if (rawUrl.startsWith('/')) return rawUrl
+const PROXY_PATH = '/api/sse'
 
-    // Absolute localhost URLs — strip to pathname so EventSource doesn't hit CORS
-    try {
-        const parsed = new URL(rawUrl)
-        if (LOCAL_ORIGINS.some(o => rawUrl.startsWith(o))) {
-            // Only strip origin if it matches our current origin (same-origin request)
-            const currentOrigin = typeof window !== 'undefined' ? window.location.origin : (typeof self !== 'undefined' ? self.location.origin : '');
-            if (currentOrigin && rawUrl.startsWith(currentOrigin)) {
-                return parsed.pathname + parsed.search
-            }
-            // For other local ports (e.g. port 4000 vs 3001), return full URL
-            return rawUrl
-        }
-    } catch {
-        // Not a valid absolute URL — fall through to proxy
-    }
-
-    // All external URLs route through the Vite SSE proxy plugin at /api/sse
-    return `/api/sse?url=${encodeURIComponent(rawUrl)}`
+/** "abc" → "Bearer abc"; values that already carry a scheme ("Bearer abc", "Basic xyz") are sent as typed. */
+export function authorizationHeader(token?: string | null): string | undefined {
+    const t = (token ?? '').trim()
+    if (!t) return undefined
+    return /^[A-Za-z][\w-]*\s+\S/.test(t) ? t : `Bearer ${t}`
 }
 
-export async function obtainSSEProxyTicket(rawUrl: string, token?: string): Promise<string> {
-    // Relative paths connect directly
-    if (rawUrl.startsWith('/')) {
-        return token ? `${rawUrl}${rawUrl.includes('?') ? '&' : '?'}auth=${encodeURIComponent(token)}` : rawUrl;
-    }
-
-    try {
-        const currentOrigin = typeof window !== 'undefined' ? window.location.origin : (typeof self !== 'undefined' ? self.location.origin : '');
-        if (currentOrigin && rawUrl.startsWith(currentOrigin)) {
-            const parsed = new URL(rawUrl);
-            const local = parsed.pathname + parsed.search;
-            return token ? `${local}${local.includes('?') ? '&' : '?'}auth=${encodeURIComponent(token)}` : local;
-        }
-    } catch { }
-
-    // Use direct proxy URL with URL and Auth parameters.
-    // The server-side proxy handles Origin/Referer validation for security.
-    const baseUrl = `/api/sse?url=${encodeURIComponent(rawUrl)}`;
-    return token ? `${baseUrl}&auth=${encodeURIComponent(token)}` : baseUrl;
+const currentOrigin = (): string => {
+    const loc = (globalThis as { location?: { origin?: string } }).location
+    return loc?.origin && loc.origin !== 'null' ? loc.origin : ''
 }
 
+export function buildSSERequest(rawUrl: string, token?: string | null, useProxy = true): SSERequestInit {
+    const url = rawUrl.trim()
+    const auth = authorizationHeader(token)
+    const authHeaders: Record<string, string> = auth ? { Authorization: auth } : {}
+
+    // Relative path → same-origin.
+    if (url.startsWith('/')) return { url, headers: authHeaders, credentials: 'same-origin' }
+
+    let parsed: URL | null = null
+    try { parsed = new URL(url) } catch { /* handled below */ }
+    const origin = currentOrigin()
+    if (parsed && origin && parsed.origin === origin) {
+        return { url: parsed.pathname + parsed.search, headers: authHeaders, credentials: 'same-origin' }
+    }
+
+    if (!useProxy) return { url, headers: authHeaders, credentials: 'omit' }
+
+    return {
+        url: PROXY_PATH,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(auth ? { url, token: auth } : { url }),
+        credentials: 'same-origin',
+    }
+}

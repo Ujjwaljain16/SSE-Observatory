@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import type { Theme } from '../types'
 import { formatTime } from '../utils/eventUtils'
 import {
@@ -11,14 +12,16 @@ interface ConnectionPanelProps {
     bearerToken: string
     profileName: string
     connected: boolean
+    reconnecting?: boolean
     isLoading: boolean
     error: string
-    connectionTime: number
+    /** Epoch ms when the current connection opened (null while not connected). */
+    connectedAt: number | null
     eventsLength: number
     onUrlChange: (url: string) => void
     onTokenChange: (token: string) => void
     onProfileNameChange: (name: string) => void
-    onSaveProfile: () => void
+    onSaveProfile: (rememberToken: boolean) => void
     onConnect: () => void
     onDisconnect: () => void
     onClearEvents: () => void
@@ -32,9 +35,10 @@ export const ConnectionPanel = ({
     bearerToken,
     profileName,
     connected,
+    reconnecting = false,
     isLoading,
     error,
-    connectionTime,
+    connectedAt,
     eventsLength,
     onUrlChange,
     onTokenChange,
@@ -47,6 +51,20 @@ export const ConnectionPanel = ({
     onProxyToggle
 }: ConnectionPanelProps) => {
     const isDark = theme === 'dark'
+    // The stream is "in use" while connected, connecting, or waiting to retry: the form is locked and the button cancels.
+    const busy = connected || reconnecting || isLoading
+    const [saveOpen, setSaveOpen] = useState(false)
+    const [rememberToken, setRememberToken] = useState(false)
+
+    // Elapsed time ticks locally so the rest of the app does not re-render every second.
+    const [now, setNow] = useState(() => Date.now())
+    useEffect(() => {
+        if (connectedAt === null) return
+        setNow(Date.now())
+        const t = setInterval(() => setNow(Date.now()), 1000)
+        return () => clearInterval(t)
+    }, [connectedAt])
+    const connectionTime = connectedAt === null ? 0 : Math.max(0, Math.floor((now - connectedAt) / 1000))
 
     return (
         <div className={`
@@ -82,7 +100,7 @@ export const ConnectionPanel = ({
                         onChange={(e) => onUrlChange(e.target.value)}
                         placeholder="https://api.example.com/sse"
                         data-testid="url-input"
-                        disabled={connected || isLoading}
+                        disabled={busy}
                         className={`
                             w-full pl-12 pr-4 py-3 rounded-xl border-2 font-medium text-sm
                             focus:outline-none transition-all duration-300
@@ -90,10 +108,10 @@ export const ConnectionPanel = ({
                                 ? 'bg-slate-800/80 border-slate-600/50 text-white placeholder-slate-500 focus:border-sky-500 focus:bg-slate-800'
                                 : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:bg-white'
                             }
-                            ${(connected || isLoading) ? 'opacity-60 cursor-not-allowed' : ''}
+                            ${busy ? 'opacity-60 cursor-not-allowed' : ''}
                         `}
                         onKeyDown={(e) => {
-                            if (e.key === 'Enter' && !connected && !isLoading) {
+                            if (e.key === 'Enter' && !busy) {
                                 onConnect()
                             }
                         }}
@@ -110,7 +128,7 @@ export const ConnectionPanel = ({
                         onChange={(e) => onTokenChange(e.target.value)}
                         placeholder="Bearer token (optional)"
                         data-testid="token-input"
-                        disabled={connected || isLoading}
+                        disabled={busy}
                         className={`
                             w-full pl-12 pr-4 py-3 rounded-xl border-2 font-medium text-sm
                             focus:outline-none transition-all duration-300
@@ -118,29 +136,29 @@ export const ConnectionPanel = ({
                                 ? 'bg-slate-800/80 border-slate-600/50 text-white placeholder-slate-500 focus:border-sky-500 focus:bg-slate-800'
                                 : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:bg-white'
                             }
-                            ${(connected || isLoading) ? 'opacity-60 cursor-not-allowed' : ''}
+                            ${busy ? 'opacity-60 cursor-not-allowed' : ''}
                         `}
                     />
                 </div>
 
                 <div className="flex gap-2 w-full lg:w-auto">
                     <button
-                        onClick={connected ? onDisconnect : onConnect}
+                        onClick={busy ? onDisconnect : onConnect}
                         data-testid="connect-button"
-                        disabled={isLoading || (!connected && !url.trim())}
+                        disabled={!busy && !url.trim()}
                         className={`
                             flex-1 lg:flex-none lg:w-32 px-4 py-3 rounded-xl font-bold text-sm transition-all duration-300
                             flex items-center justify-center gap-2 hover:scale-[1.02]
-                            ${(isLoading || (!connected && !url.trim()))
+                            ${(!busy && !url.trim())
                                 ? isDark ? 'bg-slate-700 text-slate-400 opacity-50 cursor-not-allowed' : 'bg-slate-200 text-slate-500 opacity-50 cursor-not-allowed'
-                                : connected
+                                : busy
                                     ? 'bg-gradient-to-r from-red-500 to-rose-500 text-white shadow-lg shadow-red-500/30'
                                     : 'bg-gradient-to-r from-sky-600 via-blue-600 to-cyan-600 text-white shadow-lg shadow-blue-500/30'
                             }
                         `}
                     >
                         <span className="flex items-center justify-center gap-2">
-                            {isLoading ? (
+                            {isLoading || reconnecting ? (
                                 <Loader2 className="w-4 h-4 animate-spin" />
                             ) : connected ? (
                                 <Square className="w-4 h-4" />
@@ -148,15 +166,18 @@ export const ConnectionPanel = ({
                                 <Play className="w-4 h-4" />
                             )}
                             <span className="whitespace-nowrap">
-                                {isLoading ? '...' : connected ? 'Stop' : 'Connect'}
+                                {isLoading ? 'Cancel' : busy ? 'Stop' : 'Connect'}
                             </span>
                         </span>
                     </button>
-                    {(!connected && !isLoading) && (
-                        <div className="relative group">
+                    {!busy && (
+                        <div className="relative">
                             <button
-                                onClick={onSaveProfile}
+                                onClick={() => setSaveOpen((o) => !o)}
                                 disabled={!url.trim()}
+                                aria-label="Save profile"
+                                aria-expanded={saveOpen}
+                                aria-haspopup="dialog"
                                 className={`
                                     w-12 h-12 flex items-center justify-center rounded-xl transition-all duration-300
                                     ${!url.trim()
@@ -168,18 +189,43 @@ export const ConnectionPanel = ({
                             >
                                 <Save className="w-5 h-5" />
                             </button>
-                            <div className="absolute right-0 top-14 hidden group-hover:flex items-center gap-2 p-2 rounded-lg border shadow-xl bg-white dark:bg-slate-800 dark:border-slate-700 z-10 w-64">
-                                <input
-                                    type="text"
-                                    value={profileName}
-                                    onChange={(e) => onProfileNameChange(e.target.value)}
-                                    placeholder="Profile Name"
-                                    className="flex-1 px-3 py-1.5 text-sm rounded bg-slate-100 dark:bg-slate-900 text-slate-900 dark:text-white border-0 focus:ring-2 focus:ring-sky-500"
-                                />
-                                <button onClick={onSaveProfile} className="p-1.5 text-sky-600 dark:text-sky-400 hover:bg-sky-50 hover:dark:bg-sky-900/30 rounded">
-                                    <Check className="w-4 h-4" />
-                                </button>
-                            </div>
+                            {saveOpen && (
+                                <form
+                                    role="dialog"
+                                    aria-label="Save profile"
+                                    onSubmit={(e) => {
+                                        e.preventDefault()
+                                        if (!profileName.trim()) return
+                                        onSaveProfile(rememberToken)
+                                        setSaveOpen(false)
+                                    }}
+                                    onKeyDown={(e) => { if (e.key === 'Escape') setSaveOpen(false) }}
+                                    className="absolute right-0 top-14 flex flex-col gap-2 p-3 rounded-lg border shadow-xl bg-white dark:bg-slate-800 dark:border-slate-700 z-10 w-72"
+                                >
+                                    <input
+                                        autoFocus
+                                        type="text"
+                                        value={profileName}
+                                        onChange={(e) => onProfileNameChange(e.target.value)}
+                                        placeholder="Profile name"
+                                        aria-label="Profile name"
+                                        className="px-3 py-1.5 text-sm rounded bg-slate-100 dark:bg-slate-900 text-slate-900 dark:text-white border-0 focus:ring-2 focus:ring-sky-500"
+                                    />
+                                    {bearerToken && (
+                                        <label className="flex items-start gap-2 text-xs text-slate-600 dark:text-slate-400">
+                                            <input type="checkbox" checked={rememberToken} onChange={(e) => setRememberToken(e.target.checked)} className="mt-0.5" />
+                                            <span>Also store the token in this browser (plain text in localStorage). Leave off to keep it out of storage.</span>
+                                        </label>
+                                    )}
+                                    <button
+                                        type="submit"
+                                        disabled={!profileName.trim()}
+                                        className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-50"
+                                    >
+                                        <Check className="w-4 h-4" /> Save
+                                    </button>
+                                </form>
+                            )}
                         </div>
                     )}
                 </div>
@@ -223,14 +269,14 @@ export const ConnectionPanel = ({
 
                     {!error && (
                         <div className="flex items-center gap-2">
-                            <div className={`w-2.5 h-2.5 rounded-full ${connected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse' : isLoading ? 'bg-amber-400 animate-pulse' : 'bg-slate-400'}`} />
+                            <div className={`w-2.5 h-2.5 rounded-full ${connected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse' : (isLoading || reconnecting) ? 'bg-amber-400 animate-pulse' : 'bg-slate-400'}`} />
                             <span
                                 data-testid="connection-status"
                                 className={`text-sm font-semibold ${connected ? 'text-emerald-600 dark:text-emerald-400' : isDark ? 'text-slate-400' : 'text-slate-500'}`}
                             >
                                 {connected ? (
                                     <span>Connected to <span className="text-slate-700 dark:text-slate-300 font-mono ml-1">{(() => { try { return new URL(url).hostname } catch { return 'Endpoint' } })()}</span></span>
-                                ) : isLoading ? 'Connecting...' : 'Disconnected'}
+                                ) : isLoading ? 'Connecting...' : reconnecting ? 'Reconnecting...' : 'Disconnected'}
                             </span>
                         </div>
                     )}

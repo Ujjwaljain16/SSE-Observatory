@@ -1,9 +1,10 @@
-import { useState, useRef, useEffect } from 'react'
+import { memo, useState, useRef, useEffect } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import type { Theme, EventMessage, CustomFilter } from '../types'
 import type { TraceEntry } from '../hooks/useCorrelationTracker'
 import { Inbox, Radio, Clock, Hash, Copy, Check, MessageSquare, SplitSquareHorizontal, GitBranch } from 'lucide-react'
 import { JsonDiffView } from './JsonDiffView'
+import { prettyPayload, diffPayload } from '../utils/displayData'
 
 interface EventsListProps {
     theme: Theme
@@ -53,7 +54,7 @@ const getTypeTheme = (type: string) => {
     return themes[type.toLowerCase()] || themes.default
 }
 
-export const EventsList = ({
+export const EventsList = memo(function EventsList({
     theme,
     connected,
     filteredEvents,
@@ -63,7 +64,7 @@ export const EventsList = ({
     onCopyToClipboard,
     getTraceForEvent,
     onViewTrace,
-}: EventsListProps) => {
+}: EventsListProps) {
     const isDark = theme === 'dark'
     const [diffEventId, setDiffEventId] = useState<string | null>(null)
     const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -318,18 +319,7 @@ export const EventsList = ({
                                                 }
                                             `}>
                                                 <pre className={`whitespace-pre-wrap break-words text-xs leading-relaxed ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                                                    {(() => {
-                                                        const raw = typeof event.data === 'string'
-                                                            ? event.data
-                                                            : JSON.stringify(event.data)
-                                                        try {
-                                                            return JSON.stringify(JSON.parse(raw), null, 2)
-                                                        } catch {
-                                                            return raw.length > 500
-                                                                ? raw.substring(0, 500) + '...'
-                                                                : raw
-                                                        }
-                                                    })()}
+                                                    {prettyPayload(event)}
                                                 </pre>
                                             </div>
 
@@ -337,8 +327,8 @@ export const EventsList = ({
                                                 <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700/50 animate-slide-up">
                                                     <JsonDiffView
                                                         theme={theme}
-                                                        oldData={(() => { try { return JSON.parse(prevEvent.data) } catch { return prevEvent.data } })()}
-                                                        newData={(() => { try { return JSON.parse(event.data) } catch { return event.data } })()}
+                                                        oldData={diffPayload(prevEvent)}
+                                                        newData={diffPayload(event)}
                                                     />
                                                 </div>
                                             )}
@@ -352,4 +342,4 @@ export const EventsList = ({
             )}
         </div>
     )
-}
+})

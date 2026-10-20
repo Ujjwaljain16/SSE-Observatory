@@ -70,6 +70,8 @@ describe('replay', () => {
         expect(took).toBeLessThan(400)
         expect(res.frames[0]).toBe('id: 1\ndata: {"n":1,"type":"tick"}\n\n')
         expect(res.frames[1]).toBe('data: l1\ndata: l2\n\n')
+        // a finished recording says so, otherwise clients treat the close as a drop and replay it again
+        expect(res.frames[2]).toBe('event: end\ndata: {"done":true}\n\n')
         expect(res.ended).toBe(true)
     })
 })
@@ -145,7 +147,7 @@ describe('mock HTTP handlers', () => {
 
         const stream = await call('GET', `/api/mock/stream?session=${sessionId}&speed=10`)
         expect(stream.status).toBe(200)
-        expect(stream.body).toBe('data: hello\n\ndata: world\n\n')
+        expect(stream.body).toBe('data: hello\n\ndata: world\n\nevent: end\ndata: {"done":true}\n\n')
 
         expect((await call('GET', '/api/mock/stream')).status).toBe(404) // production: no implicit "latest" session
         expect((await call('GET', '/api/mock/stream?session=00000000-0000-0000-0000-000000000000')).status).toBe(404)

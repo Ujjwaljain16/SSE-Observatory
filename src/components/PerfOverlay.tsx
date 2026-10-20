@@ -10,23 +10,25 @@
 
 import { useState, useEffect, useRef } from 'react'
 
-interface PerfOverlayProps {
+interface PerfOverlayBodyProps {
     filterExecMs: number
     timelineDrawMs: number
-    eventsPerSec: number
+    /** Events accepted since the last clear (monotonic). */
+    totalReceived: number
     isFilterWorkerReady: boolean
     isSharedWorkerActive: boolean
     totalEvents: number
 }
 
-export function PerfOverlay({
+function PerfOverlayBody({
     filterExecMs,
     timelineDrawMs,
-    eventsPerSec,
+    totalReceived,
     isFilterWorkerReady,
     isSharedWorkerActive,
     totalEvents,
-}: PerfOverlayProps) {
+}: PerfOverlayBodyProps) {
+    const eventsPerSec = useEventsPerSec(totalReceived)
     const [visible, setVisible] = useState(false)
 
     // Toggle with Shift+P — must be before any early return (Rules of Hooks)
@@ -38,8 +40,7 @@ export function PerfOverlay({
         return () => window.removeEventListener('keydown', handler)
     }, [])
 
-    // Only render in dev mode
-    if (!import.meta.env.DEV) return null
+
 
     if (!visible) {
         return (
@@ -109,27 +110,35 @@ export function PerfOverlay({
 }
 
 /**
- * useEventsPerSec — calculates rolling events/sec over a 2-second window
+ * useEventsPerSec — rolling events/second over the last 2 seconds, from a monotonically increasing total
+ * (NOT the buffer length, which stops changing once the ring buffer is full). Re-evaluated every 500 ms so the
+ * rate falls to 0 when the stream goes quiet.
  */
-export function useEventsPerSec(totalEvents: number): number {
+export function useEventsPerSec(totalReceived: number): number {
+    const total = useRef(totalReceived)
+    total.current = totalReceived
     const history = useRef<{ t: number; n: number }[]>([])
     const [rate, setRate] = useState(0)
 
     useEffect(() => {
-        const now = performance.now()
-        history.current.push({ t: now, n: totalEvents })
-        // Keep only the last 2 seconds
-        const cutoff = now - 2000
-        history.current = history.current.filter(e => e.t >= cutoff)
-
-        if (history.current.length >= 2) {
+        history.current = [{ t: performance.now(), n: total.current }]
+        const tick = () => {
+            const now = performance.now()
+            history.current.push({ t: now, n: total.current })
+            history.current = history.current.filter((e) => e.t >= now - 2000)
             const oldest = history.current[0]
-            const newest = history.current[history.current.length - 1]
-            const elapsed = (newest.t - oldest.t) / 1000
-            const delta = newest.n - oldest.n
-            setRate(elapsed > 0 ? delta / elapsed : 0)
+            const elapsed = (now - oldest.t) / 1000
+            setRate(elapsed > 0 ? Math.max(0, (total.current - oldest.n) / elapsed) : 0)
         }
-    }, [totalEvents])
+        const timer = setInterval(tick, 500)
+        return () => clearInterval(timer)
+    }, [])
 
     return rate
+}
+
+/** Dev-only. The rate hook runs inside the body component, so its 500 ms ticks never re-render the app. */
+export function PerfOverlay(props: PerfOverlayBodyProps) {
+    if (!import.meta.env.DEV) return null
+    return <PerfOverlayBody {...props} />
 }

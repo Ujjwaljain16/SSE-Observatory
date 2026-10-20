@@ -25,7 +25,7 @@ import { InterceptorEditor } from './InterceptorEditor'
 import { StoragePanel } from './StoragePanel'
 import { TracePanel } from './TracePanel'
 import { PatternPanel } from './PatternPanel'
-import { PerfOverlay, useEventsPerSec } from './PerfOverlay'
+import { PerfOverlay } from './PerfOverlay'
 import { exportEvents, getEventStats } from '../utils/exportUtils'
 
 import {
@@ -48,7 +48,7 @@ export function AppLayout() {
     } = useUIContext()
 
     const {
-        connected, isLoading, connectionError, connectionTime,
+        connected, isLoading, reconnecting, receivedCount, connectionError, connectedAt,
         connect, disconnect,
         allEvents, filteredEvents, clearEvents, copiedId, copyToClipboard,
         isPaused, currentEventIndex, togglePause, seekTo, stepForward, stepBackward, goLive,
@@ -59,7 +59,7 @@ export function AppLayout() {
         getUniqueValuesForField, toggleRegexMode, setRegexPattern,
         interceptors, addInterceptor, removeInterceptor, renameInterceptor, updateInterceptorCode,
         toggleInterceptor, reorderInterceptors, lastEventPreview,
-        idbAvailable, totalStoredCount, loadBefore, clearStorage, replayFromStorage,
+        idbAvailable, totalStoredCount, loadHistory, showHistory, clearStorage,
         streams, mergedEvents, addStream, removeStream, connectStream, disconnectStream, clearStreamEvents,
         profiles, activeProfileTab, setActiveProfileTab, saveProfile, loadProfile, deleteProfile,
         mockFileName, isMockUploading, isMockRunning, mockSpeed, isMockLooping, mockTotalEvents, mockUploadError, mockStreamUrl,
@@ -75,7 +75,6 @@ export function AppLayout() {
 
     const [showPatterns, setShowPatterns] = useState(false)
     const [timelineDrawMs, setTimelineDrawMs] = useState(0)
-    const eventsPerSec = useEventsPerSec(allEvents.length)
 
     // global intercept for idb quota exhaustion to degraded gracefully
     const [quotaError, setQuotaError] = useState(false)
@@ -202,9 +201,10 @@ export function AppLayout() {
                             bearerToken={bearerToken}
                             profileName={profileName}
                             connected={connected}
+                            reconnecting={reconnecting}
                             isLoading={isLoading}
                             error={connectionError}
-                            connectionTime={connectionTime}
+                            connectedAt={connectedAt}
                             eventsLength={allEvents.length}
                             onUrlChange={setUrl}
                             onTokenChange={setBearerToken}
@@ -344,15 +344,11 @@ export function AppLayout() {
                                         totalStoredCount={totalStoredCount}
                                         ramBufferCount={allEvents.length}
                                         maxRamBuffer={MAX_EVENTS}
-                                        onLoadMore={async () => loadBefore(allEvents.length > 0 ? allEvents[allEvents.length - 1].arrivalTime ?? null : null)}
+                                        onLoadHistory={showHistory}
                                         onClearStorage={clearStorage}
                                         onExportAll={async () => {
-                                            const evs = await replayFromStorage()
+                                            const evs = await loadHistory() // newest first, as createRecording expects
                                             if (evs.length > 0) exportEvents(evs, { format: 'record' })
-                                        }}
-                                        onReplayFromStorage={async () => {
-                                            const evs = await replayFromStorage()
-                                            console.log('[AppLayout] Replay from storage:', evs.length, 'events')
                                         }}
                                     />
                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 mt-4">
@@ -442,7 +438,6 @@ export function AppLayout() {
                             onToggleFilterValue={toggleFilterValue}
                             onClearFilterValues={clearFilterValues}
                             getUniqueValuesForField={getUniqueValuesForField}
-                            onError={msg => console.log(msg)}
                             toggleRegexMode={toggleRegexMode}
                             setRegexPattern={setRegexPattern}
                         />
@@ -502,7 +497,7 @@ export function AppLayout() {
             <PerfOverlay
                 filterExecMs={filterExecMs}
                 timelineDrawMs={timelineDrawMs}
-                eventsPerSec={eventsPerSec}
+                totalReceived={receivedCount}
                 isFilterWorkerReady={isFilterWorkerReady}
                 isSharedWorkerActive={isSharedWorkerActive}
                 totalEvents={allEvents.length}

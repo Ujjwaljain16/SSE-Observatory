@@ -28,10 +28,11 @@ import { useCorrelationTracker } from './useCorrelationTracker'
 import { usePatternDetector } from './usePatternDetector'
 
 import type { PerfContextValue } from '../context/PerfContext'
+import type { EventMessage } from '../types'
 
 const MAX_EVENTS = 1000
 
-export function useStreamState() {
+export function useStreamState({ capturePreview = false }: { capturePreview?: boolean } = {}) {
 
     const {
         interceptors,
@@ -50,9 +51,8 @@ export function useStreamState() {
         idbAvailable,
         totalStoredCount,
         saveEvent,
-        loadBefore,
         clearStorage,
-        replayFromStorage,
+        loadHistory,
     } = useEventStorage()
 
     // Live preview for the InterceptorEditor panel
@@ -61,21 +61,33 @@ export function useStreamState() {
         transformed: string | undefined
     } | undefined>()
 
-    const updatePreview = useCallback((raw: string, transformed: string | undefined) => {
-        setLastEventPreview({ raw, transformed })
-    }, [])
+    // The preview is only for the open editor panel, so it is captured only then, at most ~3x per second, and the
+    // (potentially large) JSON strings are produced from the latest sample at that moment, not for every event.
+    const capturePreviewRef = useRef(capturePreview)
+    capturePreviewRef.current = capturePreview
+    const previewSample = useRef<{ raw: EventMessage; transformed: EventMessage | null } | null>(null)
+    const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+    useEffect(() => () => { if (previewTimer.current) clearTimeout(previewTimer.current) }, [])
 
-    const applyInterceptorsWithPreview = useCallback(async (event: any) => {
+    const applyInterceptorsWithPreview = useCallback(async (event: EventMessage) => {
         const result = await applyInterceptors(event)
-        updatePreview(
-            JSON.stringify(event, null, 2),
-            result ? JSON.stringify(result, null, 2) : undefined
-        )
+        if (capturePreviewRef.current) {
+            previewSample.current = { raw: event, transformed: result }
+            if (!previewTimer.current) {
+                previewTimer.current = setTimeout(() => {
+                    previewTimer.current = null
+                    const sample = previewSample.current
+                    if (!sample) return
+                    const show = (e: EventMessage) => { try { return JSON.stringify(e, null, 2) } catch { return String(e) } }
+                    setLastEventPreview({ raw: show(sample.raw), transformed: sample.transformed ? show(sample.transformed) : undefined })
+                }, 300)
+            }
+        }
         return result
-    }, [applyInterceptors, updatePreview])
+    }, [applyInterceptors])
 
     // Stable ref so useSharedStream's onmessage always calls the current interceptor
-    const interceptorRef = useRef<((e: any) => Promise<any>) | undefined>(undefined)
+    const interceptorRef = useRef<((e: EventMessage) => Promise<EventMessage | null>) | undefined>(undefined)
     useEffect(() => {
         interceptorRef.current = hasActiveInterceptors ? applyInterceptorsWithPreview : undefined
     }, [applyInterceptorsWithPreview, hasActiveInterceptors])
@@ -86,11 +98,16 @@ export function useStreamState() {
     const {
         connected,
         events: allEvents,
+        epoch: bufferEpoch,
         error: connectionError,
         isLoading,
+        reconnecting,
+        droppedCount,
+        receivedCount,
         connect: connectBase,
         disconnect,
         clearEvents: clearEventsBase,
+        replaceEvents,
     } = useSharedStream(
         MAX_EVENTS,
         hasActiveInterceptors ? (e => interceptorRef.current?.(e) ?? Promise.resolve(e)) : undefined,
@@ -104,15 +121,9 @@ export function useStreamState() {
     const isSharedWorkerActive = typeof SharedWorker !== 'undefined'
 
 
-    const [connectionTime, setConnectionTime] = useState(0)
-    useEffect(() => {
-        let interval: number
-        if (connected) {
-            setConnectionTime(0)
-            interval = window.setInterval(() => setConnectionTime(prev => prev + 1), 1000)
-        }
-        return () => clearInterval(interval)
-    }, [connected])
+    // Only the moment the connection opened is kept here; the ticking clock lives in the component that shows it.
+    const [connectedAt, setConnectedAt] = useState<number | null>(null)
+    useEffect(() => { setConnectedAt(connected ? Date.now() : null) }, [connected])
 
 
     const {
@@ -143,34 +154,29 @@ export function useStreamState() {
         setRegexPattern,
     } = useCustomFilters(playbackEvents)
 
-    const { query, setQuery, error: queryError } = useQueryParser(playbackEvents)
-    const { searchQuery, setSearchQuery } = useEventSearch(playbackEvents)
+    const { query, setQuery, error: queryError } = useQueryParser()
+    const { searchQuery, setSearchQuery } = useEventSearch()
 
 
+    // The filter engine mirrors the live buffer by event identity (works after the ring buffer is full)
     const {
         filteredEvents,
         filterExecMs,
         isWorkerReady: isFilterWorkerReady,
-        addEventToWorker,
         clearWorker,
-    } = useFilterWorker(playbackEvents, {
+    } = useFilterWorker(allEvents, {
         query,
         queryError: queryError ?? null,
         searchQuery,
         customFilters,
-    })
+    }, MAX_EVENTS, bufferEpoch)
 
-    // Forward new events to filter worker incrementally (handles batch catchup)
-    const prevLengthRef = useRef(0)
-    useEffect(() => {
-        const current = allEvents.length
-        const newCount = current - prevLengthRef.current
-        prevLengthRef.current = current
-        if (newCount <= 0 || allEvents.length === 0) return
-        for (let i = newCount - 1; i >= 0; i--) {
-            addEventToWorker(allEvents[i])
-        }
-    }, [allEvents, addEventToWorker])
+    // Load everything stored in IndexedDB (newest first) into the viewer. Works offline.
+    const showHistory = useCallback(async (): Promise<number> => {
+        const stored = await loadHistory(MAX_EVENTS) // only what fits in the viewer: reading all 100k events takes seconds
+        if (stored.length > 0) replaceEvents(stored)
+        return stored.length
+    }, [loadHistory, replaceEvents])
 
     const clearEvents = useCallback(() => {
         clearEventsBase()
@@ -194,9 +200,10 @@ export function useStreamState() {
     const [url, setUrl] = useState('')
     const [bearerToken, setBearerToken] = useState('')
 
-    const saveProfile = useCallback(() => {
+    // The token is only stored when the user ticks "remember token"; credentials stay out of localStorage by default.
+    const saveProfile = useCallback((rememberToken = false) => {
         if (!profileName.trim() || !url.trim()) return
-        saveProfileHook(profileName, url, bearerToken)
+        saveProfileHook(profileName.trim(), url.trim(), rememberToken ? bearerToken : '')
         setProfileName('')
     }, [profileName, url, bearerToken, saveProfileHook])
 
@@ -229,7 +236,7 @@ export function useStreamState() {
     const {
         traces, activeTraceId, setActiveTraceId,
         getEventChain, getTraceForEvent, correlationField, traceCount, clearTraces,
-    } = useCorrelationTracker(allEvents)
+    } = useCorrelationTracker(allEvents, bufferEpoch)
 
 
     const {
@@ -241,26 +248,18 @@ export function useStreamState() {
         toggleRule: togglePatternRule,
         dismissAlert: dismissPatternAlert,
         clearAlerts: clearPatternAlerts,
-    } = usePatternDetector(allEvents)
+    } = usePatternDetector(allEvents, bufferEpoch)
 
 
-    // The filter worker processes *all* events, so filteredEvents contains the full filtered history.
-    // If the stream is paused, we must freeze the visible list to only show events up to the pause point.
-    // We do this by finding the cutoff index in filteredEvents using arrivalTime.
+    // The filter engine sees every buffered event; while the playhead is in the past (or paused), only
+    // events at or before the playhead are visible. Membership is by id, so ties in arrivalTime and
+    // eviction from the ring buffer cannot leak newer events into the paused view.
     const visibleFilteredEvents = useMemo(() => {
-        if (!isPaused && currentEventIndex === 0) return filteredEvents
-        if (allEvents.length === 0 || filteredEvents.length === 0) return filteredEvents
-
-        const targetEvent = allEvents[currentEventIndex]
-        if (!targetEvent) return filteredEvents
-
-        // Events are newest-first. Find the first filtered event that is older or equal to targetEvent.
-        const cutoffIndex = filteredEvents.findIndex(e => (e.arrivalTime ?? 0) <= (targetEvent.arrivalTime ?? 0))
-        if (cutoffIndex === -1) return [] // all filtered events are newer than the pause point
-        return filteredEvents.slice(cutoffIndex)
-    }, [filteredEvents, isPaused, currentEventIndex, allEvents])
-
-
+        if (currentEventIndex === 0) return filteredEvents
+        const visible = new Set<string>()
+        for (const e of playbackEvents) visible.add(e.id)
+        return filteredEvents.filter((e) => visible.has(e.id))
+    }, [filteredEvents, currentEventIndex, playbackEvents])
 
     // perfValue updates on every filter run — isolated from streamValue so
     // StreamContext consumers are NOT re-rendered by filter metric changes
@@ -273,7 +272,7 @@ export function useStreamState() {
     // streamValue only changes on user actions / connection events
     const streamValue = useMemo(() => ({
         // Connection
-        connected, isLoading, connectionError, connectionTime,
+        connected, isLoading, reconnecting, droppedCount, receivedCount, connectionError, connectedAt,
         connect, disconnect,
         useProxy, setUseProxy,
         // Events
@@ -290,7 +289,7 @@ export function useStreamState() {
         interceptors, addInterceptor, removeInterceptor, renameInterceptor, updateInterceptorCode,
         toggleInterceptor, reorderInterceptors, hasActiveInterceptors, lastEventPreview,
         // Storage
-        idbAvailable, totalStoredCount, loadBefore, clearStorage, replayFromStorage,
+        idbAvailable, totalStoredCount, loadHistory, showHistory, clearStorage,
         // Multi-stream
         streams, mergedEvents, addStream, removeStream, connectStream, disconnectStream, clearStreamEvents,
         // Profiles
@@ -307,7 +306,7 @@ export function useStreamState() {
         patternRules, patternAlerts, activePatternAlerts,
         addPatternRule, removePatternRule, togglePatternRule, dismissPatternAlert, clearPatternAlerts,
     }), [
-        connected, isLoading, connectionError, connectionTime, connect, disconnect, useProxy,
+        connected, isLoading, reconnecting, droppedCount, receivedCount, connectionError, connectedAt, connect, disconnect, useProxy,
         allEvents, visibleFilteredEvents, clearEvents, copiedId, copyToClipboard,
         isPaused, currentEventIndex, togglePause, seekTo, stepForward, stepBackward, goLive,
         searchQuery, setSearchQuery, query, setQuery, queryError,
@@ -316,7 +315,7 @@ export function useStreamState() {
         getUniqueValuesForField, toggleRegexMode, setRegexPattern,
         interceptors, addInterceptor, removeInterceptor, renameInterceptor, updateInterceptorCode,
         toggleInterceptor, reorderInterceptors, hasActiveInterceptors, lastEventPreview,
-        idbAvailable, totalStoredCount, loadBefore, clearStorage, replayFromStorage,
+        idbAvailable, totalStoredCount, loadHistory, showHistory, clearStorage,
         streams, mergedEvents, addStream, removeStream, connectStream, disconnectStream, clearStreamEvents,
         profiles, activeProfileTab, setActiveProfileTab, saveProfile, loadProfile, deleteProfile,
         url, bearerToken, profileName,

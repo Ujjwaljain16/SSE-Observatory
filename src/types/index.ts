@@ -5,6 +5,10 @@ export interface EventMessage {
     data: string
     raw: string
     parsedType?: string | undefined
+    /** Server-sent event id (the SSE `id:` field) in effect when the event arrived. */
+    sseId?: string | undefined
+    /** Per-tab monotonic counter; with arrivalTime it gives events a total order (storage paging). */
+    seq?: number | undefined
     streamId?: string | undefined
     streamColor?: string | undefined
     arrivalTime?: number | undefined

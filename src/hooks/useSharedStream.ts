@@ -1,228 +1,203 @@
 /**
  * useSharedStream.ts
  *
- * Drop-in replacement for useEventStream that routes through a SharedWorker.
- * All tabs sharing the same (url + token) combination will see the same live data
- * from a single EventSource owned by the SharedWorker.
+ * The live-stream hook. Connections are owned by a SharedWorker so that every tab watching the same
+ * url+token shares ONE upstream connection; when SharedWorker is unavailable (Android Chrome, some
+ * private modes) or fails, the very same SSEClient runs directly in the page.
  *
- * Automatically falls back to useEventStream if:
- *   - SharedWorker is not supported (Firefox private mode, Safari < 16)
- *   - The worker fails to initialise
+ * Connection lifecycle (connect / retry with backoff / resume with Last-Event-ID / fatal errors) is reported as a
+ * single `status`, so the UI can show "Connecting", "Connected", "Reconnecting in 4s (attempt 2)" or a real error.
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { EventMessage } from '../types'
-import { useEventStream } from './useEventStream'
 import { workerRegistry } from '../utils/workerRegistry'
+import { SSEClient, type SSEPhase, type SSEPhaseInfo } from '../utils/sseClient'
+import { buildSSERequest } from '../utils/sseProxyUrl'
+import type { IncomingSSE } from '../utils/buildEvent'
+import { useEventIngest } from './useEventIngest'
 
 const WORKER_KEY = 'shared-sse-worker'
 const PING_INTERVAL_MS = 30_000
 const MAX_EVENTS = 1000
-const MAX_RECONNECT_ATTEMPTS = 3
 
-export type UseEventStreamReturn = ReturnType<typeof useEventStream>
+export type StreamPhase = 'idle' | 'connecting' | 'open' | 'reconnecting' | 'ended' | 'failed'
+
+export interface StreamStatus {
+    phase: StreamPhase
+    message: string
+}
+
+export interface UseStreamReturn {
+    connected: boolean
+    events: EventMessage[]
+    /** Changes whenever the buffer is cleared or replaced; incremental consumers must resync when it does. */
+    epoch: number
+    /** Human-readable problem or note (reconnecting, failed, ended); '' when all is well. */
+    error: string
+    /** True only while the first connection attempt is in flight. */
+    isLoading: boolean
+    /** True while the stream is down and the client is retrying. */
+    reconnecting: boolean
+    status: StreamPhase
+    connect: (url: string, token?: string, clearHistory?: boolean, useProxy?: boolean) => void
+    disconnect: () => void
+    clearEvents: () => void
+    /** Replace the buffer (history loaded from storage). */
+    replaceEvents: (events: EventMessage[]) => void
+    maxEvents: number
+    /** Messages dropped because the page could not keep up. */
+    droppedCount: number
+    /** Events accepted since the last clear (keeps counting after the ring buffer is full). */
+    receivedCount: number
+}
+export type UseEventStreamReturn = UseStreamReturn
+
+const IDLE: StreamStatus = { phase: 'idle', message: '' }
+
+export function describeStatus(phase: SSEPhase, info: SSEPhaseInfo): StreamStatus {
+    switch (phase) {
+        case 'connecting': return { phase: 'connecting', message: '' }
+        case 'open': return { phase: 'open', message: '' }
+        case 'reconnecting': {
+            const secs = Math.max(1, Math.round((info.delayMs ?? 0) / 1000))
+            return { phase: 'reconnecting', message: `Connection lost${info.reason ? ` (${info.reason})` : ''}. Retrying in ${secs}s (attempt ${info.attempt})…` }
+        }
+        case 'ended': return { phase: 'ended', message: info.reason ?? 'Stream ended' }
+        case 'failed': return { phase: 'failed', message: info.reason ?? 'Connection failed' }
+        case 'stopped': return IDLE
+    }
+}
 
 export function useSharedStream(
     maxEvents: number = MAX_EVENTS,
     applyInterceptors?: (event: EventMessage) => Promise<EventMessage | null>,
     onEventPersist?: (event: EventMessage) => void
-): UseEventStreamReturn {
-    const sharedWorkerSupported = typeof SharedWorker !== 'undefined'
-
-    const fallback = useEventStream(maxEvents, applyInterceptors, onEventPersist)
-
-    const [connected, setConnected] = useState(false)
-    const [events, setEvents] = useState<EventMessage[]>([])
-    const [error, setError] = useState('')
-    const [isLoading, setIsLoading] = useState(false)
+): UseStreamReturn {
+    const ingest = useEventIngest({ maxEvents, applyInterceptors, onEventPersist })
+    const [status, setStatus] = useState<StreamStatus>(IDLE)
 
     const workerRef = useRef<SharedWorker | null>(null)
+    const directRef = useRef<SSEClient | null>(null)
     const pingRef = useRef<ReturnType<typeof setInterval> | null>(null)
-    const currentUrlRef = useRef<string>('')
-    const currentTokenRef = useRef<string | undefined>()
-    const currentUseProxyRef = useRef<boolean>(true)
-    const fallbackRef = useRef(false)
-    const reconnectAttemptRef = useRef(0)
+    const keyRef = useRef('')
+    const lastSeqRef = useRef(0)
+    const lastParamsRef = useRef<{ url: string; token: string | undefined; useProxy: boolean } | null>(null)
+    const pushRef = useRef(ingest.push)
+    pushRef.current = ingest.push
 
-    // Keep a live ref to applyInterceptors to avoid stale closure in onmessage
-    const interceptorRef = useRef(applyInterceptors)
-    useEffect(() => { interceptorRef.current = applyInterceptors }, [applyInterceptors])
+    const stopPing = () => { if (pingRef.current) { clearInterval(pingRef.current); pingRef.current = null } }
 
-    // Keep a live ref to onEventPersist for the same reason
-    const onEventPersistRef = useRef(onEventPersist)
-    useEffect(() => { onEventPersistRef.current = onEventPersist }, [onEventPersist])
+    const startDirect = useCallback((url: string, token: string | undefined, useProxy: boolean) => {
+        directRef.current?.stop()
+        const client = new SSEClient({
+            request: () => buildSSERequest(url, token, useProxy),
+            onMessage: (m) => pushRef.current({ event: m.event, data: m.data, id: m.id, raw: m.raw, arrivalTime: Date.now() }),
+            onPhase: (phase, info) => setStatus(describeStatus(phase, info)),
+        })
+        directRef.current = client
+        client.start()
+    }, [])
 
+    // --- SharedWorker lifecycle -------------------------------------------------------------
     useEffect(() => {
-        if (!sharedWorkerSupported) return
+        if (typeof SharedWorker === 'undefined') return
         try {
             const worker = workerRegistry.create(WORKER_KEY, () =>
-                new SharedWorker(
-                    new URL('../workers/sharedSSEWorker.ts', import.meta.url),
-                    { type: 'module', name: 'sse-shared-worker' }
-                )
+                new SharedWorker(new URL('../workers/sharedSSEWorker.ts', import.meta.url), { type: 'module', name: 'sse-shared-worker' })
             )
             workerRef.current = worker
             worker.port.start()
 
-            worker.port.onmessage = async (e: MessageEvent) => {
+            worker.port.onmessage = (e: MessageEvent) => {
                 const msg = e.data
-
-                if (msg.type === 'connected') {
-                    reconnectAttemptRef.current = 0
-                    setConnected(true)
-                    setIsLoading(false)
-                    setError('')
-                    return
-                }
-
-                if (msg.type === 'catchup') {
-                    const stamped: EventMessage[] = msg.events.map((raw: any) => {
-                        let parsedType: string | undefined
-                        try {
-                            const parsed = JSON.parse(raw.raw ?? raw)
-                            if (parsed?.type) parsedType = String(parsed.type)
-                        } catch { }
-                        return {
-                            id: crypto.randomUUID(),
-                            timestamp: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-                            arrivalTime: raw.arrivalTime ?? Date.now(),
-                            type: 'message',
-                            data: raw.raw ?? raw,
-                            raw: typeof raw === 'string' ? raw : JSON.stringify(raw),
-                            ...(parsedType && { parsedType }),
-                            _searchIndex: (typeof raw === 'string' ? raw : JSON.stringify(raw)).toLowerCase()
-                        }
-                    })
-                    setEvents(prev => {
-                        const merged = [...stamped, ...prev]
-                        return merged.length > maxEvents ? merged.slice(0, maxEvents) : merged
-                    })
-                    return
-                }
-
-                if (msg.type === 'event') {
-                    let newEvent: EventMessage = {
-                        id: crypto.randomUUID(),
-                        timestamp: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-                        arrivalTime: msg.payload.arrivalTime ?? Date.now(),
-                        type: 'message',
-                        data: msg.payload.raw,
-                        raw: msg.payload.raw,
-                    }
-
-                    try {
-                        const parsed = JSON.parse(msg.payload.raw)
-                        if (parsed?.type) {
-                            newEvent.parsedType = String(parsed.type)
-                        }
-                    } catch { }
-
-                    if (interceptorRef.current) {
-                        const transformed = await interceptorRef.current(newEvent)
-                        if (transformed === null) return
-                        newEvent = transformed
-                    }
-
-                    newEvent._searchIndex = (typeof newEvent.data === 'string' ? newEvent.data : JSON.stringify(newEvent.data)).toLowerCase()
-
-                    onEventPersistRef.current?.(newEvent)
-
-                    setEvents(prev => {
-                        const next = [newEvent, ...prev]
-                        return next.length > maxEvents ? next.slice(0, maxEvents) : next
-                    })
-                    return
-                }
-
-                if (msg.type === 'error') {
-                    const attempt = reconnectAttemptRef.current
-                    if (attempt < MAX_RECONNECT_ATTEMPTS && currentUrlRef.current) {
-                        reconnectAttemptRef.current = attempt + 1
-                        setError(`Connection lost. Reconnecting... (${attempt + 1}/${MAX_RECONNECT_ATTEMPTS})`)
-                        setTimeout(() => {
-                            if (workerRef.current && !fallbackRef.current) {
-                                workerRef.current.port.postMessage({
-                                    type: 'connect',
-                                    url: currentUrlRef.current,
-                                    token: currentTokenRef.current,
-                                    useProxy: currentUseProxyRef.current
-                                })
-                            }
-                        }, 2000 * (attempt + 1))
-                    } else {
-                        setError(msg.message ?? 'Stream error — reconnecting...')
-                    }
-                    return
-                }
-
-                if (msg.type === 'disconnected') {
-                    setConnected(false)
-                    setIsLoading(false)
-                    setError('')
+                if (!msg || (msg.key !== undefined && msg.key !== keyRef.current)) return // stale message from a stream we left
+                if (msg.type === 'status') {
+                    setStatus(describeStatus(msg.phase, msg))
+                } else if (msg.type === 'event') {
+                    const p = msg.payload as IncomingSSE
+                    if (p.seq !== undefined && p.seq <= lastSeqRef.current) return
+                    if (p.seq !== undefined) lastSeqRef.current = p.seq
+                    pushRef.current(p)
+                } else if (msg.type === 'catchup') {
+                    const fresh = (msg.events as IncomingSSE[]).filter((p) => p.seq === undefined || p.seq > lastSeqRef.current)
+                    if (fresh.length === 0) return
+                    const last = fresh[fresh.length - 1].seq
+                    if (last !== undefined) lastSeqRef.current = last
+                    pushRef.current(fresh)
                 }
             }
 
-            worker.port.addEventListener('messageerror', () => {
-                fallbackRef.current = true
-            })
+            // The script failed to load or crashed: carry on in the page with the same client.
+            worker.onerror = () => {
+                workerRef.current = null
+                stopPing()
+                const params = lastParamsRef.current
+                if (params) startDirect(params.url, params.token, params.useProxy)
+            }
         } catch {
-            fallbackRef.current = true
+            workerRef.current = null
         }
 
         return () => {
-            if (pingRef.current) clearInterval(pingRef.current)
+            stopPing()
+            workerRef.current?.port.postMessage({ type: 'disconnect' })
+            workerRef.current = null
+            directRef.current?.stop()
+            directRef.current = null
             workerRegistry.release(WORKER_KEY)
         }
-    }, [sharedWorkerSupported, maxEvents])
+    }, [startDirect])
 
+    // --- public API -------------------------------------------------------------------------
     const connect = useCallback((url: string, token?: string, clearHistory = true, useProxy = true) => {
-        if (!workerRef.current || fallbackRef.current) return
-        currentUrlRef.current = url
-        currentTokenRef.current = token
-        currentUseProxyRef.current = useProxy
-        reconnectAttemptRef.current = 0
-
-        if (clearHistory) {
-            setEvents([])
+        const trimmed = url.trim()
+        if (!trimmed) {
+            setStatus({ phase: 'failed', message: 'Please enter a valid URL' })
+            return
         }
+        stopPing()
+        directRef.current?.stop()
+        directRef.current = null
+        lastParamsRef.current = { url: trimmed, token, useProxy }
+        keyRef.current = `${trimmed}::${token ?? ''}`
+        lastSeqRef.current = 0
+        if (clearHistory) ingest.clear()
+        setStatus({ phase: 'connecting', message: '' })
 
-        setIsLoading(true)
-        setError('')
-
-        workerRef.current.port.postMessage({ type: 'connect', url, token, useProxy })
-
-        if (pingRef.current) clearInterval(pingRef.current)
-        pingRef.current = setInterval(() => {
-            workerRef.current?.port.postMessage({ type: 'ping' })
-        }, PING_INTERVAL_MS)
-    }, [])
+        const worker = workerRef.current
+        if (worker) {
+            worker.port.postMessage({ type: 'connect', url: trimmed, token, useProxy })
+            pingRef.current = setInterval(() => worker.port.postMessage({ type: 'ping' }), PING_INTERVAL_MS)
+        } else {
+            startDirect(trimmed, token, useProxy)
+        }
+    }, [ingest.clear, startDirect]) // eslint-disable-line react-hooks/exhaustive-deps
 
     const disconnect = useCallback(() => {
-        if (workerRef.current && !fallbackRef.current) {
-            workerRef.current.port.postMessage({ type: 'disconnect' })
-        }
-        if (pingRef.current) clearInterval(pingRef.current)
-        reconnectAttemptRef.current = 0
-        setConnected(false)
-        setIsLoading(false)
+        stopPing()
+        workerRef.current?.port.postMessage({ type: 'disconnect' })
+        directRef.current?.stop()
+        directRef.current = null
+        keyRef.current = ''
+        setStatus(IDLE)
     }, [])
 
-    const clearEvents = useCallback(() => {
-        setEvents([])
-    }, [])
-
-    if (!sharedWorkerSupported || fallbackRef.current) {
-        return fallback
-    }
-
+    const { phase, message } = status
     return {
-        connected,
-        events,
-        error,
-        isLoading,
+        connected: phase === 'open',
+        events: ingest.events,
+        epoch: ingest.epoch,
+        error: phase === 'reconnecting' || phase === 'failed' || phase === 'ended' ? message : '',
+        isLoading: phase === 'connecting',
+        reconnecting: phase === 'reconnecting',
+        status: phase,
         connect,
         disconnect,
-        clearEvents,
+        clearEvents: ingest.clear,
+        replaceEvents: ingest.replace,
         maxEvents,
+        droppedCount: ingest.droppedCount,
+        receivedCount: ingest.receivedCount,
     }
 }
