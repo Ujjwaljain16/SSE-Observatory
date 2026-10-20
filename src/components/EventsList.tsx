@@ -80,6 +80,9 @@ export const EventsList = memo(function EventsList({
         getScrollElement: () => scrollContainerRef.current,
         estimateSize: () => 180,
         overscan: 5,
+        // New events are prepended, so an index points at a different event every frame. Key the measured heights by
+        // event id, otherwise each row gets some other row's height (overlapping rows and gaps).
+        getItemKey: (index) => filteredEvents[index]?.id ?? index,
     })
 
     return (
@@ -187,7 +190,7 @@ export const EventsList = memo(function EventsList({
                                                     ? `bg-gradient-to-br ${typeTheme.bg} ${typeTheme.border} hover:shadow-lg ${typeTheme.glow}`
                                                     : 'bg-white border-slate-200 hover:border-slate-300 hover:shadow-md'
                                                 }
-                                                ${isNewest ? 'animate-scale-in ring-2 ring-sky-500/30' : ''}
+                                                ${isNewest ? 'animate-row-in ring-2 ring-sky-500/30' : ''}
                                             `}
                                         >
                                             <div className="flex items-center justify-between gap-4 mb-3 flex-wrap">
