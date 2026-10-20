@@ -114,8 +114,8 @@ export const SCENARIO_SCHEMA: Schema = {
                     properties: {
                         url: {
                             type: 'string',
-                            pattern: `^(?:${PLACEHOLDER}\\S*|https?://\\S+|fixture://[A-Za-z0-9_-]+)$`,
-                            description: 'http(s) URL, fixture://ID, or ${ENV:NAME} (optionally followed by a path). No secrets in the query.',
+                            pattern: `^(?:${PLACEHOLDER}\\S*|https?://\\S+|fixture://[A-Za-z0-9_-]+(?:\\?[A-Za-z0-9_=&.%-]*)?)$`,
+                            description: 'http(s) URL, fixture://ID (optionally ?scale=0.05 and the like), or ${ENV:NAME} (optionally followed by a path). No secrets in the query.',
                         },
                         ...targetCommon,
                     },

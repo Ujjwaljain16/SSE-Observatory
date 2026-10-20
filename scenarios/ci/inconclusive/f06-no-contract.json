@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "name": "continuity cannot be verified without a declared sequence",
+  "target": { "url": "fixture://f06-skips?scale=0.05" },
+  "steps": [
+    { "collect_events": 4, "timeout_ms": 10000 },
+    { "disconnect": { "mode": "server" } },
+    { "reconnect": { "after_ms": 0, "resume_from_last_event_id": true } },
+    { "collect_events": 2, "timeout_ms": 10000 }
+  ],
+  "verify": ["no_unexplained_sequence_gaps"]
+}

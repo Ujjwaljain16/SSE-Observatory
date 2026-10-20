@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "name": "a dropped connection resumes without losing ids",
+  "target": { "url": "fixture://f06-resumes?scale=0.05", "sequence": { "use_sse_id": true, "policy": "consecutive" }, "delivery": "at_least_once" },
+  "expect": { "status": 200, "content_type": "text/event-stream", "first_event_within_ms": 3000 },
+  "steps": [
+    { "collect_events": 4, "timeout_ms": 10000 },
+    { "disconnect": { "mode": "server" } },
+    { "reconnect": { "after_ms": 0, "resume_from_last_event_id": true } },
+    { "collect_events": 3, "timeout_ms": 10000 }
+  ],
+  "verify": ["no_unexplained_sequence_gaps", "no_unexpected_duplicates", "preserve_event_order"],
+  "fail_on_severity": "error"
+}

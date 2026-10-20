@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "name": "a resume that skips ids is caught",
+  "target": { "url": "fixture://f06-skips?scale=0.05", "sequence": { "use_sse_id": true, "policy": "consecutive" } },
+  "steps": [
+    { "collect_events": 4, "timeout_ms": 10000 },
+    { "disconnect": { "mode": "server" } },
+    { "reconnect": { "after_ms": 0, "resume_from_last_event_id": true } },
+    { "collect_events": 2, "timeout_ms": 10000 }
+  ],
+  "verify": ["no_unexplained_sequence_gaps"]
+}

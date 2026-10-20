@@ -35,6 +35,15 @@ jobs:
       - run: npm run build:cli
       - run: npm run doctor:selftest
       - run: npm run cli:check
+      # Scenario files against the built-in fixture streams: passing ones pass, failing ones fail, unprovable ones are inconclusive (exit 4).
+      - run: npm run doctor:scenarios
+      - name: Upload scenario results (JUnit)
+        if: always() && matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: scenario-results-junit
+          path: dist-cli/scenarios-junit.xml
+          if-no-files-found: ignore
 
   audit:
     name: Dependency audit (runtime, high+)

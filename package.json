@@ -35,6 +35,7 @@
     "cli:check": "node scripts/cli-pack-check.mjs",
     "doctor": "node dist-cli/bin/sse-doctor.mjs",
     "doctor:selftest": "node dist-cli/bin/sse-doctor.mjs selftest",
+    "doctor:scenarios": "node scripts/run-ci-scenarios.mjs",
     "test:all": "npm run test && npm run test:e2e",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.core.json --noEmit && tsc -p tsconfig.test.json --noEmit",
     "verify": "npm run lint && npm run typecheck && npm run test:coverage && npm run build && npm run build:cli"
