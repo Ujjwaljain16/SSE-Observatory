@@ -20,3 +20,5 @@ export { createObservedStream } from './sse/observedStream'
 export type { ObservedStream, ObservedStreamOptions, ObservedStreamSinks } from './sse/observedStream'
 export type { IncomingSSE } from './sse/incoming'
 export { newCaptureId } from './observe/captureId'
+
+export * from './diagnostics'
