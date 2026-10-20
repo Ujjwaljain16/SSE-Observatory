@@ -65,6 +65,14 @@ if (config.production) {
     })
 }
 
+// A body that is too large or not valid JSON would otherwise come back as Express's HTML error page; the API answers in JSON.
+app.use((err, req, res, next) => {
+    if (!req.path.startsWith('/api')) return next(err)
+    if (err?.type === 'entity.too.large') return res.status(413).json({ error: 'Request body too large (JSON up to 10 MB, NDJSON up to 20 MB)' })
+    if (err?.type === 'entity.parse.failed') return res.status(400).json({ error: 'Request body is not valid JSON' })
+    return next(err)
+})
+
 if (process.env.SENTRY_DSN) Sentry.setupExpressErrorHandler(app)
 
 app.listen(PORT, HOST, () => {
