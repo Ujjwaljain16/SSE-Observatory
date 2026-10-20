@@ -7,7 +7,7 @@ import reactHooksPlugin from 'eslint-plugin-react-hooks'
 export default [
     {
         ignores: [
-            'dist/**', 'node_modules/**', 'coverage/**', 'public/**', 'docs/**',
+            'dist/**', 'dist-cli/**', 'node_modules/**', 'coverage/**', 'public/**', 'docs/**',
             'playwright-report/**', 'test-results/**', 'blob-report/**', '.vercel/**',
             'vite.config.js', 'audit-evidence/**', '.agents/**', // vite.config.js is emitted by tsc -b
         ],
