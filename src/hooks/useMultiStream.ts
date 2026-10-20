@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import type { EventMessage } from '../types'
 import { createObservedStream, type ObservedStream } from '../core/sse/observedStream'
 import { observationRegistry } from '../doctor/observationRegistry'
+import { recordingEnabled } from '../doctor/recordingConfig'
 import { buildSSERequest } from '../utils/sseProxyUrl'
 import { buildEvent, finalizeEvent } from '../utils/buildEvent'
 import { describeStatus } from './useSharedStream'
@@ -119,7 +120,7 @@ export const useMultiStream = (): UseMultiStreamReturn => {
                     })
                 },
             },
-            recording: { onObservations: () => observationRegistry.notify(id) },
+            ...(recordingEnabled() ? { recording: { onObservations: () => observationRegistry.notify(id) } } : {}),
         })
         if (lane.store) observationRegistry.attach(id, lane.store, lane.captureId)
         clientsRef.current.set(id, lane)

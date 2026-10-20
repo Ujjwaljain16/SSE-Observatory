@@ -15,6 +15,7 @@ import { workerRegistry } from '../utils/workerRegistry'
 import type { SSEPhase, SSEPhaseInfo } from '../core/sse/sseClient'
 import { createObservedStream, type ObservedStream } from '../core/sse/observedStream'
 import { MAIN_STREAM, observationRegistry } from '../doctor/observationRegistry'
+import { recordingEnabled } from '../doctor/recordingConfig'
 import { buildSSERequest } from '../utils/sseProxyUrl'
 import type { IncomingSSE } from '../utils/buildEvent'
 import { useEventIngest } from './useEventIngest'
@@ -111,7 +112,7 @@ export function useSharedStream(
                 onPhase: (phase, info) => setStatus(describeStatus(phase, info)),
             },
             clientOptions: { initialLastEventId: lastEventId },
-            recording: { onObservations: () => observationRegistry.notify(MAIN_STREAM) },
+            ...(recordingEnabled() ? { recording: { onObservations: () => observationRegistry.notify(MAIN_STREAM) } } : {}),
         })
         // The page runs this stream itself, so the registry adopts its store instead of copying it.
         if (stream.store) observationRegistry.attach(MAIN_STREAM, stream.store, stream.captureId)
@@ -202,7 +203,7 @@ export function useSharedStream(
 
         const worker = workerRef.current
         if (worker) {
-            worker.port.postMessage({ type: 'connect', url: trimmed, token, useProxy })
+            worker.port.postMessage({ type: 'connect', url: trimmed, token, useProxy, ...(recordingEnabled() ? {} : { recording: false }) })
             lastHeardRef.current = Date.now()
             pingRef.current = setInterval(() => {
                 // A killed SharedWorker raises no event: silence is the only sign, so the ping doubles as a watchdog.

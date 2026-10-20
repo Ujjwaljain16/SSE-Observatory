@@ -1,0 +1,54 @@
+name: Scenario action
+
+# Runs the composite action (action.yml at the repository root) on GitHub, which nothing else can: a passing scenario must
+# pass, a failing one must fail the job, an inconclusive one must exit 4 unless allowed, and the report file must be written.
+on:
+  pull_request:
+    paths:
+      - 'action.yml'
+      - 'scenarios/**'
+      - 'src/cli/**'
+      - '.github/workflows/action-test.yml'
+  workflow_dispatch:
+
+jobs:
+  action:
+    name: Composite action
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Passing scenarios pass and write a JUnit file
+        uses: ./
+        with:
+          scenarios: scenarios/ci/pass/*.json
+          format: junit
+          output: results.xml
+      - name: The JUnit file exists and has one suite per scenario
+        run: |
+          test -s results.xml
+          test "$(grep -c '<testsuite ' results.xml)" -eq "$(ls scenarios/ci/pass/*.json | wc -l)"
+
+      - name: A failing scenario fails the step
+        id: failing
+        uses: ./
+        continue-on-error: true
+        with:
+          scenarios: scenarios/ci/fail/f06-resume-skips.json
+      - name: The failing scenario really failed
+        run: test "${{ steps.failing.outcome }}" = "failure"
+
+      - name: An inconclusive scenario fails the step
+        id: inconclusive
+        uses: ./
+        continue-on-error: true
+        with:
+          scenarios: scenarios/ci/inconclusive/f06-no-contract.json
+      - name: It was inconclusive, not passing
+        run: test "${{ steps.inconclusive.outcome }}" = "failure"
+
+      - name: allow-inconclusive turns it into a pass
+        uses: ./
+        with:
+          scenarios: scenarios/ci/inconclusive/f06-no-contract.json
+          allow-inconclusive: 'true'

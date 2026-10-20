@@ -138,6 +138,17 @@ describe('sharedSSEWorker.ts - multi-tab bookkeeping', () => {
         expect(a.received().filter((m) => m.type === 'observations' && m.replace)).toHaveLength(0)
     })
 
+    it('records nothing when the tab that opens the connection turned recording off', () => {
+        const a = newPort()
+        a.send({ type: 'connect', url: '/events', useProxy: true, recording: false })
+        const client = FakeClient.instances[0]
+        expect(client.opts.onObservation).toBeUndefined()
+        const b = newPort()
+        connect(b, '/events') // a late joiner gets no history because there is none
+        vi.advanceTimersByTime(200)
+        for (const p of [a, b]) expect(p.received().filter((m) => m.type === 'observations')).toHaveLength(0)
+    })
+
     it('answers a ping with a pong so a tab can tell the worker is alive', () => {
         const a = newPort()
         connect(a)
