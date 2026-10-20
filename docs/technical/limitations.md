@@ -28,7 +28,18 @@ Mock replay sessions live in server memory (or KV when configured) for one hour.
 
 ## 7. Recording costs memory in the page
 
-Each stream keeps what it observed (connections, response headers, one record per network read and per event, comments, violations) in a bounded store, 8 MiB by default, and the page keeps a copy of what a SharedWorker records. In the 20,000-event burst benchmark the page heap grew by roughly 76 to 91 MB with recording on, against about 22 MB before; most of that is short-lived garbage from handing records over, not retained data. The store evicts per-read detail first and says so (`truncated` records); it never grows past its cap.
+Each stream keeps what it observed (connections, response headers, one record per network read and per event, comments, violations) in a bounded store, 8 MiB by default, and the page keeps a copy of what a SharedWorker records.
+
+Measured in the production build in Chrome with a forced garbage collection, for a burst of 20,000 events (three runs each):
+
+| | page heap, peak | page heap kept after GC | long tasks |
+|---|---|---|---|
+| recording on (default) | +90 to +97 MB | +22 to +30 MB | 0 to 128 ms in 9 s |
+| recording off | +47 to +48 MB | +12 to +20 MB | 0 ms |
+
+So recording keeps about 10 MB (the store's design cap) and adds about 45 MB of short-lived garbage at the peak of an extreme burst, which the browser reclaims. A 10-minute soak on a continuous stream stayed flat at 14 to 15 MB of page heap. The store evicts per-read detail first and says so (`truncated` records); it never grows past its cap.
+
+To turn recording off (the viewer is unaffected; the diagnostics then have nothing to read), run `localStorage.setItem('sse.recording', 'off')` in the page's console and reconnect. When several tabs share one connection, the tab that opens it decides for all of them.
 
 ## 8. Capture size limits
 
