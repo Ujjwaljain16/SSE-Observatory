@@ -2,7 +2,8 @@
 //
 // tab → worker:  { type: 'connect', url, token?, useProxy? } | { type: 'disconnect' } | { type: 'ping' }
 // worker → tab:  { type: 'status', phase, attempt?, delayMs?, reason?, status? }
-//                { type: 'event', payload }           payload: IncomingSSE (with a monotonic seq)
+//                { type: 'events', payloads }         payloads: IncomingSSE[] (each with a monotonic seq); everything parsed in
+//                                                     one go is sent as one message instead of thousands
 //                { type: 'catchup', events }          last events of a connection a tab joined late
 //
 // Connection lifecycle (reconnect, backoff, Last-Event-ID resume) lives in SSEClient; this file only
@@ -26,6 +27,9 @@ interface Connection {
     client: SSEClient
     ports: Set<MessagePort>
     buffer: IncomingSSE[]
+    /** Events parsed but not yet posted: they are sent together once the current parse step finishes. */
+    pending: IncomingSSE[]
+    flushQueued: boolean
     status: StatusMessage
     idleTimer: ReturnType<typeof setTimeout> | null
 }
@@ -57,11 +61,21 @@ function broadcast(conn: Connection, msg: unknown) {
     for (const port of conn.ports) send(port, msg)
 }
 
+function flushPending(conn: Connection) {
+    conn.flushQueued = false
+    if (conn.pending.length === 0) return
+    const payloads = conn.pending
+    conn.pending = []
+    broadcast(conn, { type: 'events', key: conn.key, payloads })
+}
+
 function openConnection(key: string, url: string, token: string | undefined, useProxy: boolean): Connection {
     const conn: Connection = {
         key,
         ports: new Set(),
         buffer: [],
+        pending: [],
+        flushQueued: false,
         status: { type: 'status', key, phase: 'connecting', attempt: 0 },
         idleTimer: null,
         client: undefined as unknown as SSEClient,
@@ -72,9 +86,14 @@ function openConnection(key: string, url: string, token: string | undefined, use
             const payload: IncomingSSE = { event: m.event, data: m.data, id: m.id, raw: m.raw, arrivalTime: Date.now(), seq: ++seq }
             conn.buffer.push(payload)
             if (conn.buffer.length > MAX_BUFFER) conn.buffer.shift()
-            broadcast(conn, { type: 'event', key, payload })
+            conn.pending.push(payload)
+            if (!conn.flushQueued) {
+                conn.flushQueued = true
+                queueMicrotask(() => flushPending(conn))
+            }
         },
         onPhase: (phase: SSEPhase, info: SSEPhaseInfo) => {
+            flushPending(conn) // events that came before the status change must arrive before it
             conn.status = { type: 'status', key, phase, ...info }
             broadcast(conn, conn.status)
         },

@@ -47,6 +47,9 @@ describe('sharedSSEWorker.ts - multi-tab bookkeeping', () => {
         return { port, send, received }
     }
     const connect = (p: ReturnType<typeof newPort>, url = '/events', token?: string) => p.send({ type: 'connect', url, token, useProxy: true })
+    // events are posted in one batch once the current synchronous step is over
+    const flush = () => Promise.resolve()
+    const sentEvents = (p: ReturnType<typeof newPort>) => p.received().filter((m) => m.type === 'events').flatMap((m) => m.payloads)
 
     it('opens one client for the first tab and replays its status', () => {
         const a = newPort()
@@ -71,17 +74,32 @@ describe('sharedSSEWorker.ts - multi-tab bookkeeping', () => {
         expect(FakeClient.instances).toHaveLength(1)
     })
 
-    it('multiplexes events to every tab with increasing sequence numbers', () => {
+    it('multiplexes events to every tab with increasing sequence numbers', async () => {
         const a = newPort(); const b = newPort()
         connect(a); connect(b)
         const client = FakeClient.instances[0]
         client.emit('order', '{"x":1}', '7')
         client.emit('message', 'two')
+        await flush()
         for (const p of [a, b]) {
-            const events = p.received().filter((m) => m.type === 'event').map((m) => m.payload)
+            const events = sentEvents(p)
             expect(events.map((e) => [e.event, e.data, e.id])).toEqual([['order', '{"x":1}', '7'], ['message', 'two', '']])
             expect(events[1].seq).toBeGreaterThan(events[0].seq)
         }
+    })
+
+    it('sends everything parsed in one step as a single message, and statuses never overtake events', async () => {
+        const a = newPort()
+        connect(a)
+        const client = FakeClient.instances[0]
+        for (let i = 0; i < 1000; i++) client.emit('message', `e${i}`)
+        client.phase('reconnecting', { attempt: 1, delayMs: 1000, reason: 'closed' })
+        await flush()
+        const msgs = a.received().slice(1) // after the initial status
+        expect(msgs.map((m) => m.type)).toEqual(['events', 'status'])
+        expect(msgs[0].payloads).toHaveLength(1000)
+        expect(msgs[0].payloads[0].data).toBe('e0')
+        expect(msgs[0].payloads[999].data).toBe('e999')
     })
 
     it('broadcasts phase changes (reconnecting, failed...) to all tabs', () => {
@@ -105,7 +123,7 @@ describe('sharedSSEWorker.ts - multi-tab bookkeeping', () => {
         expect(catchup.events[49].data).toBe('e60')
     })
 
-    it('a tab that switches to another stream leaves the old one', () => {
+    it('a tab that switches to another stream leaves the old one', async () => {
         const a = newPort()
         connect(a, '/one')
         connect(a, '/two')
@@ -115,7 +133,8 @@ describe('sharedSSEWorker.ts - multi-tab bookkeeping', () => {
         expect(one.stopped).toBe(1)  // nobody is listening to /one any more
         expect(two.stopped).toBe(0)
         one.emit('message', 'late')
-        expect(a.received().filter((m) => m.type === 'event')).toHaveLength(0)
+        await flush()
+        expect(sentEvents(a)).toHaveLength(0)
     })
 
     it('closes a connection shortly after its last tab disconnects, but keeps it for quick reconnects', () => {
@@ -135,15 +154,16 @@ describe('sharedSSEWorker.ts - multi-tab bookkeeping', () => {
         expect(client.stopped).toBe(1)
     })
 
-    it('drops tabs that went silent (crashed/closed without telling us)', () => {
+    it('drops tabs that went silent (crashed/closed without telling us)', async () => {
         const a = newPort(); const b = newPort()
         connect(a); connect(b)
         const t0 = Date.now()
         vi.setSystemTime(t0 + 30_000); b.send({ type: 'ping' })
         mod._sweepForTesting(t0 + 80_000) // a: silent 80 s → gone; b: 50 s → alive
         FakeClient.instances[0].emit('message', 'x')
-        expect(a.received().filter((m) => m.type === 'event')).toHaveLength(0)
-        expect(b.received().filter((m) => m.type === 'event')).toHaveLength(1)
+        await flush()
+        expect(sentEvents(a)).toHaveLength(0)
+        expect(sentEvents(b)).toHaveLength(1)
         mod._sweepForTesting(t0 + 200_000)
         vi.advanceTimersByTime(6000)
         expect(FakeClient.instances[0].stopped).toBe(1)
