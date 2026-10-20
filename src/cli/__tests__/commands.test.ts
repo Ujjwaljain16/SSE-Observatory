@@ -145,6 +145,38 @@ describe('sharing commands accept only redacted captures', () => {
     })
 })
 
+describe('repro', () => {
+    const longGap = () => {
+        const b = healthyStart()
+        for (let id = 1; id <= 50; id++) { if (id === 25) continue; b.silence(100).frame('tick', String(id), 10 + (id % 4)) }
+        const records = b.build().map((r) => (r.kind === 'event' ? { ...r, extracted: { seq: Number(r.sseId) }, dataHash: `h${r.dataBytes}` } : r))
+        return serializeCapture({ header: newHeader({ kind: 'local-full', source: { kind: 'fixture' }, profile: { sequence: { useSseId: true, policy: 'consecutive' } } }), records })
+    }
+
+    it('shrinks a capture to the finding, writes it redacted with a scenario and a test, and the result still reports it', async () => {
+        const h = host({ 'big.sse-capture': longGap() })
+        expect(await main(['repro', 'big.sse-capture', '--finding', 'seq.integrity:gap', '--output', 'min.sse-capture', '--scenario', 'min.json', '--test', 'min.test.ts'], h.io)).toBe(EXIT.ok)
+        expect(h.out).toMatch(/Reduced \d+ records to [1-4] that still report seq.integrity:gap/)
+        expect(h.written['min.sse-capture']).toContain('"kind":"sanitized"')
+        expect(h.written['min.test.ts']).toContain("'seq.integrity:gap'")
+        const check = host({ 'min.sse-capture': h.written['min.sse-capture']! })
+        await main(['analyze', 'min.sse-capture', '--format', 'json'], check.io)
+        expect(JSON.parse(check.out).findings.map((f: { key: string }) => f.key)).toContain('seq.integrity:gap')
+    })
+
+    it('picks the most severe finding when none is named, and refuses what cannot be reproduced', async () => {
+        const h = host({ 'big.sse-capture': longGap() })
+        expect(await main(['repro', 'big.sse-capture', '--output', 'min.sse-capture'], h.io)).toBe(EXIT.ok)
+        expect(h.out).toContain('seq.integrity:gap')
+        const none = host({ 'big.sse-capture': longGap() })
+        expect(await main(['repro', 'big.sse-capture', '--finding', 'stall.silent', '--output', 'x'], none.io)).toBe(EXIT.usage)
+        expect(none.err).toContain('does not report "stall.silent"')
+        expect(await main(['repro', 'big.sse-capture'], host({ 'big.sse-capture': longGap() }).io)).toBe(EXIT.usage)
+        const healthy1 = host({ 'ok.sse-capture': healthy() })
+        expect(await main(['repro', 'ok.sse-capture', '--output', 'x'], healthy1.io)).toBe(EXIT.usage)
+    })
+})
+
 describe('compare', () => {
     it('compares two captures and exits 0 when nothing differs materially', async () => {
         const h = host({ 'a.sse-capture': healthy(), 'b.sse-capture': healthy() })

@@ -48,6 +48,23 @@ describe('sse-doctor test', () => {
         expect(none.err).toContain('No file matches')
     })
 
+    it('allow_gaps explains a gap only when an entry covers every missing number', async () => {
+        const make = (allow: Array<{ from: number; to: number }>) => JSON.stringify({
+            version: 1, name: 'gap', target: { url: 'fixture://f06-skips?scale=0.05', sequence: contract },
+            steps: [{ collect_events: 4, timeout_ms: 10000 }, { disconnect: { mode: 'server' } }, { reconnect: { after_ms: 0 } }, { collect_events: 2, timeout_ms: 10000 }],
+            verify: ['no_unexplained_sequence_gaps'], ...(allow.length ? { allow_gaps: allow } : {}),
+        })
+        // f06-skips drops ids 5, 6 and 7 at the resume
+        const covered = host({ 's.json': make([{ from: 5, to: 7 }]) })
+        expect(await main(['test', 's.json'], covered.io)).toBe(EXIT.ok)
+        expect(covered.out).toContain('all covered by allow_gaps')
+        const partly = host({ 's.json': make([{ from: 5, to: 6 }]) })
+        expect(await main(['test', 's.json'], partly.io)).toBe(EXIT.gateFailed)
+        expect(partly.out).toMatch(/no allow_gaps entry covers: 5-7/)
+        const none = host({ 's.json': make([]) })
+        expect(await main(['test', 's.json'], none.io)).toBe(EXIT.gateFailed)
+    })
+
     it('a sequence check without a declared contract is inconclusive (exit 4), never a silent pass, unless allowed', async () => {
         const text = JSON.stringify({ version: 1, name: 'x', target: { url: 'fixture://f06-resumes?scale=0.05' }, steps: [{ collect_events: 2, timeout_ms: 10000 }], verify: ['no_unexplained_sequence_gaps'] })
         const h = host({ 's.json': text })

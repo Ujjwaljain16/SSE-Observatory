@@ -16,6 +16,7 @@ import { ev, plural } from './util'
 
 const MAX_PARTITIONS = 1000
 const EXAMPLES = 5
+const MAX_RANGES = 1000
 const HINT_RUN = 10
 const UNREADABLE_MIN = 3
 const UNREADABLE_SHARE = 0.25
@@ -51,6 +52,7 @@ export const sequenceIntegrity: Rule = {
         let overflowed = false
         const unreadable = empty()
         let totalMissing = 0
+        const gapRanges: Array<{ from: number; to: number }> = []
         const agg = { gap: empty(), duplicate: empty(), replay: empty(), conflict: empty(), regression: empty(), reorder: empty() }
         let run = 0
         let lastId: number | undefined
@@ -71,6 +73,7 @@ export const sequenceIntegrity: Rule = {
                 switch (o.kind) {
                     case 'gap': {
                         totalMissing += o.to - o.from + 1
+                        if (gapRanges.length < MAX_RANGES) gapRanges.push({ from: o.from, to: o.to })
                         add(agg.gap, `${range(o.from, o.to)} (missing between #${o.before.seq} and #${o.after.seq})${label}`, [ev(o.before.seq, o.before.t, 'last number before the gap'), ev(o.after.seq, o.after.t, 'first number after the gap')], o.after.t)
                         changed.push('gap'); break
                     }
@@ -103,6 +106,7 @@ export const sequenceIntegrity: Rule = {
                     const text = `${plural(totalMissing, 'number')} never arrived in ${plural(a.count, 'gap')}: ${examples}${more}.`
                     return {
                         key: 'seq.integrity:gap', severity: 'error', title: 'Events missing from the sequence', summary: text,
+                        data: { ranges: gapRanges.slice(), truncated: a.count > gapRanges.length },
                         facts: [...factText(text), { text: `The stream declares its numbering as ${contract?.policy} (${contract?.useSseId ? 'the SSE id' : contract?.field}), and a number was still missing after ${th.reorderWindowEvents} more events or ${th.reorderWindowMs} ms.`, evidence: [] }],
                         deductions: [{ statement: 'Likely: events were lost between the producer and this client, by the producer, an intermediary, or a resume that skipped them.', confidence: 'medium', basis: a.evidence.map((e) => e.seq), alternatives: ['The producer skips numbers on purpose (declare policy "monotonic").', 'Another partition uses the same numbers (declare partitionBy).', 'The events were filtered out upstream for this client.'] }],
                         nextCheck: { description: 'Compare with the producer\'s own log for the missing numbers, then check whether the reconnect resumed from the right id.' },

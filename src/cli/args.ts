@@ -9,7 +9,7 @@ const FLAGS: Record<string, FlagKind> = {
     duration: 'string', 'max-events': 'string', 'idle-timeout': 'string',
     'auth-env': 'string', 'cookie-env': 'string', 'header-env': 'multi', 'query-env': 'multi', header: 'multi',
     fixtures: 'bool', port: 'string', speed: 'string', 'honor-last-event-id': 'bool', 'drop-after': 'string', 'skip-ids': 'string',
-    'allow-inconclusive': 'bool', end: 'string', shell: 'string',
+    'allow-inconclusive': 'bool', end: 'string', shell: 'string', finding: 'string', scenario: 'string', test: 'string',
 }
 
 export interface ParsedArgs {

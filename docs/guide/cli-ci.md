@@ -99,4 +99,6 @@ The tool is not published to npm yet; building it from the repository is the sup
 - `sse-doctor replay <capture>` serves a capture as a local SSE endpoint (`--port`, `--speed`, `--honor-last-event-id`, `--drop-after n`, `--skip-ids a,b`, `--end close|hold|rst|end-event`), to point a client or a test at recorded behaviour.
 - `sse-doctor fixtures list` and `fixtures serve` expose the built-in streams.
 
-Not built yet: minimizing a capture to the smallest one that still shows a finding (`repro`).
+- `sse-doctor repro <capture> --output min.sse-capture [--finding key] [--scenario min.json] [--test min.test.ts]` shrinks a capture to the smallest one that still reports a finding, for a bug report or a regression test.
+
+`allow_gaps` lists numbers a scenario expects to be missing (`[{ "from": 5, "to": 7 }]`). A gap is explained only if an entry covers every number in it; an explained gap counts neither for `no_unexplained_sequence_gaps` nor for the severity gate.

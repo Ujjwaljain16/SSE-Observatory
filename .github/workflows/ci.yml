@@ -70,9 +70,8 @@ jobs:
   e2e:
     name: Playwright (dev servers)
     runs-on: ubuntu-latest
-    # Informational until the suite is stable: it passes locally and on PRs, but a cold shared runner still flakes now
-    # and then. Make it blocking after a run of consecutive green builds on main.
-    continue-on-error: true
+    # Blocking. It was informational while the suite flaked on cold runners; it has since passed on every run of the last
+    # 14 pull requests (the flaky specs were fixed at the cause), with two retries per test as a safety net.
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
