@@ -17,6 +17,8 @@ import { ev, plural } from './util'
 const MAX_PARTITIONS = 1000
 const EXAMPLES = 5
 const HINT_RUN = 10
+const UNREADABLE_MIN = 3
+const UNREADABLE_SHARE = 0.25
 
 interface PartitionState {
     tracker: SequenceTracker
@@ -198,7 +200,8 @@ export const sequenceIntegrity: Rule = {
                 const value = typeof raw === 'number' ? raw : typeof raw === 'string' && /^-?\d{1,15}$/.test(raw) ? Number(raw) : undefined
                 if (value === undefined) {
                     add(unreadable, `#${o.seq}`, [ev(o.seq, o.t)], o.t)
-                    return [unreadableDraft(o.t)]
+                    // A few events without a number are normal (a closing event, a heartbeat event). Only a real share of them means the declaration does not fit.
+                    return unreadable.count >= UNREADABLE_MIN && unreadable.count / events >= UNREADABLE_SHARE ? [unreadableDraft(o.t)] : undefined
                 }
                 const partition = o.extracted?.partition ?? ''
                 const st = stateFor(partition)

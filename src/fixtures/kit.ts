@@ -1,4 +1,5 @@
 import type http from 'node:http'
+import type { StreamProfile } from '../core/diagnostics/thresholds'
 
 export interface FixtureRoute {
     id: string
@@ -15,6 +16,8 @@ export interface FixtureRoute {
     family: string
     /** Events sent before a route finishes when the request gives no ?n=. Default 5. */
     defaultN?: number
+    /** The stream profile a user would declare for this route (for example its sequence contract); the checks run with it. */
+    profile?: StreamProfile
 }
 
 const FINDINGS_NEVER_ON_HEALTHY = ['*']
