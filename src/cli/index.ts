@@ -2,7 +2,7 @@
 // tested in-process (see __tests__). bin.ts is the thin Node wrapper.
 
 import { parseArgs } from './args'
-import { analyzeCommand, compareCommand, curlCommand, probeCommand, redactCommand, reportCommand } from './commands'
+import { analyzeCommand, compareCommand, curlCommand, probeCommand, redactCommand, reportCommand, reproCommand } from './commands'
 import { fixturesCommand, replayCommand, testCommand } from './commandsScenario'
 import { CliError, EXIT, type CliIo } from './io'
 import { SecretRegistry, scrubbedIo } from './secretRegistry'
@@ -25,6 +25,7 @@ Commands:
   analyze <capture>      analyze a saved capture (.sse-capture, or an old .sse-record)
   report <capture>       write a shareable report (md, html or json); needs a redacted capture
   compare <a> <b>        compare two saved captures
+  repro <capture>        shrink a capture to the smallest one that still shows a finding (--finding key, --output, --scenario, --test)
   curl <capture|url>     print a curl command that reproduces the request, with secrets as variables
   redact <capture>       write a copy that is safe to share (--output <file>)
   test <scenario.json>.. run scenario files: collect, disconnect, reconnect, verify (exit 4 = inconclusive)
@@ -77,6 +78,7 @@ export async function main(argv: string[], rawIo: CliIo): Promise<number> {
             case 'report': return await reportCommand(io, args)
             case 'redact': return await redactCommand(io, args)
             case 'compare': return await compareCommand(io, args)
+            case 'repro': return await reproCommand(io, args)
             case 'curl': return await curlCommand(io, args)
             case 'probe': return await probeCommand(io, args, secrets)
             case 'test': return await testCommand(io, args, secrets)

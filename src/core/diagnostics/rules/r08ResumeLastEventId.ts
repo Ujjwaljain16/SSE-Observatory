@@ -98,6 +98,7 @@ export const resumeLastEventId: Rule = {
                 const evidence = skipped.flatMap((s) => [s.before, s.after]).slice(0, 10)
                 out.push({
                     key: 'resume.last-event-id:skipped', severity: 'error', title: 'Reconnect skipped events', summary: text,
+                    data: { ranges: skipped.slice(0, 1000).map((s) => ({ from: s.from, to: s.to })), truncated: skipped.length > 1000 },
                     facts: [{ text, evidence }, { text: `The stream declares its numbering as ${contract?.policy} (${contract?.useSseId ? 'the SSE id' : contract?.field}).`, evidence: [] }],
                     deductions: [{ statement: 'Likely: the server\'s resume history was shorter than the time offline, or the resume started after the cursor.', confidence: 'medium', basis: evidence.map((e) => e.seq), alternatives: ['The numbers were never produced (the producer skipped them).', 'Events were dropped between the producer and the server while the client was away.'] }],
                     nextCheck: { description: 'Ask the server for the same Last-Event-ID again, or compare with the producer log for those numbers.' },

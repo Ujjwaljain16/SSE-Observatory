@@ -57,6 +57,8 @@ export interface Finding {
     firstSeenT: number
     lastSeenT: number
     occurrences: number
+    /** Machine-readable detail for consumers that act on a finding (for example the missing number ranges a scenario may allow). */
+    data?: Record<string, unknown> | undefined
 }
 
 /** What a rule returns: a finding without the fields the engine fills in. Each draft replaces the finding with the same key. */

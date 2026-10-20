@@ -168,7 +168,13 @@ export async function runScenario(scenario: Scenario, file: string, io: CliIo, s
 
         const endT = records.at(-1)?.t ?? 0
         const analysis = analyze(records as EngineInput[], { profile, endT })
-        const open = analysis.findings.filter((f) => f.status === 'open')
+        // Gaps the scenario declares as expected (allow_gaps) are explained: their findings count neither for the gap check nor for
+        // the severity gates. A gap finding is explained only if an entry covers every number in every one of its ranges.
+        const allowed = scenario.allow_gaps ?? []
+        const rangesOf = (f: Finding): Array<{ from: number; to: number }> => (f.data?.['ranges'] as Array<{ from: number; to: number }> | undefined) ?? []
+        const isGapFinding = (f: Finding) => f.key.startsWith('seq.integrity:gap') || f.key.startsWith('resume.last-event-id:skipped')
+        const explained = (f: Finding) => isGapFinding(f) && f.data?.['truncated'] !== true && rangesOf(f).length > 0 && rangesOf(f).every((r) => allowed.some((a) => a.from <= r.from && r.to <= a.to))
+        const open = analysis.findings.filter((f) => f.status === 'open' && !explained(f))
         const hasKey = (...prefixes: string[]) => open.filter((f) => prefixes.some((p) => f.key.startsWith(p)))
 
         // what the scenario expects of the response
@@ -191,9 +197,15 @@ export async function runScenario(scenario: Scenario, file: string, io: CliIo, s
         for (const v of scenario.verify ?? []) {
             if (v === 'no_unexplained_sequence_gaps') {
                 needContract(v, () => {
-                    if (scenario.allow_gaps?.length) return { name: v, status: 'inconclusive', message: 'allow_gaps is not applied yet; remove it or check the gaps by hand' }
-                    const bad = hasKey('seq.integrity:gap', 'resume.last-event-id:skipped')
-                    return { name: v, status: bad.length ? 'fail' : 'pass', message: bad.length ? bad.map((f) => f.summary).join(' ') : 'no number is missing' }
+                    const found = hasKey('seq.integrity:gap', 'resume.last-event-id:skipped') // what allow_gaps did not explain
+                    const covered = analysis.findings.filter((f) => f.status === 'open' && explained(f)).flatMap(rangesOf)
+                    if (found.length > 0 && allowed.length > 0 && found.some((f) => f.data?.['truncated'] === true)) return { name: v, status: 'inconclusive', message: 'more gaps than the tool lists (1000), so they cannot all be checked against allow_gaps' }
+                    if (found.length > 0) {
+                        const missing = found.flatMap(rangesOf).filter((r) => !allowed.some((a) => a.from <= r.from && r.to <= a.to))
+                        const list = missing.slice(0, 5).map((r) => (r.from === r.to ? r.from : `${r.from}-${r.to}`)).join(', ')
+                        return { name: v, status: 'fail', message: allowed.length > 0 && missing.length > 0 ? `numbers missing that no allow_gaps entry covers: ${list}${missing.length > 5 ? ` and ${missing.length - 5} more` : ''}` : found.map((f) => f.summary).join(' ') }
+                    }
+                    return { name: v, status: 'pass', message: covered.length > 0 ? `${covered.length} gap${covered.length === 1 ? '' : 's'}, all covered by allow_gaps` : 'no number is missing' }
                 })
             } else if (v === 'no_unexpected_duplicates') {
                 needContract(v, () => {
