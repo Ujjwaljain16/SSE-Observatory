@@ -22,3 +22,5 @@ export type { IncomingSSE } from './sse/incoming'
 export { newCaptureId } from './observe/captureId'
 
 export * from './diagnostics'
+export * from './capture'
+export * from './scenario'
