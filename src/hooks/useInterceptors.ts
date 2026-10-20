@@ -114,12 +114,13 @@ export const useInterceptors = (): UseInterceptorsReturn => {
         const { event: result, errors } = await applyInterceptorChain(enabled, event)
 
         // Reflect runtime errors in the UI only when something actually changed, so a failing interceptor does not
-        // re-render the whole app for every single event.
+        // re-render the whole app for every single event. An error belongs to the code that produced it: if the user edited
+        // the interceptor while this event was still being processed (a call can take up to the 100 ms limit), the error of
+        // the old code must not appear against the new one.
         if (Object.keys(errors).length > 0) {
-            setInterceptors(prev => {
-                if (!prev.some(i => errors[i.id] !== undefined && i.lastError !== errors[i.id])) return prev
-                return prev.map(i => (errors[i.id] !== undefined && i.lastError !== errors[i.id] ? { ...i, lastError: errors[i.id] } : i))
-            })
+            const ranWith = new Map(enabled.map((e) => [e.id, e.code]))
+            const applies = (i: Interceptor): boolean => errors[i.id] !== undefined && ranWith.get(i.id) === i.code && i.lastError !== errors[i.id]
+            setInterceptors(prev => (prev.some(applies) ? prev.map(i => (applies(i) ? { ...i, lastError: errors[i.id] ?? null } : i)) : prev))
         }
 
         return result

@@ -18,6 +18,10 @@ export default defineConfig({
             name: 'chromium',
             use: { ...devices['Desktop Chrome'] },
         },
+        // Opt in with E2E_BROWSERS=firefox,webkit (and `npx playwright install firefox webkit`); the default run is Chromium only.
+        ...(['firefox', 'webkit'] as const)
+            .filter((name) => (process.env['E2E_BROWSERS'] ?? '').split(',').includes(name))
+            .map((name) => ({ name, use: { ...devices[name === 'firefox' ? 'Desktop Firefox' : 'Desktop Safari'] } })),
     ],
     webServer: [
         {
