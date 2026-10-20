@@ -1,0 +1,410 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sse-observatory.vercel.app/docs/schemas/sse-scenario-1.json",
+  "title": "SSE Observatory scenario",
+  "description": "A repeatable check of an SSE stream: what to connect to, what to do, and what must hold afterwards.",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "version": {
+      "const": 1,
+      "description": "Scenario format version."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "target": {
+      "type": "object",
+      "description": "Either a url (live stream, fixture://ID, or ${ENV:NAME}) or a replay of a capture, not both.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string",
+              "pattern": "^(?:\\$\\{ENV:[A-Za-z_][A-Za-z0-9_]*\\}\\S*|https?://\\S+|fixture://[A-Za-z0-9_-]+)$",
+              "description": "http(s) URL, fixture://ID, or ${ENV:NAME} (optionally followed by a path). No secrets in the query."
+            },
+            "headers": {
+              "type": "object",
+              "description": "Request headers. Secrets only as ${ENV:NAME} placeholders, for example \"Bearer ${ENV:STREAM_TOKEN}\".",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "sequence": {
+              "type": "object",
+              "description": "Where the stream numbers its events. Give either a JSON path into the payload or use_sse_id.",
+              "properties": {
+                "field": {
+                  "type": "string",
+                  "pattern": "^\\$\\.\\S+$",
+                  "description": "JSON path into the event payload, starting with \"$.\"."
+                },
+                "use_sse_id": {
+                  "type": "boolean",
+                  "const": true,
+                  "description": "Use the SSE id field as the sequence number."
+                },
+                "policy": {
+                  "type": "string",
+                  "enum": [
+                    "consecutive",
+                    "monotonic"
+                  ]
+                }
+              },
+              "required": [
+                "policy"
+              ],
+              "additionalProperties": false,
+              "oneOf": [
+                {
+                  "properties": {
+                    "field": {
+                      "type": "string",
+                      "pattern": "^\\$\\.\\S+$",
+                      "description": "JSON path into the event payload, starting with \"$.\"."
+                    }
+                  },
+                  "required": [
+                    "field"
+                  ]
+                },
+                {
+                  "properties": {
+                    "use_sse_id": {
+                      "type": "boolean",
+                      "const": true,
+                      "description": "Use the SSE id field as the sequence number."
+                    }
+                  },
+                  "required": [
+                    "use_sse_id"
+                  ]
+                }
+              ]
+            },
+            "delivery": {
+              "type": "string",
+              "enum": [
+                "at_least_once",
+                "exactly_once",
+                "at_most_once"
+              ]
+            }
+          },
+          "required": [
+            "url"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "replay": {
+              "type": "object",
+              "description": "Replay a recorded capture instead of calling a live stream.",
+              "properties": {
+                "capture": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Path of an .sse-capture file."
+                },
+                "honor_last_event_id": {
+                  "type": "boolean"
+                },
+                "test_aids": {
+                  "type": "object",
+                  "description": "Faults the replay server injects so a resume can be tested.",
+                  "properties": {
+                    "drop_after": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "skip_ids": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "capture"
+              ],
+              "additionalProperties": false
+            },
+            "headers": {
+              "type": "object",
+              "description": "Request headers. Secrets only as ${ENV:NAME} placeholders, for example \"Bearer ${ENV:STREAM_TOKEN}\".",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "sequence": {
+              "type": "object",
+              "description": "Where the stream numbers its events. Give either a JSON path into the payload or use_sse_id.",
+              "properties": {
+                "field": {
+                  "type": "string",
+                  "pattern": "^\\$\\.\\S+$",
+                  "description": "JSON path into the event payload, starting with \"$.\"."
+                },
+                "use_sse_id": {
+                  "type": "boolean",
+                  "const": true,
+                  "description": "Use the SSE id field as the sequence number."
+                },
+                "policy": {
+                  "type": "string",
+                  "enum": [
+                    "consecutive",
+                    "monotonic"
+                  ]
+                }
+              },
+              "required": [
+                "policy"
+              ],
+              "additionalProperties": false,
+              "oneOf": [
+                {
+                  "properties": {
+                    "field": {
+                      "type": "string",
+                      "pattern": "^\\$\\.\\S+$",
+                      "description": "JSON path into the event payload, starting with \"$.\"."
+                    }
+                  },
+                  "required": [
+                    "field"
+                  ]
+                },
+                {
+                  "properties": {
+                    "use_sse_id": {
+                      "type": "boolean",
+                      "const": true,
+                      "description": "Use the SSE id field as the sequence number."
+                    }
+                  },
+                  "required": [
+                    "use_sse_id"
+                  ]
+                }
+              ]
+            },
+            "delivery": {
+              "type": "string",
+              "enum": [
+                "at_least_once",
+                "exactly_once",
+                "at_most_once"
+              ]
+            }
+          },
+          "required": [
+            "replay"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "expect": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 599
+        },
+        "content_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "first_event_within_ms": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "steps": {
+      "type": "array",
+      "description": "Run in order. Each step is an object with one action key (collect_events may carry timeout_ms).",
+      "items": {
+        "type": "object",
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "collect_events": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "required": [
+              "collect_events"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "disconnect": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "client",
+                      "server"
+                    ]
+                  }
+                },
+                "required": [
+                  "mode"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "disconnect"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "reconnect": {
+                "type": "object",
+                "properties": {
+                  "after_ms": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "resume_from_last_event_id": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "reconnect"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "wait": {
+                "type": "object",
+                "properties": {
+                  "ms": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "ms"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "wait"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "verify": {
+      "type": "array",
+      "items": {
+        "description": "A check name, or { \"no_findings_at_or_above\": \"<severity>\" }.",
+        "oneOf": [
+          {
+            "type": "string",
+            "enum": [
+              "no_unexplained_sequence_gaps",
+              "no_unexpected_duplicates",
+              "preserve_event_order"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "no_findings_at_or_above": {
+                "type": "string",
+                "enum": [
+                  "info",
+                  "warning",
+                  "error",
+                  "critical"
+                ]
+              }
+            },
+            "required": [
+              "no_findings_at_or_above"
+            ],
+            "additionalProperties": false,
+            "minProperties": 1,
+            "maxProperties": 1
+          }
+        ]
+      }
+    },
+    "fail_on_severity": {
+      "type": "string",
+      "enum": [
+        "info",
+        "warning",
+        "error",
+        "critical"
+      ]
+    },
+    "allow_gaps": {
+      "type": "array",
+      "description": "Sequence ranges that may be missing without failing the check.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "integer"
+          },
+          "to": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "meta": {
+      "type": "object",
+      "description": "Free-form notes. Ignored by the runner."
+    }
+  },
+  "required": [
+    "version",
+    "name",
+    "target",
+    "steps"
+  ],
+  "additionalProperties": false
+}

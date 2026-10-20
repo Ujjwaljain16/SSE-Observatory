@@ -1,0 +1,315 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sse-observatory.vercel.app/docs/schemas/sse-capture-2.json",
+  "title": "SSE Observatory capture line",
+  "description": "One line of an .sse-capture v2 file (newline-delimited JSON). Line 1 is the header, the last line is the footer, every line between is a record. Validate each line on its own against this schema. Readers ignore header fields and record kinds they do not know, so extra properties are allowed and any record with kind, seq, t and conn is valid.",
+  "type": "object",
+  "oneOf": [
+    {
+      "type": "object",
+      "description": "Header line.",
+      "properties": {
+        "format": {
+          "const": "sse-capture"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^2\\.\\d+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "local-full",
+            "sanitized"
+          ]
+        },
+        "tool": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "version"
+          ]
+        },
+        "analyzer": {
+          "type": "object",
+          "properties": {
+            "version": {
+              "type": "string"
+            },
+            "rules": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "number"
+              }
+            }
+          },
+          "required": [
+            "version",
+            "rules"
+          ]
+        },
+        "source": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "browser-app",
+                "cli",
+                "fixture",
+                "import-v1"
+              ]
+            },
+            "client": {
+              "type": "string"
+            },
+            "synthetic": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "kind"
+          ]
+        },
+        "clock": {
+          "type": "object",
+          "properties": {
+            "origin": {
+              "const": "monotonic"
+            },
+            "startedAtEpochMs": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "origin"
+          ]
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "request": {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string"
+            },
+            "method": {
+              "type": "string"
+            },
+            "headers": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "viaProxy": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "url",
+            "method",
+            "headers"
+          ]
+        },
+        "profile": {
+          "type": "object"
+        },
+        "redaction": {
+          "type": "object",
+          "properties": {
+            "policy": {
+              "type": "string"
+            },
+            "version": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "applied": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "placeholders": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "policy",
+            "version",
+            "applied",
+            "placeholders"
+          ]
+        },
+        "limits": {
+          "type": "object",
+          "properties": {
+            "capBytes": {
+              "type": "number"
+            },
+            "truncated": {
+              "type": "boolean"
+            }
+          }
+        },
+        "group": {
+          "type": "object",
+          "properties": {
+            "groupId": {
+              "type": "string"
+            },
+            "laneIndex": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "groupId",
+            "laneIndex"
+          ]
+        },
+        "captureId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "format",
+        "version",
+        "createdAt",
+        "kind",
+        "tool",
+        "source",
+        "clock",
+        "capabilities"
+      ]
+    },
+    {
+      "type": "object",
+      "description": "Record line: one observation. Unknown kinds are valid.",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "t": {
+          "type": "number",
+          "minimum": 0
+        },
+        "conn": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "domain": {
+          "type": "string",
+          "enum": [
+            "transport",
+            "page"
+          ]
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "b64": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "dataBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "dataHash": {
+          "type": "string"
+        },
+        "data": {
+          "type": "string"
+        },
+        "payloadTruncated": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "kind",
+        "seq",
+        "t",
+        "conn"
+      ]
+    },
+    {
+      "type": "object",
+      "description": "Footer line. Missing in a capture that crashed.",
+      "properties": {
+        "footer": {
+          "type": "object",
+          "properties": {
+            "endReason": {
+              "type": "string",
+              "minLength": 1
+            },
+            "counts": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "overhead": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "number"
+              }
+            },
+            "integrity": {
+              "type": "object",
+              "properties": {
+                "algorithm": {
+                  "const": "sha256"
+                },
+                "value": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                }
+              },
+              "required": [
+                "algorithm",
+                "value"
+              ]
+            }
+          },
+          "required": [
+            "endReason",
+            "counts"
+          ]
+        }
+      },
+      "required": [
+        "footer"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}
