@@ -29,6 +29,7 @@ In another terminal:
 
 - `npm run simple`: clean heartbeats
 - `npm run chaos`: dropped connections, latency and bursts
+- `npm run demo`: a realistic order, payment and error stream on `http://localhost:4010/demo`
 
 Run `npm run dev:all` to start the app and the chaos server together. More scenarios live in `test-servers/` (multi-stream, patterns, interceptors).
 
