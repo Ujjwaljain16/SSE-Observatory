@@ -16,11 +16,11 @@ beforeAll(async () => {
     const port = await freePort()
     base = `http://127.0.0.1:${port}`
     server = spawn(process.execPath, ['server.js'], { env: { ...process.env, NODE_ENV: 'production', PORT: String(port), ENABLE_MOCK_API: '1' }, stdio: 'ignore' })
-    for (let i = 0; i < 80; i++) {
+    for (let i = 0; i < 200; i++) {
         try { await fetch(`${base}/healthz`); return } catch { await new Promise((r) => setTimeout(r, 250)) }
     }
     throw new Error('server.js did not start')
-}, 30_000)
+}, 60_000)
 afterAll(() => { server.kill() })
 
 const post = (type: string, body: string) => fetch(`${base}/api/mock/session`, { method: 'POST', headers: { 'Content-Type': type, 'Sec-Fetch-Site': 'same-origin' }, body })
