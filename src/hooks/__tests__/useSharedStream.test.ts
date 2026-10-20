@@ -148,6 +148,26 @@ describe('useSharedStream (SharedWorker transport)', () => {
             expect(clients[0].started).toBe(1)
         })
 
+        it('takes over with the last event id the worker delivered, so the stream resumes instead of restarting from scratch', () => {
+            vi.useFakeTimers()
+            setup()
+            status('open')
+            sse('a', 1, { id: '8' })
+            sse('b', 2, { id: '9' })
+            act(() => { vi.advanceTimersByTime(25_000) }) // the worker never answers: fall back to an in-page client
+            expect(clients).toHaveLength(1)
+            expect(clients[0].opts.initialLastEventId).toBe('9')
+        })
+
+        it('does not carry an id when no event with an id had arrived', () => {
+            vi.useFakeTimers()
+            setup()
+            status('open')
+            sse('a', 1) // no id on this stream
+            act(() => { vi.advanceTimersByTime(25_000) })
+            expect(clients[0].opts.initialLastEventId).toBe('')
+        })
+
         it('keeps using the worker while it answers pings', () => {
             vi.useFakeTimers()
             setup()
@@ -252,6 +272,15 @@ describe('useSharedStream (in-page fallback)', () => {
         act(() => { result.current.disconnect() })
         expect(clients[0].stopped).toBeGreaterThan(0)
         expect(result.current.status).toBe('idle')
+    })
+
+    it('a new connection starts fresh: the previous stream\'s event id is not carried over', async () => {
+        const { result } = renderHook(() => useSharedStream())
+        act(() => { result.current.connect('http://a.test/s') })
+        expect(clients[0].opts.initialLastEventId).toBe('')
+        act(() => { clients[0].opts.onMessage({ event: 'message', data: 'x', id: '77', raw: '' }) })
+        act(() => { result.current.connect('http://b.test/s') })
+        expect(clients[1].opts.initialLastEventId).toBe('')
     })
 
     it('reconnecting replaces the old client', () => {

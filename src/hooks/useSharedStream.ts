@@ -93,25 +93,35 @@ export function useSharedStream(
 
     const stopPing = () => { if (pingRef.current) { clearInterval(pingRef.current); pingRef.current = null } }
 
-    const startDirect = useCallback((url: string, token: string | undefined, useProxy: boolean) => {
+    // The newest event id seen from whichever transport is running, so a takeover can resume instead of restarting.
+    const lastEventIdRef = useRef('')
+    const deliver = useCallback((incoming: IncomingSSE | IncomingSSE[]) => {
+        const last = Array.isArray(incoming) ? incoming[incoming.length - 1] : incoming
+        if (last?.id) lastEventIdRef.current = last.id
+        pushRef.current(incoming)
+    }, [])
+
+    const startDirect = useCallback((url: string, token: string | undefined, useProxy: boolean, lastEventId = '') => {
         directRef.current?.stop()
         const stream = createObservedStream({
             request: () => buildSSERequest(url, token, useProxy),
             sinks: {
-                onMessage: (message) => pushRef.current(message),
+                onMessage: (message) => deliver(message),
                 onPhase: (phase, info) => setStatus(describeStatus(phase, info)),
             },
+            clientOptions: { initialLastEventId: lastEventId },
         })
         directRef.current = stream
         stream.start()
-    }, [])
+    }, [deliver])
 
     // The worker is gone (crashed, killed, failed to load): carry on with the same connection inside the page.
     const fallbackToDirect = useCallback(() => {
         workerRef.current = null
         stopPing()
         const params = lastParamsRef.current
-        if (params) startDirect(params.url, params.token, params.useProxy)
+        // Resume from the last id the worker delivered, so the stream continues instead of restarting from scratch.
+        if (params) startDirect(params.url, params.token, params.useProxy, lastEventIdRef.current)
     }, [startDirect])
 
     // --- SharedWorker lifecycle -------------------------------------------------------------
@@ -134,19 +144,19 @@ export function useSharedStream(
                     const p = msg.payload as IncomingSSE
                     if (p.seq !== undefined && p.seq <= lastSeqRef.current) return
                     if (p.seq !== undefined) lastSeqRef.current = p.seq
-                    pushRef.current(p)
+                    deliver(p)
                 } else if (msg.type === 'events') {
                     const fresh = (msg.payloads as IncomingSSE[]).filter((p) => p.seq === undefined || p.seq > lastSeqRef.current)
                     if (fresh.length === 0) return
                     const last = fresh[fresh.length - 1].seq
                     if (last !== undefined) lastSeqRef.current = last
-                    pushRef.current(fresh)
+                    deliver(fresh)
                 } else if (msg.type === 'catchup') {
                     const fresh = (msg.events as IncomingSSE[]).filter((p) => p.seq === undefined || p.seq > lastSeqRef.current)
                     if (fresh.length === 0) return
                     const last = fresh[fresh.length - 1].seq
                     if (last !== undefined) lastSeqRef.current = last
-                    pushRef.current(fresh)
+                    deliver(fresh)
                 }
             }
 
@@ -164,7 +174,7 @@ export function useSharedStream(
             directRef.current = null
             workerRegistry.release(WORKER_KEY)
         }
-    }, [startDirect, fallbackToDirect])
+    }, [startDirect, fallbackToDirect, deliver])
 
     // --- public API -------------------------------------------------------------------------
     const connect = useCallback((url: string, token?: string, clearHistory = true, useProxy = true) => {
@@ -179,6 +189,7 @@ export function useSharedStream(
         lastParamsRef.current = { url: trimmed, token, useProxy }
         keyRef.current = `${trimmed}::${token ?? ''}`
         lastSeqRef.current = 0
+        lastEventIdRef.current = '' // a new connection starts fresh; only a takeover resumes
         if (clearHistory) ingest.clear()
         setStatus({ phase: 'connecting', message: '' })
 
