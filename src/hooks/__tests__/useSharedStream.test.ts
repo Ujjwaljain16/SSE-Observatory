@@ -132,6 +132,34 @@ describe('useSharedStream (SharedWorker transport)', () => {
         await waitFor(() => expect(data(result)).toEqual(['b', 'a']))
     })
 
+    describe('worker watchdog', () => {
+        afterEach(() => { vi.useRealTimers() })
+
+        it('pings the worker and carries on in the page when the worker goes silent (killed workers raise no event)', () => {
+            vi.useFakeTimers()
+            setup()
+            status('open')
+            expect(clients).toHaveLength(0)
+            act(() => { vi.advanceTimersByTime(5_000) })
+            expect(mockPort.postMessage).toHaveBeenCalledWith({ type: 'ping' })
+            // nothing ever comes back
+            act(() => { vi.advanceTimersByTime(20_000) })
+            expect(clients).toHaveLength(1)           // the same connection now runs inside the page
+            expect(clients[0].started).toBe(1)
+        })
+
+        it('keeps using the worker while it answers pings', () => {
+            vi.useFakeTimers()
+            setup()
+            status('open')
+            for (let i = 0; i < 12; i++) {
+                act(() => { vi.advanceTimersByTime(5_000) })
+                deliver({ type: 'pong' })
+            }
+            expect(clients).toHaveLength(0)
+        })
+    })
+
     it('takes a batched events message in order, skipping sequence numbers it already has', async () => {
         const { result } = setup()
         const p = (n: number) => ({ event: 'message', data: `e${n}`, id: '', raw: '', arrivalTime: n, seq: n })

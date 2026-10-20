@@ -102,6 +102,13 @@ describe('sharedSSEWorker.ts - multi-tab bookkeeping', () => {
         expect(msgs[0].payloads[999].data).toBe('e999')
     })
 
+    it('answers a ping with a pong so a tab can tell the worker is alive', () => {
+        const a = newPort()
+        connect(a)
+        a.send({ type: 'ping' })
+        expect(a.received().at(-1)).toEqual({ type: 'pong' })
+    })
+
     it('broadcasts phase changes (reconnecting, failed...) to all tabs', () => {
         const a = newPort(); const b = newPort()
         connect(a); connect(b)
