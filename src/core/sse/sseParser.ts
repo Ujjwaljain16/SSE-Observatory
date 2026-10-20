@@ -110,6 +110,13 @@ export class SSEParser {
             this.pendingCR = false
             if (this.diagnostics && text.length + (crlf ? 1 : 0) > 0) this.noteLineEnding(crlf ? 'CRLF' : 'CR')
         }
+        // Text with no line ending cannot complete a line: keep it and wait. Reading characters out of a long, repeatedly extended
+        // buffer would copy the whole buffer every time (a string built from many pieces is flattened on first read).
+        if (!text.includes('\n') && !text.includes('\r')) {
+            this.buffer += text
+            this.checkLimit()
+            return
+        }
         // What is left in the buffer has no line ending in it, so only the new text needs scanning. Scanning the whole buffer
         // again for every piece made one very long line quadratic (a 20 MB line without a newline took many seconds).
         const scanFrom = this.buffer.length
@@ -136,6 +143,10 @@ export class SSEParser {
             }
         }
         this.buffer = buf.slice(start)
+        this.checkLimit()
+    }
+
+    private checkLimit(): void {
         if (this.buffer.length > this.maxBufferBytes) {
             this.buffer = ''
             this.violation('LINE_TOO_LONG', `A line grew past ${this.maxBufferBytes} characters without a line ending.`)

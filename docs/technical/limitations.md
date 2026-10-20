@@ -25,3 +25,15 @@ The sandbox limits **time**, not **memory**. Browsers have no per-worker memory 
 ## 6. Mock sessions are ephemeral
 
 Mock replay sessions live in server memory (or KV when configured) for one hour. A server restart on a single-instance setup discards them; upload the recording again.
+
+## 7. Recording costs memory in the page
+
+Each stream keeps what it observed (connections, response headers, one record per network read and per event, comments, violations) in a bounded store, 8 MiB by default, and the page keeps a copy of what a SharedWorker records. In the 20,000-event burst benchmark the page heap grew by roughly 76 to 91 MB with recording on, against about 22 MB before; most of that is short-lived garbage from handing records over, not retained data. The store evicts per-read detail first and says so (`truncated` records); it never grows past its cap.
+
+## 8. Capture size limits
+
+A capture upload to the mock server is limited to 20 MB (raw NDJSON) or 10 MB (JSON body). On Vercel, functions accept request bodies of about 4.5 MB, so larger captures need a self-hosted server. Wire bytes make a capture roughly a third larger than the stream it holds (Base64), and a full-fidelity capture is never to be shared: redact it first.
+
+## 9. The CLI reads whole files and uses Node's fetch
+
+`analyze` and `redact` read the file into memory; a 116 MB capture (1.2 million records) analyzes in about 24 s inside a 384 MB heap, and redaction handles 200,000 chunks with 200,000 secrets in about 4 s. Node's `fetch` decodes compressed responses itself, does not honour `HTTP_PROXY`, and chunks reads differently from a browser, so a CLI capture and a browser capture of the same stream can differ in chunk sizes; each capture records which client made it.
