@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { EventMessage } from '../types'
+import { FifoQueue } from '../utils/fifoQueue'
 import { openDB, putBatch, countAll, clearStore, deleteOldest, readAllNewestFirst } from '../utils/idbUtils'
 
 const FLUSH_INTERVAL_MS = 100
@@ -27,7 +28,7 @@ export const useEventStorage = (): UseEventStorageReturn => {
     const [idbAvailable, setIdbAvailable] = useState(false)
     const [totalStoredCount, setTotalStoredCount] = useState(0)
     const dbRef = useRef<IDBDatabase | null>(null)
-    const writeQueueRef = useRef<EventMessage[]>([])
+    const writeQueueRef = useRef(new FifoQueue<EventMessage>())
     const countRef = useRef(0)
     const trimmingRef = useRef(false)
     const flushingRef = useRef<Promise<void> | null>(null)
@@ -58,7 +59,7 @@ export const useEventStorage = (): UseEventStorageReturn => {
             const db = dbRef.current
             if (!db) return
             while (writeQueueRef.current.length > 0) {
-                const batch = writeQueueRef.current.splice(0, WRITE_BATCH)
+                const batch = writeQueueRef.current.take(WRITE_BATCH)
                 try {
                     await putBatch(db, batch)
                     countRef.current += batch.length
@@ -69,7 +70,7 @@ export const useEventStorage = (): UseEventStorageReturn => {
                 } catch (e) {
                     console.warn('[useEventStorage] Flush failed:', e)
                     if ((e as DOMException)?.name === 'QuotaExceededError') {
-                        writeQueueRef.current = []
+                        writeQueueRef.current.clear()
                         setIdbAvailable(false)
                         window.dispatchEvent(new CustomEvent('idb-quota-exceeded'))
                         return
@@ -111,7 +112,7 @@ export const useEventStorage = (): UseEventStorageReturn => {
         const queue = writeQueueRef.current
         queue.push(event)
         if (queue.length > MAX_PENDING_WRITES) {
-            queue.splice(0, queue.length - MAX_PENDING_WRITES)
+            queue.dropOldest(queue.length - MAX_PENDING_WRITES)
             if (!warnedDropRef.current) {
                 warnedDropRef.current = true
                 console.warn('[useEventStorage] Storage cannot keep up with the stream; the oldest unsaved events are not kept in history.')
@@ -138,7 +139,7 @@ export const useEventStorage = (): UseEventStorageReturn => {
     const clearStorage = useCallback(async () => {
         const db = dbRef.current
         if (!db) return
-        writeQueueRef.current = []
+        writeQueueRef.current.clear()
         await clearStore(db)
         countRef.current = 0
         setTotalStoredCount(0)
