@@ -1,7 +1,8 @@
 // Verifies the PACKED artifact, not just the repo checkout: packs dist-cli, checks what would be published, installs the
 // tarball into an empty directory and runs it from there. Run after `npm run build:cli`.
 
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
+import http from 'node:http'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -45,6 +46,46 @@ try {
     check(version.status === 0 && version.stdout.trim() === manifest.version, `--version printed "${version.stdout.trim()}", expected ${manifest.version}`)
     const selftest = run(['selftest'])
     check(selftest.status === 0 && selftest.stdout.includes('selftest passed'), `selftest from the installed package failed:\n${selftest.stdout}${selftest.stderr}`)
+
+    // End to end: probe a local stream with secrets in the environment. They must reach the server and appear nowhere else.
+    const canaries = { token: 'canary-pack-token-5d1e', auth: 'canary-pack-auth-83bc' }
+    const seen = { query: false, auth: false }
+    const server = http.createServer((req, res) => {
+        seen.query = String(req.url).includes(canaries.token)
+        seen.auth = req.headers.authorization === `Bearer ${canaries.auth}`
+        res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' })
+        let n = 0
+        const timer = setInterval(() => {
+            n++
+            res.write(`id: ${n}\ndata: {"n":${n},"echo":"${canaries.token}"}\n\n`)
+            if (n >= 3) { clearInterval(timer); res.end('event: end\ndata: done\n\n') }
+        }, 30)
+        res.on('close', () => clearInterval(timer))
+    })
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+    try {
+        const url = `http://127.0.0.1:${server.address().port}/stream`
+        const outFile = path.join(scratch, 'probe.sse-capture')
+        const probe = await new Promise((resolve) => {
+            const child = spawn(process.execPath, [bin, 'probe', url, '--query-env', 'token=PACK_TOKEN', '--auth-env', 'PACK_AUTH', '--duration', '10', '--out', outFile], { env: { ...process.env, PACK_TOKEN: canaries.token, PACK_AUTH: canaries.auth } })
+            let out = ''
+            child.stdout.on('data', (d) => { out += d })
+            child.stderr.on('data', (d) => { out += d })
+            child.on('close', (code) => resolve({ code, out }))
+        })
+        check(probe.code === 0 || probe.code === 1, `probe exited ${probe.code}:\n${probe.out}`)
+        check(seen.query && seen.auth, 'the secrets did not reach the server')
+        const file = readFileSync(outFile, 'utf8')
+        for (const [name, value] of Object.entries(canaries)) {
+            check(!probe.out.includes(value), `the ${name} secret appeared in probe output`)
+            check(!file.includes(value), `the ${name} secret was written to the capture file`)
+        }
+        const analyze = run(['analyze', outFile])
+        check(analyze.status === 0 || analyze.status === 1, `analyze of the probe capture exited ${analyze.status}:\n${analyze.stdout}${analyze.stderr}`)
+    } finally {
+        server.closeAllConnections()
+        server.close()
+    }
 } catch (error) {
     failures.push(error instanceof Error ? error.message : String(error))
 } finally {
@@ -56,4 +97,4 @@ if (failures.length > 0) {
     for (const failure of failures) console.error(`  - ${failure}`)
     process.exit(1)
 }
-console.log('cli:check passed (packed, installed into a clean directory, --version and selftest ran)')
+console.log('cli:check passed (packed, installed into a clean directory, --version, selftest and a probe with secrets ran)')

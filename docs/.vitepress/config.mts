@@ -32,7 +32,8 @@ export default defineConfig({
                         { text: 'Multi-Stream Correlation', link: '/guide/multi-stream' },
                         { text: 'JavaScript Interceptors', link: '/guide/interceptors' },
                         { text: 'Pattern Detection', link: '/guide/patterns' },
-                        { text: 'Mock Server & Replay', link: '/guide/mock-server' }
+                        { text: 'Mock Server & Replay', link: '/guide/mock-server' },
+                        { text: 'Command Line (sse-doctor)', link: '/guide/cli' }
                     ]
                 }
             ],
