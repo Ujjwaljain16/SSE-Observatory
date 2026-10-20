@@ -1,55 +1,56 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
+
+async function connectAndOpenInterceptors(page: Page) {
+    await page.goto('/')
+    await page.getByTestId('url-input').fill('http://localhost:4000/api/stream?freq=5')
+    await page.getByTestId('connect-button').click()
+    await expect(page.locator('text=Connected').first()).toBeVisible({ timeout: 10000 })
+    await expect(page.getByTestId('event-row').first()).toBeVisible({ timeout: 10000 })
+
+    await page.getByRole('button', { name: /Interceptors/i }).click()
+    await expect(page.locator('text=Stream Interceptors')).toBeVisible({ timeout: 5000 })
+    await page.getByRole('button', { name: 'Add', exact: true }).click()
+    await page.getByText('Ready', { exact: true }).first().click() // the row toggles the editor (the name starts a rename)
+    const editor = page.locator('textarea').first()
+    await expect(editor).toBeVisible({ timeout: 5000 })
+    return editor
+}
 
 test.describe('Interceptor Sandbox Resiliency', () => {
-    test.skip('UI surfaces interceptor runtime errors but prevents worker crashes', async ({ page }) => {
+    test('surfaces a runtime error, keeps the events flowing and the page alive', async ({ page }) => {
         test.setTimeout(40000)
-        await page.goto('/')
+        const editor = await connectAndOpenInterceptors(page)
+        await editor.fill('throw new Error("Malicious Crash");')
 
-        // Connect first so the event toolbar (which contains the Interceptors button) renders
-        await page.fill('input[placeholder*="https://api.example.com/sse"]', 'http://localhost:4000/api/stream?freq=5')
-        // If already connected from a previous flaky run, disconnect first to ensure clean state
-        const initialDisconnectBtn = page.locator('button[title="Disconnect"]').first()
-        if (await initialDisconnectBtn.isVisible()) {
-            await initialDisconnectBtn.click()
-            await expect(page.getByRole('button', { name: 'Connect', exact: true })).toBeVisible({ timeout: 5000 })
-        }
+        await expect(page.locator('text=/Runtime Error|Last error:/').first()).toBeVisible({ timeout: 10000 })
+        await expect(page.locator('text=Malicious Crash').first()).toBeVisible({ timeout: 10000 })
 
-        // Connect
-        await page.fill('input[placeholder*="https://api.example.com/sse"]', 'http://localhost:4000/api/stream?freq=5')
-        await page.getByRole('button', { name: 'Connect', exact: true }).click()
-        await expect(page.locator('text=Connected').first()).toBeVisible({ timeout: 10000 })
-        await expect(page.getByTestId('event-row').first()).toBeVisible({ timeout: 10000 })
+        // A failing interceptor must never lose events: the stream keeps filling.
+        const count = async () => Number((await page.getByTestId('event-count').innerText()).match(/\d+/)![0])
+        const before = await count()
+        await page.waitForTimeout(2500)
+        expect(await count()).toBeGreaterThan(before)
+        await expect(page.getByTestId('event-row').first()).toBeVisible()
+    })
 
-        // Open the Interceptors panel (only rendered when connected or events > 0)
-        await page.getByRole('button', { name: /Interceptors/i }).click()
-        await expect(page.locator('text=Stream Interceptors')).toBeVisible({ timeout: 5000 })
+    test('an interceptor that returns nothing is reported and the original event is kept', async ({ page }) => {
+        test.setTimeout(40000)
+        const editor = await connectAndOpenInterceptors(page)
+        await editor.fill('// forgot the return')
+        await expect(page.locator('text=/returned nothing/i').first()).toBeVisible({ timeout: 10000 })
+        await expect(page.getByTestId('event-row').first()).toBeVisible()
+    })
 
-        // Add a new interceptor
-        await page.getByRole('button', { name: 'Add' }).click()
-
-        // Wait for Interceptor 1 to appear in the list
-        const interceptorRow = page.locator('text=Interceptor 1').first()
-        await expect(interceptorRow).toBeVisible({ timeout: 10000 })
-        await interceptorRow.click()
-
-        // The code editor is a plain textarea — fill with error-throwing code
-        const codeEditor = page.locator('textarea').first()
-        await expect(codeEditor).toBeVisible({ timeout: 5000 })
-        await codeEditor.fill('throw new Error("Malicious Crash");')
-
-        // Let events run through the interceptor for a bit
-        await page.waitForTimeout(2000)
-
-        // Pipeline should NOT be frozen — Event Stream heading still visible
-        await expect(page.locator('text=Event Stream')).toBeVisible({ timeout: 5000 })
-
-        // Error should be surfaced in the interceptor panel
-        await expect(page.locator('text=/Runtime Error|Last error:/')).toBeVisible({ timeout: 10000 })
-
-        // Disconnect
-        const disconnectBtn = page.locator('button[title="Disconnect"]').first()
-        if (await disconnectBtn.isVisible()) {
-            await disconnectBtn.click({ force: true })
-        }
+    test('the sandbox has no network, storage or eval', async ({ page }) => {
+        test.setTimeout(40000)
+        const editor = await connectAndOpenInterceptors(page)
+        await editor.fill('return { ...event, data: JSON.stringify({ fetch: typeof fetch, idb: typeof indexedDB, post: typeof postMessage, evalType: (() => { try { return typeof (0, eval)("1") } catch (e) { return "blocked" } })(), ctor: (() => { try { return typeof [].constructor.constructor("return 1")() } catch (e) { return "blocked" } })() }) }')
+        // the event list pretty-prints the payload, so allow whitespace after the colon
+        const row = page.getByTestId('event-row').first()
+        await expect(row).toContainText(/"fetch": *"undefined"/, { timeout: 10000 })
+        await expect(row).toContainText(/"idb": *"undefined"/)
+        await expect(row).toContainText(/"post": *"undefined"/)
+        await expect(row).toContainText(/"evalType": *"blocked"/)
+        await expect(row).toContainText(/"ctor": *"blocked"/)
     })
 })
