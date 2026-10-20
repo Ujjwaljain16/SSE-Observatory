@@ -145,11 +145,26 @@ export class SSEClient {
                 })
                 parser.setLastEventId(this.lastEventId)
                 const reader = res.body.getReader()
+                let parseMs = 0
                 try {
                     for (;;) {
                         const { done, value } = await reader.read()
                         if (done) break
-                        parser.feed(value)
+                        // A burst can arrive as one multi-megabyte chunk. Parse it in pieces and give the page a
+                        // turn whenever the budget is used up, instead of blocking it for the whole chunk.
+                        // The budget counts parse time only, across reads: chunks that are already buffered resolve as
+                        // microtasks, so without this the page would never get a turn while a backlog drains.
+                        for (let offset = 0; offset < value.length; offset += FEED_PIECE_BYTES) {
+                            const t0 = performance.now()
+                            parser.feed(value.length <= FEED_PIECE_BYTES ? value : value.subarray(offset, offset + FEED_PIECE_BYTES))
+                            parseMs += performance.now() - t0
+                            if (ended) break
+                            if (parseMs > FEED_BUDGET_MS) {
+                                parseMs = 0
+                                await yieldToMain()
+                                if (signal.aborted) return
+                            }
+                        }
                         this.lastEventId = parser.lastId
                         if (ended) break
                     }
@@ -188,6 +203,14 @@ export class SSEClient {
         this.controller = null
         this.emit(phase, info)
     }
+}
+
+const FEED_PIECE_BYTES = 32 * 1024
+const FEED_BUDGET_MS = 8
+
+function yieldToMain(): Promise<void> {
+    const sched = (globalThis as { scheduler?: { yield?: () => Promise<void> } }).scheduler
+    return sched?.yield ? sched.yield() : new Promise((resolve) => setTimeout(resolve, 0))
 }
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
