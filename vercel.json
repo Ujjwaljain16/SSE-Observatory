@@ -3,6 +3,9 @@
   "functions": {
     "api/sse/index.js": {
       "maxDuration": 60
+    },
+    "api/mock/stream.js": {
+      "maxDuration": 60
     }
   },
   "rewrites": [
