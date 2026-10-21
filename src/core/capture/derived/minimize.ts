@@ -8,6 +8,7 @@
  */
 
 import { analyze } from '../../diagnostics/engine'
+import { captureEndT, countByKind } from '../format'
 import type { StreamProfile } from '../../diagnostics/thresholds'
 import type { EngineInput } from '../../diagnostics/streamModel'
 import type { Capture, CaptureRecord } from '../format'
@@ -35,7 +36,7 @@ export function minimizeCapture(capture: Capture, findingKey: string, options: M
     const maxRuns = options.maxRuns ?? 3000
     const profile = options.profile ?? capture.header.profile
     const all = capture.records
-    const endT = all.reduce((t, r) => Math.max(t, r.t), 0)
+    const endT = captureEndT(capture) // a silence at the end counts, so the end stays where the original's was
     let runs = 0
 
     const reports = (indices: number[]): boolean => {
@@ -79,7 +80,7 @@ export function minimizeCapture(capture: Capture, findingKey: string, options: M
 
     const records: CaptureRecord[] = current.map((i) => all[i]!)
     return {
-        capture: { ...capture, records, footer: undefined },
+        capture: { ...capture, records, footer: { endReason: capture.footer?.endReason ?? 'completed', counts: countByKind(records), endT } },
         reproduced: true,
         complete: complete && runs < maxRuns,
         runs,

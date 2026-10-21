@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { Stethoscope } from 'lucide-react'
+import { lazy, Suspense, useEffect, useState } from 'react'
+import { Share2, Stethoscope } from 'lucide-react'
 import type { Theme } from '../../types'
 import { useDoctorView } from '../../doctor/useDoctor'
 import { recordingEnabled } from '../../doctor/recordingConfig'
@@ -14,6 +14,9 @@ interface Props {
     /** `h2` for the single-stream panel, `h3` inside a lane list. */
     heading?: 'h2' | 'h3'
 }
+
+// Everything the export needs (redaction, reports, scenarios) is fetched when the dialog opens.
+const ExportDialog = lazy(() => import('./ExportDialog'))
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 
@@ -30,6 +33,7 @@ function useAnnouncement(phase: string | undefined, errors: number, warnings: nu
 export default function DoctorPanel({ theme, streamId, title = 'Stream Doctor', heading = 'h2' }: Props) {
     const dark = theme === 'dark'
     const view = useDoctorView(streamId)
+    const [exporting, setExporting] = useState(false)
     const Heading = heading
     const sectionHeading = heading === 'h2' ? 'h3' : 'h4'
     const errors = view ? view.open.error + view.open.critical : 0
@@ -50,8 +54,23 @@ export default function DoctorPanel({ theme, streamId, title = 'Stream Doctor', 
                         {open.length === 0 ? 'No open findings' : `${plural(open.length, 'open finding')}: ${plural(errors, 'error')}, ${plural(warnings, 'warning')}, ${plural(view.open.info, 'note')}`}
                     </span>
                 )}
+                {view && (
+                    <button
+                        type="button"
+                        onClick={() => setExporting(true)}
+                        data-testid="doctor-export"
+                        className={`ml-auto px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-2 ${dark ? 'bg-slate-700 text-slate-100 hover:bg-slate-600' : 'bg-slate-200 text-slate-900 hover:bg-slate-300'}`}
+                    >
+                        <Share2 className="w-4 h-4" aria-hidden="true" /> Export…
+                    </button>
+                )}
             </div>
             <div role="status" aria-live="polite" className="sr-only">{announcement}</div>
+            {exporting && view && (
+                <Suspense fallback={null}>
+                    <ExportDialog theme={theme} streamId={streamId} findings={view.findings} endT={view.nowT} onClose={() => setExporting(false)} />
+                </Suspense>
+            )}
 
             {!view ? (
                 <p className={`text-sm ${muted}`} data-testid="doctor-empty">

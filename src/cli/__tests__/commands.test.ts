@@ -46,6 +46,16 @@ describe('analyze', () => {
         expect(g.out).toContain('No findings.')
     })
 
+    it('judges a silence at the end up to the moment the capture says it ended (a capture taken from the app)', async () => {
+        const records = healthyStart().repeat(14, 250, (b, i) => b.frame('tick', String(i + 1)))
+        const file = (endT?: number) => serializeCapture({ header: newHeader({ kind: 'local-full', source: { kind: 'browser-app' } }), records: records.build(), ...(endT !== undefined ? { footer: { endReason: 'stopped', counts: {}, endT } } : {}) })
+        const open = host({ 'a.sse-capture': file() })
+        expect(await main(['analyze', 'a.sse-capture'], open.io)).toBe(EXIT.ok)
+        const later = host({ 'b.sse-capture': file(records.now + 60_000) })
+        expect(await main(['analyze', 'b.sse-capture'], later.io)).toBe(EXIT.gateFailed)
+        expect(later.out).toContain('stall.silent')
+    })
+
     it('--fail-on moves the gate, and the other formats are well formed', async () => {
         const text = asFile(build().connect().response({ headers: { 'content-encoding': 'gzip' } }).repeat(3, 1000, (b, i) => b.frame('tick', String(i + 1))))
         const warn = host({ 'w.sse-capture': text })

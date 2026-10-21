@@ -1,3 +1,4 @@
+import fs from 'node:fs'
 import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import AxeBuilder from '@axe-core/playwright'
@@ -5,6 +6,10 @@ import { test, expect, type Page } from '@playwright/test'
 
 // The Stream Doctor panel against streams that behave in known ways. The servers are local and start with the test, so
 // nothing here depends on the repository's other test servers.
+
+// Built at run time so this file holds no secret-shaped text.
+const JWT = ['eyJhbGciOiJIUzI1NiJ9', 'eyJzdWIiOiIxMjM0NTY3ODkwIn0', 'c2lnbmF0dXJlLXZhbHVlLW5vdC1yZWFs'].join('.')
+const OPAQUE = 'q7Zr4KpX9vLm2NcB8wTy5HsJ3dFg6A1e'
 
 let server: http.Server
 let base = ''
@@ -15,8 +20,9 @@ test.beforeAll(async () => {
         if (req.method === 'OPTIONS') { res.writeHead(204, headers); res.end(); return }
         res.writeHead(200, headers)
         res.write(': open\n\n')
+        if (req.url?.startsWith('/leaky')) res.write(`: debug auth ${JWT}\n\n: session ${OPAQUE}\n\n`)
         let n = 0
-        const limit = req.url?.startsWith('/silent') ? 12 : Infinity
+        const limit = req.url?.startsWith('/silent') ? 12 : req.url?.startsWith('/leaky') ? 4 : Infinity
         const timer = setInterval(() => {
             if (n >= limit) { clearInterval(timer); return } // then nothing more, and the connection stays open
             res.write(`id: ${n}\nevent: tick\ndata: {"n":${n}}\n\n`)
@@ -168,6 +174,96 @@ test.describe('Stream Doctor', () => {
             setTimeout(() => { observer.disconnect(); resolve(n) }, 4000)
         }))
         expect(mutations, 'the live region must not change on every tick').toBe(0)
+    })
+
+    test.describe('export', () => {
+        async function openExport(page: Page, path: string) {
+            await page.goto('/')
+            await connect(page, path)
+            await openDoctor(page)
+            await page.getByTestId('doctor-export').click()
+            await expect(page.getByTestId('export-dialog')).toBeVisible()
+        }
+        const download = async (page: Page) => {
+            const [file] = await Promise.all([page.waitForEvent('download'), page.getByTestId('export-download').click()])
+            return { name: file.suggestedFilename(), text: fs.readFileSync((await file.path())!, 'utf8') }
+        }
+
+        test('a shared report has the secrets replaced, and the scan says what is left', async ({ page }) => {
+            test.setTimeout(60_000)
+            await openExport(page, '/leaky')
+            const dialog = page.getByTestId('export-dialog')
+            await expect(page.getByTestId('export-redaction')).toContainText('replaced')
+            await expect(dialog.getByLabel(/Preview of/)).not.toContainText(JWT)
+
+            // A token that matches no known secret format is kept by redaction, so the scan flags it and sharing waits for a person.
+            await expect(page.getByTestId('export-residual')).toBeVisible()
+            await expect(page.getByTestId('export-residual')).not.toContainText(OPAQUE)
+            await expect(page.getByTestId('export-download')).toBeDisabled()
+            await page.getByTestId('export-ack').check()
+            await expect(page.getByTestId('export-download')).toBeEnabled()
+            const file = await download(page)
+            expect(file.name).toMatch(/\.report\.md$/)
+            expect(file.text).not.toContain(JWT)
+        })
+
+        test('the full local capture is the recording as it is, and needs an acknowledgement', async ({ page }) => {
+            test.setTimeout(60_000)
+            await openExport(page, '/leaky')
+            await page.getByLabel(/Full local capture/).check()
+            await expect(page.getByRole('note')).toContainText('not redacted')
+            await expect(page.getByTestId('export-download')).toBeDisabled()
+            await page.getByTestId('export-ack').check()
+            const file = await download(page)
+            expect(file.name).toMatch(/\.local\.sse-capture$/)
+            expect(file.text).toContain(JWT)
+            expect(JSON.parse(file.text.split('\n')[0]!).kind).toBe('local-full')
+        })
+
+        test('a capture to share downloads as sanitized, and a scenario downloads valid JSON', async ({ page }) => {
+            test.setTimeout(60_000)
+            await openExport(page, '/leaky')
+            await page.getByLabel(/Capture to share/).check()
+            await page.getByTestId('export-ack').check()
+            const capture = await download(page)
+            expect(capture.text).not.toContain(JWT)
+            expect(JSON.parse(capture.text.split('\n')[0]!).kind).toBe('sanitized')
+
+            await page.getByLabel(/Test scenario/).check()
+            await page.getByTestId('export-ack').check()
+            const scenario = await download(page)
+            expect(scenario.text).not.toContain(JWT)
+            expect(JSON.parse(scenario.text).version).toBe(1)
+        })
+
+        test('Escape closes it and focus goes back to the button', async ({ page }) => {
+            await openExport(page, '/steady')
+            await page.keyboard.press('Escape')
+            await expect(page.getByTestId('export-dialog')).toHaveCount(0)
+            await expect(page.getByTestId('doctor-export')).toBeFocused()
+        })
+
+        test('finds the smallest capture that still shows a finding', async ({ page }) => {
+            test.setTimeout(80_000)
+            await page.goto('/')
+            await connect(page, '/silent')
+            await openDoctor(page)
+            await expect(page.locator('[data-testid="doctor-finding"][data-finding-key^="stall"]')).toBeVisible({ timeout: 25_000 })
+            await page.getByTestId('doctor-export').click()
+            await page.getByLabel(/Smallest capture/).check()
+            await page.getByRole('button', { name: 'Find the smallest capture' }).click()
+            await expect(page.getByTestId('export-dialog').getByText(/Reduced from/)).toBeVisible({ timeout: 30_000 })
+        })
+
+        test('has no accessibility violations while open (A and AA)', async ({ page }) => {
+            test.setTimeout(60_000)
+            await page.emulateMedia({ reducedMotion: 'reduce' })
+            await openExport(page, '/leaky')
+            await page.waitForTimeout(400)
+            const results = await new AxeBuilder({ page }).include('[data-testid="export-dialog"]').withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze()
+            const found = results.violations.map((v) => `${v.id} (${v.impact}) ${v.help} e.g. ${v.nodes[0]?.target.join(' ')}`)
+            expect(found, found.join('\n')).toEqual([])
+        })
     })
 
     test('has no accessibility violations with findings open (A and AA)', async ({ page }) => {

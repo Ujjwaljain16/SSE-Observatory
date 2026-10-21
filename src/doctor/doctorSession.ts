@@ -41,6 +41,8 @@ export interface HealthView {
 export interface DoctorView {
     streamId: string
     captureId: string | null
+    /** The time this view was made at, in the recording's clock. */
+    nowT: number
     findings: Finding[]
     coverage: RuleCoverage[]
     health: HealthView
@@ -172,6 +174,7 @@ export class DoctorSession {
         return {
             streamId: this.streamId,
             captureId: this.captureId,
+            nowT: now,
             findings,
             coverage,
             open,

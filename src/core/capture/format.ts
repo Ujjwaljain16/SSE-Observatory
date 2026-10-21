@@ -51,6 +51,11 @@ export interface CaptureHeader {
 
 export interface CaptureFooter {
     endReason: 'completed' | 'stopped' | 'failed' | 'crashed' | 'import' | (string & {})
+    /**
+     * When the recording stopped, in the clock of the records. Absent, a capture ends at its last record. A capture taken from a
+     * stream that was still open (from the app) ends later than that, and a silence at the end is judged up to this moment.
+     */
+    endT?: number | undefined
     counts: Record<string, number>
     overhead?: Record<string, number> | undefined
     integrity?: { algorithm: 'sha256'; value: string } | undefined
@@ -72,6 +77,12 @@ export class CaptureFormatError extends Error {
         super(line === undefined ? message : `line ${line}: ${message}`)
         this.name = 'CaptureFormatError'
     }
+}
+
+/** When the capture ends: the footer's `endT`, or the time of the last record. */
+export function captureEndT(capture: Capture): number {
+    const last = capture.records.reduce((t, r) => Math.max(t, r.t), 0)
+    return Math.max(last, capture.footer?.endT ?? 0)
 }
 
 export function countByKind(records: readonly CaptureRecord[]): Record<string, number> {

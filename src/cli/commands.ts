@@ -1,7 +1,7 @@
 import { analyze, type Analysis } from '../core/diagnostics/engine'
 import type { EngineInput } from '../core/diagnostics/streamModel'
 import type { StreamProfile } from '../core/diagnostics/thresholds'
-import { parseCapture, serializeCapture, newHeader, CaptureFormatError, type Capture, type CaptureRecord } from '../core/capture/format'
+import { parseCapture, serializeCapture, newHeader, captureEndT, CaptureFormatError, type Capture, type CaptureRecord } from '../core/capture/format'
 import { importV1, isV1Recording, V1ImportError } from '../core/capture/importV1'
 import { redactCapture, RedactionError } from '../core/capture/redact'
 import type { RedactedCapture } from '../core/capture/redacted'
@@ -52,8 +52,7 @@ async function loadProfile(io: CliIo, args: ParsedArgs, fallback: StreamProfile 
 }
 
 function analysisOf(capture: Capture, profile: StreamProfile | undefined): Analysis {
-    const last = capture.records.reduce((t, r) => Math.max(t, r.t), 0)
-    return analyze(capture.records as EngineInput[], { ...(profile ? { profile } : {}), endT: last })
+    return analyze(capture.records as EngineInput[], { ...(profile ? { profile } : {}), endT: captureEndT(capture) })
 }
 
 function show(io: CliIo, result: Result, args: ParsedArgs): number {

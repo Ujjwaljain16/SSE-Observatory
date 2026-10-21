@@ -13,6 +13,7 @@ last line    footer   { "footer": { "counts": {...}, "endReason": "completed", "
 ```
 
 - **Versioning.** A major bump is a breaking change, a minor bump only adds. A reader ignores header fields and record kinds it does not know, and keeps them when it writes the file again. A newer minor version is read with a warning.
+- **End time.** The footer may carry `endT`, the moment the recording stopped in the clock of the records. Without it a capture ends at its last record. A capture taken from the app while a stream is still open has an `endT` later than its last record, so a silence at the end (a stalled stream) is judged up to that moment when the capture is analysed or reduced.
 - **Integrity.** The footer holds a SHA-256 over the record lines exactly as written. It is tamper-evidence for a report that travels between people, not a security control: anyone can recompute it. A file that was cut off (no footer, or a broken last line) is read as far as it goes and a warning says so.
 - **Header** records the tool, the analyzer version, the source (`browser-app`, `cli`, `fixture`, `import-v1`) and the client that produced the bytes (browsers and Node chunk and decode differently), the request (URL with query values removed), the stream profile, the redaction applied, and limits such as the memory cap.
 

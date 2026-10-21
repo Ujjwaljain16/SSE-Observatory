@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest'
 import { createHash } from 'node:crypto'
 import { sha256Hex } from '../sha256'
 import { base64ToBytes, bytesToBase64 } from '../base64'
-import { newHeader, parseCapture, serializeCapture, CaptureFormatError, type Capture } from '../format'
+import { newHeader, parseCapture, serializeCapture, captureEndT, CaptureFormatError, type Capture } from '../format'
 import { importV1 } from '../importV1'
 import { connectionTexts, framesOf } from '../streamText'
 import { analyze } from '../../diagnostics'
@@ -133,5 +133,23 @@ describe('files that went through an editor, git on Windows or a PowerShell redi
             expect(parsed.warnings).toEqual([])
             expect(parsed.capture.records).toEqual(sample().records)
         }
+    })
+})
+
+describe('when a capture ends', () => {
+    const records = [{ seq: 0, t: 0, conn: 0, kind: 'phase', phase: 'open', info: { attempt: 0 } }, { seq: 1, t: 3000, conn: 0, kind: 'chunk', bytes: 5 }] as Capture['records']
+    const capture: Capture = { header: newHeader({ kind: 'local-full', source: { kind: 'browser-app' } }), records }
+
+    it('is the last record unless the footer says later', () => {
+        expect(captureEndT(capture)).toBe(3000)
+        expect(captureEndT({ ...capture, footer: { endReason: 'stopped', counts: {}, endT: 60_000 } })).toBe(60_000)
+        // a footer cannot end a capture before its own records
+        expect(captureEndT({ ...capture, footer: { endReason: 'stopped', counts: {}, endT: 10 } })).toBe(3000)
+    })
+
+    it('survives writing and reading the file', () => {
+        const parsed = parseCapture(serializeCapture({ ...capture, footer: { endReason: 'stopped', counts: {}, endT: 60_000 } }))
+        expect(parsed.capture.footer?.endT).toBe(60_000)
+        expect(parsed.integrity).toBe('ok')
     })
 })
