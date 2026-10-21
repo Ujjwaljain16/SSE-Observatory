@@ -4,6 +4,7 @@ import type { StreamInstance } from '../../hooks/useMultiStream'
 import { SEVERITY_RANK } from '../../core/diagnostics/finding'
 import { useDoctorViews } from '../../doctor/useDoctor'
 import DoctorPanel from './DoctorPanel'
+import ProfileEditor from './ProfileEditor'
 
 interface Props {
     theme: Theme
@@ -22,6 +23,10 @@ export default function DoctorLanes({ theme, streams }: Props) {
     if (streams.length === 0) return null
     return (
         <section aria-label="Stream Doctor for each lane" className="space-y-4 mb-6" data-testid="doctor-lanes">
+            <details className={`p-4 rounded-xl border ${dark ? 'bg-slate-900/70 border-slate-700' : 'bg-white border-slate-200'}`}>
+                <summary className={`cursor-pointer text-sm font-medium ${dark ? 'text-slate-100' : 'text-slate-900'}`}>Profile for every stream</summary>
+                <div className="mt-3"><ProfileEditor theme={theme} /></div>
+            </details>
             {ordered.map((s) => (
                 <div key={s.id} className={`p-4 rounded-xl border border-l-4 ${dark ? 'bg-slate-900/70 border-slate-700' : 'bg-white border-slate-200'}`} style={{ borderLeftColor: s.color }}>
                     <DoctorPanel theme={theme} streamId={s.id} title={`Doctor: ${s.name}`} heading="h3" />

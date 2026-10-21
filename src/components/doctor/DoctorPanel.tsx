@@ -5,6 +5,9 @@ import { useDoctorView } from '../../doctor/useDoctor'
 import { recordingEnabled } from '../../doctor/recordingConfig'
 import { HealthStrip } from './HealthStrip'
 import { FindingCard } from './FindingCard'
+import { Tabs } from './Tabs'
+import SequenceView from './SequenceView'
+import ProfileEditor from './ProfileEditor'
 
 interface Props {
     theme: Theme
@@ -34,8 +37,11 @@ export default function DoctorPanel({ theme, streamId, title = 'Stream Doctor', 
     const dark = theme === 'dark'
     const view = useDoctorView(streamId)
     const [exporting, setExporting] = useState(false)
+    const [tab, setTab] = useState('findings')
     const Heading = heading
     const sectionHeading = heading === 'h2' ? 'h3' : 'h4'
+    // The profile is shared by every stream, so it is edited once: in the single-stream panel, and above the lane cards.
+    const ownsProfile = heading === 'h2'
     const errors = view ? view.open.error + view.open.critical : 0
     const warnings = view?.open.warning ?? 0
     const announcement = useAnnouncement(view?.health.phase, errors, warnings)
@@ -43,6 +49,7 @@ export default function DoctorPanel({ theme, streamId, title = 'Stream Doctor', 
 
     const open = view?.findings.filter((f) => f.status === 'open') ?? []
     const resolved = view?.findings.filter((f) => f.status === 'resolved') ?? []
+    const declared = view?.profile?.sequence !== undefined
 
     return (
         <section aria-label={title} data-testid="doctor-panel" className="space-y-4">
@@ -73,49 +80,75 @@ export default function DoctorPanel({ theme, streamId, title = 'Stream Doctor', 
             )}
 
             {!view ? (
-                <p className={`text-sm ${muted}`} data-testid="doctor-empty">
-                    {recordingEnabled()
-                        ? 'Connect to a stream and its diagnosis appears here: how it connected, how bytes and events arrive, and what looks wrong.'
-                        : 'Recording is switched off in this browser (localStorage "sse.recording" is "off"), so there is nothing to diagnose. Remove that setting and connect again.'}
-                </p>
+                <>
+                    <p className={`text-sm ${muted}`} data-testid="doctor-empty">
+                        {recordingEnabled()
+                            ? 'Connect to a stream and its diagnosis appears here: how it connected, how bytes and events arrive, and what looks wrong.'
+                            : 'Recording is switched off in this browser (localStorage "sse.recording" is "off"), so there is nothing to diagnose. Remove that setting and connect again.'}
+                    </p>
+                    {ownsProfile && (
+                        <details>
+                            <summary className={`cursor-pointer text-sm font-medium ${dark ? 'text-slate-100' : 'text-slate-900'}`}>Set up a profile before connecting</summary>
+                            <div className="mt-3"><ProfileEditor theme={theme} /></div>
+                        </details>
+                    )}
+                </>
             ) : (
                 <>
                     <HealthStrip theme={theme} health={view.health} />
 
-                    {open.length > 0 ? (
-                        <ul className="space-y-2" aria-label="Open findings">
-                            {open.map((f, i) => <FindingCard key={f.key} theme={theme} streamId={streamId} finding={f} sectionHeading={sectionHeading} defaultOpen={i === 0 && f.severity !== 'info'} />)}
-                        </ul>
-                    ) : (
-                        <p className={`text-sm ${muted}`} data-testid="doctor-none">
-                            No findings so far. {view.evaluated} of {view.evaluated + view.notEvaluated} checks could look at this stream
-                            {view.notEvaluated > 0 ? `; ${view.notEvaluated} could not (listed below)` : ''}. No findings is not proof the stream is healthy: it only means nothing these checks look for has appeared yet.
-                        </p>
-                    )}
+                    <Tabs
+                        theme={theme}
+                        label={`${title} sections`}
+                        active={tab}
+                        onChange={setTab}
+                        tabs={[
+                            { id: 'findings', label: 'Findings', badge: open.length > 0 ? String(open.length) : undefined },
+                            { id: 'sequence', label: 'Sequence', badge: declared ? 'declared' : undefined },
+                            ...(ownsProfile ? [{ id: 'profile', label: 'Profile' }] : []),
+                        ]}
+                    >
+                        {tab === 'findings' && (
+                            <div className="space-y-4">
+                                {open.length > 0 ? (
+                                    <ul className="space-y-2" aria-label="Open findings">
+                                        {open.map((f, i) => <FindingCard key={f.key} theme={theme} streamId={streamId} finding={f} sectionHeading={sectionHeading} defaultOpen={i === 0 && f.severity !== 'info'} />)}
+                                    </ul>
+                                ) : (
+                                    <p className={`text-sm ${muted}`} data-testid="doctor-none">
+                                        No findings so far. {view.evaluated} of {view.evaluated + view.notEvaluated} checks could look at this stream
+                                        {view.notEvaluated > 0 ? `; ${view.notEvaluated} could not (listed below)` : ''}. No findings is not proof the stream is healthy: it only means nothing these checks look for has appeared yet.
+                                    </p>
+                                )}
 
-                    {resolved.length > 0 && (
-                        <details>
-                            <summary className={`cursor-pointer text-sm font-medium ${dark ? 'text-slate-100' : 'text-slate-900'}`}>Resolved ({resolved.length})</summary>
-                            <ul className="space-y-2 mt-2" aria-label="Resolved findings">
-                                {resolved.map((f) => <FindingCard key={f.key} theme={theme} streamId={streamId} finding={f} sectionHeading={sectionHeading} />)}
-                            </ul>
-                        </details>
-                    )}
+                                {resolved.length > 0 && (
+                                    <details>
+                                        <summary className={`cursor-pointer text-sm font-medium ${dark ? 'text-slate-100' : 'text-slate-900'}`}>Resolved ({resolved.length})</summary>
+                                        <ul className="space-y-2 mt-2" aria-label="Resolved findings">
+                                            {resolved.map((f) => <FindingCard key={f.key} theme={theme} streamId={streamId} finding={f} sectionHeading={sectionHeading} />)}
+                                        </ul>
+                                    </details>
+                                )}
 
-                    <details>
-                        <summary className={`cursor-pointer text-sm font-medium ${dark ? 'text-slate-100' : 'text-slate-900'}`}>
-                            What was checked ({view.evaluated} checked, {view.notEvaluated} not evaluated)
-                        </summary>
-                        <ul className="mt-2 space-y-1 text-sm">
-                            {view.coverage.map((c) => (
-                                <li key={c.ruleId} className={dark ? 'text-slate-200' : 'text-slate-800'}>
-                                    <span className="font-medium">{c.title}</span>{' '}
-                                    <span className={muted}>({c.ruleId}): {c.status === 'evaluated' ? 'checked' : 'not evaluated'}</span>
-                                    {c.notes.map((n, i) => <span key={i} className={`block text-xs ${muted}`}>{n}</span>)}
-                                </li>
-                            ))}
-                        </ul>
-                    </details>
+                                <details>
+                                    <summary className={`cursor-pointer text-sm font-medium ${dark ? 'text-slate-100' : 'text-slate-900'}`}>
+                                        What was checked ({view.evaluated} checked, {view.notEvaluated} not evaluated)
+                                    </summary>
+                                    <ul className="mt-2 space-y-1 text-sm">
+                                        {view.coverage.map((c) => (
+                                            <li key={c.ruleId} className={dark ? 'text-slate-200' : 'text-slate-800'}>
+                                                <span className="font-medium">{c.title}</span>{' '}
+                                                <span className={muted}>({c.ruleId}): {c.status === 'evaluated' ? 'checked' : 'not evaluated'}</span>
+                                                {c.notes.map((n, i) => <span key={i} className={`block text-xs ${muted}`}>{n}</span>)}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </details>
+                            </div>
+                        )}
+                        {tab === 'sequence' && <SequenceView theme={theme} streamId={streamId} view={view} {...(ownsProfile ? { onDeclare: () => setTab('profile') } : {})} />}
+                        {tab === 'profile' && ownsProfile && <ProfileEditor theme={theme} />}
+                    </Tabs>
                 </>
             )}
         </section>
