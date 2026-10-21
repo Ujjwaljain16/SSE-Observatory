@@ -22,6 +22,17 @@ When a non-looping replay finishes, the server sends an `event: end` message so 
 - Sessions expire after one hour and are deleted when you click **Stop Mock Server**.
 - Uploads are validated (event count, total size, `deltaMs` range).
 - In production the mock API is off unless `ENABLE_MOCK_API=1` is set. For multi-instance deployments configure KV storage so every instance sees the same sessions.
+- On Vercel the upload and the stream are separate functions, so a KV store (`KV_REST_API_URL`) is required; without it uploads are refused with a 503.
+- Because the endpoint is public once enabled, it is rate limited per client and has a global hourly budget. Over a limit it answers `429` with a `Retry-After` header. Limits (set to `0` to turn one off):
+
+  | Variable | Default | Meaning |
+  |---|---|---|
+  | `MOCK_UPLOADS_PER_MINUTE` | 20 | uploads per client per minute |
+  | `MOCK_STREAMS_PER_MINUTE` | 60 | stream requests per client per minute |
+  | `MOCK_SESSIONS_PER_HOUR` | 500 | stored sessions per hour, all clients |
+  | `MOCK_MB_PER_HOUR` | 50 | stored megabytes per hour, all clients |
+
+  On Vercel a mock stream is cut after 60 seconds; a client that reconnects counts against the stream limit.
 
 ## Record format
 
