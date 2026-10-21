@@ -51,6 +51,7 @@ export function AppLayout() {
         showSchema, setShowSchema,
         showInterceptors, setShowInterceptors,
         showDoctor, setShowDoctor,
+        eventJump, setJumpResult,
         url, setUrl,
         bearerToken, setBearerToken,
         profileName, setProfileName,
@@ -195,6 +196,8 @@ export function AppLayout() {
                             copiedId={copiedId}
                             isLive={true}
                             onCopyToClipboard={copyToClipboard}
+                            jumpTarget={eventJump}
+                            onJumpResult={setJumpResult}
                         />
                     </>
                 )}
@@ -479,6 +482,8 @@ export function AppLayout() {
                             copiedId={copiedId}
                             isLive={currentEventIndex === 0}
                             onCopyToClipboard={copyToClipboard}
+                            jumpTarget={eventJump}
+                            onJumpResult={setJumpResult}
                             getTraceForEvent={getTraceForEvent}
                             onViewTrace={setActiveTraceId}
                         />

@@ -6,6 +6,8 @@ import { ARTIFACTS, prepare, type ArtifactKind, type Prepared } from '../../doct
 import { captureOf } from '../../doctor/captureOf'
 import { getProfile } from '../../doctor/profileStore'
 import { downloadText } from '../../doctor/download'
+import { startMockReplay } from '../../doctor/mockReplay'
+import { replayCopy } from '../../doctor/replayCopy'
 import { useModalFocus } from '../../hooks/useModalFocus'
 
 interface Props {
@@ -14,12 +16,14 @@ interface Props {
     findings: Finding[]
     /** When the export is taken, in the recording's clock. */
     endT: number
+    /** Connects the viewer to a replay of the exported capture. Absent where there is nowhere to connect. */
+    onReplay?: ((url: string) => void) | undefined
     onClose: () => void
 }
 
 const PREVIEW_CHARS = 4000
 
-export default function ExportDialog({ theme, streamId, findings, endT, onClose }: Props) {
+export default function ExportDialog({ theme, streamId, findings, endT, onReplay, onClose }: Props) {
     const dark = theme === 'dark'
     const dialogRef = useRef<HTMLDivElement>(null)
     useModalFocus(dialogRef, true, onClose)
@@ -31,6 +35,8 @@ export default function ExportDialog({ theme, streamId, findings, endT, onClose 
     const [findingKey, setFindingKey] = useState(findings[0]?.key ?? '')
     const [reproFor, setReproFor] = useState<string | null>(null)
     const [acknowledged, setAcknowledged] = useState(false)
+    const [replayError, setReplayError] = useState('')
+    const [replaying, setReplaying] = useState(false)
 
     const result = useMemo((): { prepared?: Prepared; error?: string } => {
         if (!snapshot) return { error: 'There is nothing recorded yet.' }
@@ -43,11 +49,22 @@ export default function ExportDialog({ theme, streamId, findings, endT, onClose 
     }, [snapshot, kind, shell, findingKey, reproFor])
     const { prepared, error } = result
 
-    useEffect(() => { setAcknowledged(false) }, [kind, shell, findingKey, reproFor])
+    useEffect(() => { setAcknowledged(false); setReplayError('') }, [kind, shell, findingKey, reproFor])
 
     const residual = prepared?.residual.length ?? 0
     const needsAck = prepared !== undefined && (!prepared.shareable || residual > 0)
     const canDownload = prepared !== undefined && (!needsAck || acknowledged)
+    // Only a redacted capture is sent to the mock server; the unredacted recording never leaves the browser.
+    const canReplay = onReplay !== undefined && canDownload && (kind === 'capture-shared' || kind === 'repro')
+    const replay = async () => {
+        if (!prepared || !onReplay) return
+        setReplaying(true); setReplayError('')
+        let body = prepared.text
+        try { body = replayCopy(prepared.text).text } catch { setReplayError('This capture could not be prepared for replay.'); setReplaying(false); return }
+        const result = await startMockReplay(body)
+        setReplaying(false)
+        if (result.ok) { onReplay(result.url); onClose() } else setReplayError(result.error)
+    }
 
     const muted = dark ? 'text-slate-300' : 'text-slate-700'
     const strong = dark ? 'text-white' : 'text-slate-900'
@@ -127,6 +144,8 @@ export default function ExportDialog({ theme, streamId, findings, endT, onClose 
                         </div>
                     )}
 
+                    {canReplay && <p className={`text-xs ${muted}`}>Replay in Mock mode plays this capture back through the mock server. The app does not record what events said, so each body is a placeholder of the original size; the timing, ids, event names and reconnects are the recording's.</p>}
+                    {replayError && <p role="alert" className={`text-sm ${dark ? 'text-red-300' : 'text-red-800'}`} data-testid="export-replay-error">{replayError}</p>}
                     {error && <p role="alert" className={`text-sm ${dark ? 'text-red-300' : 'text-red-800'}`}>{error}</p>}
 
                     {prepared && (
@@ -178,6 +197,9 @@ export default function ExportDialog({ theme, streamId, findings, endT, onClose 
                 <div className={`flex items-center justify-end gap-2 px-5 py-3 border-t ${dark ? 'border-slate-700' : 'border-slate-200'}`}>
                     <span className={`mr-auto text-xs ${muted}`}>{choice.shareable ? 'Nothing leaves your browser: the file is made here and saved to your computer.' : ''}</span>
                     <button type="button" onClick={onClose} className={`px-3 py-1.5 rounded-lg text-sm ${dark ? 'bg-slate-700 text-slate-100 hover:bg-slate-600' : 'bg-slate-200 text-slate-900 hover:bg-slate-300'}`}>Close</button>
+                    {canReplay && (
+                        <button type="button" disabled={replaying} onClick={() => void replay()} data-testid="export-replay" className={`px-3 py-1.5 rounded-lg text-sm disabled:opacity-50 ${dark ? 'bg-slate-700 text-slate-100 hover:bg-slate-600' : 'bg-slate-200 text-slate-900 hover:bg-slate-300'}`}>{replaying ? 'Starting…' : 'Replay in Mock mode'}</button>
+                    )}
                     <button
                         type="button"
                         disabled={!canDownload}

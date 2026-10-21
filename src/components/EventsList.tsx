@@ -2,6 +2,7 @@ import { memo, useState, useRef, useEffect } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import type { Theme, EventMessage, CustomFilter } from '../types'
 import type { TraceEntry } from '../hooks/useCorrelationTracker'
+import type { EventJump, JumpResult } from '../context/UIContext'
 import { Inbox, Radio, Clock, Hash, Copy, Check, MessageSquare, SplitSquareHorizontal, GitBranch } from 'lucide-react'
 import { JsonDiffView } from './JsonDiffView'
 import { prettyPayload, diffPayload } from '../utils/displayData'
@@ -16,6 +17,9 @@ interface EventsListProps {
     onCopyToClipboard: (text: string, eventId: string) => void
     getTraceForEvent?: (event: EventMessage) => TraceEntry | null
     onViewTrace?: (traceId: string) => void
+    /** Show one event (asked for by the Doctor): scroll to it and mark it for a moment. */
+    jumpTarget?: EventJump | null
+    onJumpResult?: (result: JumpResult) => void
 }
 
 const getTypeTheme = (type: string) => {
@@ -64,10 +68,14 @@ export const EventsList = memo(function EventsList({
     onCopyToClipboard,
     getTraceForEvent,
     onViewTrace,
+    jumpTarget,
+    onJumpResult,
 }: EventsListProps) {
     const isDark = theme === 'dark'
     const [diffEventId, setDiffEventId] = useState<string | null>(null)
     const scrollContainerRef = useRef<HTMLDivElement>(null)
+    const wrapperRef = useRef<HTMLDivElement>(null)
+    const [highlightId, setHighlightId] = useState<string | null>(null)
 
     useEffect(() => {
         if (isLive && scrollContainerRef.current) {
@@ -85,8 +93,23 @@ export const EventsList = memo(function EventsList({
         getItemKey: (index) => filteredEvents[index]?.id ?? index,
     })
 
+    // The Doctor asked to see an event. It may be gone (the list keeps the latest 1000) or hidden by a filter.
+    useEffect(() => {
+        if (!jumpTarget) return
+        const index = filteredEvents.findIndex((e) => e.obsSeq === jumpTarget.obsSeq && (jumpTarget.streamId === 'main' ? e.streamId === undefined : e.streamId === jumpTarget.streamId))
+        if (index < 0) { onJumpResult?.('missing'); return }
+        onJumpResult?.('found')
+        wrapperRef.current?.scrollIntoView({ block: 'start', behavior: 'auto' })
+        rowVirtualizer.scrollToIndex(index, { align: 'center' })
+        const id = filteredEvents[index]!.id
+        setHighlightId(id)
+        const timer = setTimeout(() => setHighlightId((current) => (current === id ? null : current)), 4000)
+        return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per request, not whenever events arrive
+    }, [jumpTarget?.nonce])
+
     return (
-        <div className={`
+        <div ref={wrapperRef} className={`
             rounded-2xl overflow-hidden animate-slide-up
             backdrop-blur-xl border transition-all duration-300
             ${isDark
@@ -183,6 +206,8 @@ export const EventsList = memo(function EventsList({
                                     <div className="mb-3">
                                         <div
                                             data-testid="event-row"
+                                            data-obs-seq={event.obsSeq}
+                                            data-highlighted={highlightId === event.id ? 'true' : undefined}
                                             className={`
                                                 group relative rounded-xl p-4 border transition-all duration-300
                                                 hover:scale-[1.01] cursor-default
@@ -191,6 +216,7 @@ export const EventsList = memo(function EventsList({
                                                     : 'bg-white border-slate-200 hover:border-slate-300 hover:shadow-md'
                                                 }
                                                 ${isNewest ? 'animate-row-in ring-2 ring-sky-500/30' : ''}
+                                                ${highlightId === event.id ? 'ring-4 ring-teal-400' : ''}
                                             `}
                                         >
                                             <div className="flex items-center justify-between gap-4 mb-3 flex-wrap">
