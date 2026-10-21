@@ -5,33 +5,50 @@ export interface StatSnapshot {
     p95?: number | undefined
 }
 
-/** A bounded window of samples with cheap quantiles. Sorting happens lazily and only when a new sample arrived. */
+/**
+ * A bounded window of samples with cheap quantiles. The window is kept sorted as samples come and go (a binary search and one
+ * shift of at most `cap` numbers), so a quantile is an index lookup. Sorting the window again for every quantile asked after every
+ * new sample was most of the Doctor's cost on a fast stream (measured: about 3 s of 8 s of main-thread time at 20,000 events/s).
+ */
 export class RollingStats {
     private readonly buf: number[] = []
     private head = 0
     private total = 0
     private max = 0
-    private sorted: number[] | null = null
+    private readonly sorted: number[] = []
 
     constructor(private readonly cap = 256) {}
 
     get count(): number { return this.total }
     get maxEver(): number { return this.max }
 
-    push(v: number): void {
-        if (this.buf.length < this.cap) this.buf.push(v)
-        else { this.buf[this.head] = v; this.head = (this.head + 1) % this.cap }
-        this.total++
-        if (v > this.max) this.max = v
-        this.sorted = null
+    /** Index of the first element that is not below `v`. */
+    private lowerBound(v: number): number {
+        let lo = 0
+        let hi = this.sorted.length
+        while (lo < hi) {
+            const mid = (lo + hi) >>> 1
+            if (this.sorted[mid]! < v) lo = mid + 1
+            else hi = mid
+        }
+        return lo
     }
 
-    private order(): number[] {
-        return (this.sorted ??= [...this.buf].sort((a, b) => a - b))
+    push(v: number): void {
+        if (this.buf.length < this.cap) this.buf.push(v)
+        else {
+            const old = this.buf[this.head]!
+            this.sorted.splice(this.lowerBound(old), 1) // the sample that leaves the window
+            this.buf[this.head] = v
+            this.head = (this.head + 1) % this.cap
+        }
+        this.sorted.splice(this.lowerBound(v), 0, v)
+        this.total++
+        if (v > this.max) this.max = v
     }
 
     quantile(q: number): number | undefined {
-        const s = this.order()
+        const s = this.sorted
         if (s.length === 0) return undefined
         return s[Math.min(s.length - 1, Math.max(0, Math.ceil(q * s.length) - 1))]
     }
