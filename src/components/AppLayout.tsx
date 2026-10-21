@@ -1,7 +1,7 @@
 // pure layout component reading state exclusively from context
 // keeps render cycles separate from complex stream orchestration logic
 
-import { useMemo, useState, useEffect } from 'react'
+import { lazy, Suspense, useMemo, useState, useEffect } from 'react'
 import { useThemeContext } from '../context/ThemeContext'
 import { useUIContext } from '../context/UIContext'
 import { useStreamContext } from '../context/StreamContext'
@@ -26,6 +26,7 @@ import { StoragePanel } from './StoragePanel'
 import { TracePanel } from './TracePanel'
 import { PatternPanel } from './PatternPanel'
 import { PerfOverlay } from './PerfOverlay'
+import { DoctorToggle } from './doctor/DoctorToggle'
 import { exportEvents, getEventStats } from '../utils/exportUtils'
 
 import {
@@ -34,6 +35,14 @@ import {
 
 const MAX_EVENTS = 1000
 
+// The diagnostics and their rules are a separate chunk, fetched when a panel opens or a stream has records.
+const DoctorPanel = lazy(() => import('./doctor/DoctorPanel'))
+const DoctorLanes = lazy(() => import('./doctor/DoctorLanes'))
+
+const DoctorLoading = ({ dark }: { dark: boolean }) => (
+    <p role="status" className={`text-sm ${dark ? 'text-slate-300' : 'text-slate-700'}`}>Loading the Doctor…</p>
+)
+
 export function AppLayout() {
     const { theme, toggleTheme } = useThemeContext()
     const {
@@ -41,6 +50,7 @@ export function AppLayout() {
         showStats, setShowStats,
         showSchema, setShowSchema,
         showInterceptors, setShowInterceptors,
+        showDoctor, setShowDoctor,
         url, setUrl,
         bearerToken, setBearerToken,
         profileName, setProfileName,
@@ -169,6 +179,14 @@ export function AppLayout() {
                             onDisconnectStream={disconnectStream}
                             onClearStreamEvents={clearStreamEvents}
                         />
+                        <div className="flex justify-end mb-4">
+                            <DoctorToggle theme={theme} active={showDoctor} onToggle={() => setShowDoctor(!showDoctor)} streams={streams.map((s) => s.id)} />
+                        </div>
+                        {showDoctor && (
+                            <Suspense fallback={<DoctorLoading dark={theme === 'dark'} />}>
+                                <DoctorLanes theme={theme} streams={streams} />
+                            </Suspense>
+                        )}
                         <EventsList
                             theme={theme}
                             connected={streams.some(s => s.connected)}
@@ -291,6 +309,8 @@ export function AppLayout() {
                                     ))}
 
 
+                                    <DoctorToggle theme={theme} active={showDoctor} onToggle={() => setShowDoctor(!showDoctor)} />
+
                                     <button
                                         onClick={() => setShowInterceptors(!showInterceptors)}
                                         className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${interceptors.some(i => i.enabled && i.compiledFn)
@@ -403,6 +423,15 @@ export function AppLayout() {
                                         onDismissAlert={dismissPatternAlert}
                                         onClearAlerts={clearPatternAlerts}
                                     />
+                                </div>
+                            )}
+
+
+                            {showDoctor && (
+                                <div className={`mt-4 pt-4 border-t ${theme === 'dark' ? 'border-slate-600' : 'border-slate-200'}`}>
+                                    <Suspense fallback={<DoctorLoading dark={theme === 'dark'} />}>
+                                        <DoctorPanel theme={theme} streamId="main" />
+                                    </Suspense>
                                 </div>
                             )}
 

@@ -23,6 +23,7 @@ export function AppProviders({ children }: Props) {
     const [showStats, setShowStats] = useState(false)
     const [showSchema, setShowSchema] = useState(false)
     const [showInterceptors, setShowInterceptors] = useState(false)
+    const [showDoctor, setShowDoctor] = useState(false)
 
     const { streamValue, perfValue } = useStreamState({ capturePreview: showInterceptors })
 
@@ -34,11 +35,12 @@ export function AppProviders({ children }: Props) {
         showStats, setShowStats,
         showSchema, setShowSchema,
         showInterceptors, setShowInterceptors,
+        showDoctor, setShowDoctor,
         url, setUrl,
         bearerToken, setBearerToken,
         profileName, setProfileName,
         useProxy, setUseProxy,
-    }), [appMode, showStats, showSchema, showInterceptors, url, setUrl, bearerToken, setBearerToken, profileName, setProfileName, useProxy, setUseProxy])
+    }), [appMode, showStats, showSchema, showInterceptors, showDoctor, url, setUrl, bearerToken, setBearerToken, profileName, setProfileName, useProxy, setUseProxy])
 
     return (
         <ThemeContext.Provider value={themeValue}>

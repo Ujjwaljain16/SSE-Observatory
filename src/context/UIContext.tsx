@@ -11,6 +11,8 @@ interface UIContextValue {
     setShowSchema: (v: boolean) => void
     showInterceptors: boolean
     setShowInterceptors: (v: boolean) => void
+    showDoctor: boolean
+    setShowDoctor: (v: boolean) => void
     // connection form state lifted from local components
     url: string
     setUrl: (v: string) => void
