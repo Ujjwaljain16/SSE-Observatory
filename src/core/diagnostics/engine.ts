@@ -1,4 +1,4 @@
-import { SEVERITY_RANK, type Finding, type FindingDraft } from './finding'
+import { SEVERITY_RANK, type Finding, type FindingDraft, type Severity } from './finding'
 import { CAPABILITY_EVIDENCE, type Capability, type Rule, type RuleInstance } from './rule'
 import { defaultRules } from './rules'
 import { StreamModel, type EngineInput } from './streamModel'
@@ -51,9 +51,12 @@ export function createEngine(options: EngineOptions = {}): Engine {
     let provisional = new Map<string, Finding>()
     let ended = false
 
+    // A severity can come from a record in a file somebody sent: anything that is not one of the four is shown as info, so no
+    // renderer ever prints text from a file as a class or a label, and a gate never meets a rank it cannot compare.
+    const known = (severity: string): Severity => (Object.prototype.hasOwnProperty.call(SEVERITY_RANK, severity) ? (severity as Severity) : 'info')
     const store = (target: Map<string, Finding>, rule: Rule, drafts: FindingDraft[] | void): void => {
         if (!drafts) return
-        for (const d of drafts) target.set(d.key, { ...d, ruleId: rule.id, ruleVersion: rule.version, status: d.status ?? 'open' })
+        for (const d of drafts) target.set(d.key, { ...d, severity: known(d.severity), ruleId: rule.id, ruleVersion: rule.version, status: d.status ?? 'open' })
     }
 
     return {

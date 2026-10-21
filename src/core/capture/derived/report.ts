@@ -149,7 +149,7 @@ function renderHtml(m: ReportModel): string {
     const out: string[] = []
     out.push('<!doctype html>', '<html lang="en">', '<head>', '<meta charset="utf-8">', '<meta name="viewport" content="width=device-width, initial-scale=1">')
     // nothing in this page loads anything; the policy keeps it that way even if an escape were ever missed
-    out.push(`<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:">`)
+    out.push(`<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; form-action 'none'; base-uri 'none'">`)
     out.push('<title>SSE Observatory report</title>', `<style>${CSS}</style>`, '</head>', '<body>', '<main>', '<h1>SSE Observatory report</h1>')
 
     const rows: Array<[string, string]> = [['Kind', c.kind], ['Source', sourceText(m)]]
@@ -162,8 +162,9 @@ function renderHtml(m: ReportModel): string {
     out.push(`<h2>Findings (${m.findings.length})</h2>`)
     if (m.findings.length === 0) out.push('<p>No finding was raised by the checks that could run. See the section below for the ones that could not.</p>')
     m.findings.forEach((f, i) => {
-        out.push(`<section class="finding ${f.severity}">`)
-        out.push(`<h3><span class="sev ${f.severity}">${esc(f.severity)}</span>${i + 1}. ${esc(f.title)}</h3>`)
+        const sev = SEVERITY_CLASSES.has(f.severity) ? f.severity : 'info' // only a known word is ever written into an attribute
+        out.push(`<section class="finding ${sev}">`)
+        out.push(`<h3><span class="sev ${sev}">${esc(sev)}</span>${i + 1}. ${esc(f.title)}</h3>`)
         out.push(`<p>${esc(f.summary)}</p>`, `<p class="muted">Check ${esc(f.key)}. Seen ${esc(occurrenceText(f))}.</p>`)
         if (f.facts.length > 0) {
             out.push('<h4>Observed</h4>', '<ul>')
@@ -212,6 +213,8 @@ function renderHtml(m: ReportModel): string {
 }
 
 // ---------------------------------------------------------------- entry point
+
+const SEVERITY_CLASSES = new Set<string>(['info', 'warning', 'error', 'critical'])
 
 export function buildReport(capture: RedactedCapture, analysis: Analysis, opts: ReportOptions = {}): string {
     const model = buildReportModel(capture, analysis)
