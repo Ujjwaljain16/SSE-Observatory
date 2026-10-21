@@ -20,6 +20,17 @@ test.beforeAll(async () => {
         if (req.method === 'OPTIONS') { res.writeHead(204, headers); res.end(); return }
         res.writeHead(200, headers)
         res.write(': open\n\n')
+        if (req.url?.startsWith('/seq')) {
+            const skip = new URL(req.url, 'http://x').searchParams.get('run') === '2' ? 4 : -1
+            let k = 0
+            const t = setInterval(() => {
+                if (k === skip) k++
+                res.write(`id: ${k}\nevent: tick\ndata: {"seq":${k},"ts":${1_700_000_000_000 + k * 250}}\n\n`)
+                k++
+            }, 250)
+            req.on('close', () => clearInterval(t))
+            return
+        }
         if (req.url?.startsWith('/leaky')) res.write(`: debug auth ${JWT}\n\n: session ${OPAQUE}\n\n`)
         let n = 0
         const limit = req.url?.startsWith('/silent') ? 12 : req.url?.startsWith('/leaky') ? 4 : Infinity
@@ -263,6 +274,117 @@ test.describe('Stream Doctor', () => {
             const results = await new AxeBuilder({ page }).include('[data-testid="export-dialog"]').withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze()
             const found = results.violations.map((v) => `${v.id} (${v.impact}) ${v.help} e.g. ${v.nodes[0]?.target.join(' ')}`)
             expect(found, found.join('\n')).toEqual([])
+        })
+    })
+
+    test.describe('profile and sequence', () => {
+        async function startSeq(page: Page, run: string) {
+            await page.getByTestId('url-input').fill(`${base}/seq?run=${run}`)
+            await page.getByTestId('connect-button').click()
+            await expect(page.locator('text=Connected').first()).toBeVisible({ timeout: 10_000 })
+        }
+
+        test('says plainly that ids which merely count up prove nothing, and offers to declare them', async ({ page }) => {
+            test.setTimeout(60_000)
+            await page.goto('/')
+            await startSeq(page, '1')
+            await openDoctor(page)
+            await page.getByTestId('doctor-tab-sequence').click()
+            await page.waitForTimeout(2500)
+            await expect(page.getByTestId('sequence-trust')).toContainText('Not declared')
+            await expect(page.getByTestId('sequence-trust')).toContainText('hint, not a check')
+            await expect(page.getByRole('button', { name: 'Declare the sequence' })).toBeVisible()
+        })
+
+        test('declare the sequence from a suggested field, reconnect, and see the gap in both views', async ({ page }) => {
+            test.setTimeout(90_000)
+            await page.goto('/')
+            await startSeq(page, '1')
+            await openDoctor(page)
+            await page.waitForTimeout(3000)
+
+            // the profile tab lists the fields of recent events, the counter first
+            await page.getByTestId('doctor-tab-profile').click()
+            const suggestions = page.getByTestId('profile-suggestions')
+            await expect(suggestions).toContainText('$.seq')
+            await expect(suggestions).toContainText('counts up by one')
+            await page.getByTestId('use-seq-$.seq').click()
+            await expect(page.getByTestId('profile-field')).toHaveValue('$.seq')
+            await page.getByTestId('profile-save').click()
+            await expect(page.getByTestId('profile-message')).toContainText('Saved: sequence $.seq (consecutive)')
+            await expect(page.getByTestId('profile-message')).toContainText('reconnect')
+            expect(await page.evaluate(() => localStorage.getItem('sse.doctor.profile'))).toContain('"field":"$.seq"')
+
+            // a new connection records the numbers; this run skips number 4
+            await page.getByRole('button', { name: 'Stop' }).click()
+            await startSeq(page, '2')
+            await page.getByTestId('doctor-tab-sequence').click()
+            await expect(page.getByTestId('sequence-trust')).toContainText('Declared')
+            const anomalies = page.getByTestId('sequence-anomalies')
+            await expect(anomalies).toBeVisible({ timeout: 20_000 })
+            await expect(anomalies).toContainText('after a gap')
+            await expect(anomalies.getByRole('row', { name: /after a gap/ })).toContainText('4')
+
+            // the rule agrees, once the reorder window has passed
+            await page.getByTestId('doctor-tab-findings').click()
+            await expect(page.locator('[data-testid="doctor-finding"][data-finding-key="seq.integrity:gap"]')).toBeVisible({ timeout: 20_000 })
+        })
+
+        test('refuses a profile that cannot be used, in plain words, and keeps the last good one', async ({ page }) => {
+            await page.goto('/')
+            await openDoctor(page)
+            await page.getByText('Set up a profile before connecting').click()
+            await page.getByText('Edit as JSON').click()
+            await page.getByTestId('profile-json').fill('{ "sequence": { "policy": "sometimes" }, "delivery": "maybe" }')
+            await page.getByRole('button', { name: 'Apply JSON' }).click()
+            const errors = page.getByTestId('profile-errors')
+            await expect(errors).toContainText('sequence.policy')
+            await expect(errors).toContainText('delivery')
+            expect(await page.evaluate(() => localStorage.getItem('sse.doctor.profile'))).toBeNull()
+
+            await page.getByTestId('profile-json').fill('{ "sequence": { "useSseId": true, "policy": "monotonic" }, "delivery": "exactly_once" }')
+            await page.getByRole('button', { name: 'Apply JSON' }).click()
+            await expect(page.getByTestId('profile-message')).toContainText('sequence in the SSE id (monotonic), exactly once')
+            await page.reload()
+            expect(await page.evaluate(() => localStorage.getItem('sse.doctor.profile'))).toContain('"exactly_once"')
+        })
+
+        test('the tabs work from the keyboard', async ({ page }) => {
+            test.setTimeout(60_000)
+            await page.goto('/')
+            await startSeq(page, '1')
+            await openDoctor(page)
+            const findings = page.getByTestId('doctor-tab-findings')
+            await expect(findings).toHaveAttribute('aria-selected', 'true')
+            await findings.focus()
+            await page.keyboard.press('ArrowRight')
+            await expect(page.getByTestId('doctor-tab-sequence')).toHaveAttribute('aria-selected', 'true')
+            await expect(page.getByTestId('doctor-tab-sequence')).toBeFocused()
+            await page.keyboard.press('End')
+            await expect(page.getByTestId('doctor-tab-profile')).toHaveAttribute('aria-selected', 'true')
+            await page.keyboard.press('Home')
+            await expect(findings).toHaveAttribute('aria-selected', 'true')
+            // only the selected tab is a tab stop
+            await expect(page.getByTestId('doctor-tab-profile')).toHaveAttribute('tabindex', '-1')
+        })
+
+        test('has no accessibility violations on the sequence and profile tabs (A and AA)', async ({ page }) => {
+            test.setTimeout(90_000)
+            await page.emulateMedia({ reducedMotion: 'reduce' })
+            await page.goto('/')
+            await startSeq(page, '1')
+            await openDoctor(page)
+            await page.waitForTimeout(3000)
+            const check = async (label: string) => {
+                await page.waitForTimeout(400)
+                const results = await new AxeBuilder({ page }).include('[data-testid="doctor-panel"]').withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze()
+                const found = results.violations.map((v) => `${label}: ${v.id} (${v.impact}) ${v.help} e.g. ${v.nodes[0]?.target.join(' ')}`)
+                expect(found, found.join('\n')).toEqual([])
+            }
+            await page.getByTestId('doctor-tab-sequence').click()
+            await check('sequence')
+            await page.getByTestId('doctor-tab-profile').click()
+            await check('profile')
         })
     })
 
