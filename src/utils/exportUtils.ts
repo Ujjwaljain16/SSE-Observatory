@@ -46,13 +46,7 @@ export const exportEvents = (events: EventMessage[], options: ExportOptions): vo
     } else {
         // CSV format
         const headers = ['ID', 'Timestamp', 'Type', 'Parsed Type', 'Data']
-        const rows = events.map(event => [
-            event.id,
-            event.timestamp,
-            event.type,
-            event.parsedType || '',
-            `"${event.data.replace(/"/g, '""')}"`
-        ])
+        const rows = events.map(event => [event.id, event.timestamp, event.type, event.parsedType || '', event.data].map(csvCell))
         content = [headers.join(','), ...rows.map(row => row.join(','))].join('\n')
         mimeType = 'text/csv'
         extension = 'csv'
@@ -69,21 +63,31 @@ export const exportEvents = (events: EventMessage[], options: ExportOptions): vo
     URL.revokeObjectURL(url)
 }
 
+/**
+ * One CSV cell. Always quoted, so a comma, quote or line break in an event name or id cannot shift the columns, and a cell that begins
+ * with = + - @ (or a tab or carriage return) gets a leading apostrophe, so a spreadsheet shows it as text instead of running it as a formula.
+ */
+export const csvCell = (value: string): string => {
+    const text = /^[=+\-@\t\r]/.test(value) ? `'${value}` : value
+    return `"${text.replace(/"/g, '""')}"`
+}
+
 export const getEventStats = (events: EventMessage[]) => {
-    const typeCount: Record<string, number> = {}
+    // a Map: an event named __proto__ or constructor is an ordinary key, not a property of the object
+    const typeCount = new Map<string, number>()
 
     events.forEach(event => {
         const type = event.parsedType || event.type
-        typeCount[type] = (typeCount[type] || 0) + 1
+        typeCount.set(type, (typeCount.get(type) ?? 0) + 1)
     })
 
-    const sortedTypes = Object.entries(typeCount)
+    const sortedTypes = [...typeCount.entries()]
         .sort((a, b) => b[1] - a[1])
         .slice(0, 10)
 
     return {
         total: events.length,
-        uniqueTypes: Object.keys(typeCount).length,
+        uniqueTypes: typeCount.size,
         topTypes: sortedTypes
     }
 }

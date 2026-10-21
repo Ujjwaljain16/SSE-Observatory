@@ -18,7 +18,7 @@ import { createObservedStream, type ObservedStream } from '../core/sse/observedS
 import { buildSSERequest } from '../utils/sseProxyUrl'
 import type { IncomingSSE } from '../utils/buildEvent'
 import type { PayloadProbeConfig } from '../core/observe/payloadProbe'
-import { asProbeConfig } from './contracts'
+import { asProbeConfig, streamKey } from './contracts'
 
 const MAX_BUFFER = 50                // recent events kept so a late-joining tab can catch up
 const SWEEP_MS = 15_000              // how often silent tabs are looked for
@@ -58,7 +58,6 @@ export function _clearConnectionsForTesting() {
 }
 export function _sweepForTesting(now: number) { sweep(now) }
 
-const makeKey = (url: string, token?: string) => `${url}::${token ?? ''}`
 
 function send(port: MessagePort, msg: unknown) {
     try { port.postMessage(msg) } catch { /* port is gone; the sweeper removes it */ }
@@ -133,7 +132,7 @@ function leave(port: MessagePort) {
 }
 
 function join(port: MessagePort, url: string, token: string | undefined, useProxy: boolean, recording: boolean, profile: PayloadProbeConfig | undefined) {
-    const key = makeKey(url, token)
+    const key = streamKey(url, token, { recording, useProxy, probe: profile })
     const st = portState.get(port)!
     if (st.key && st.key !== key) leave(port)  // switching streams must not leave the old subscription behind
     st.key = key

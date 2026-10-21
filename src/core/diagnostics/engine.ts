@@ -35,7 +35,14 @@ export interface Engine {
     coverage(): RuleCoverage[]
 }
 
-interface Entry { rule: Rule; instance: RuleInstance }
+/**
+ * A rule that threw on a record it did not expect (a capture file is not trusted: a `connect` without a URL, a `response` without
+ * headers) stops being fed and is reported as not evaluated, with the reason, so one bad record cannot take the analysis down or
+ * make a rule look as if it passed.
+ */
+interface Entry { rule: Rule; instance: RuleInstance; failed?: string }
+
+const messageOf = (err: unknown): string => (err instanceof Error ? err.message : String(err)).slice(0, 160)
 
 const byImportance = (a: Finding, b: Finding): number =>
     SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity] || a.firstSeenT - b.firstSeenT || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0)
@@ -50,6 +57,7 @@ export function createEngine(options: EngineOptions = {}): Engine {
     const kept = new Map<string, Finding>()
     let provisional = new Map<string, Finding>()
     let ended = false
+    let skipped = 0
 
     // A severity can come from a record in a file somebody sent: anything that is not one of the four is shown as info, so no
     // renderer ever prints text from a file as a class or a label, and a gate never meets a rank it cannot compare.
@@ -63,21 +71,30 @@ export function createEngine(options: EngineOptions = {}): Engine {
         model,
         feed(o) {
             if (ended) return
-            model.update(o)
+            try { model.update(o) } catch { skipped++; return } // a record the model cannot read is counted and left out
             provisional = new Map()
-            for (const { rule, instance } of entries) store(kept, rule, instance.onObservation(o, model))
+            for (const entry of entries) {
+                if (entry.failed) continue
+                try { store(kept, entry.rule, entry.instance.onObservation(o, model)) } catch (err) { entry.failed = `${entry.rule.id} stopped on record #${o.seq}: ${messageOf(err)}` }
+            }
         },
         tick(nowT) {
             if (ended) return
             const at = Math.max(nowT, model.nowT)
             provisional = new Map()
-            for (const { rule, instance } of entries) store(provisional, rule, instance.onTick?.(at, model))
+            for (const entry of entries) {
+                if (entry.failed) continue
+                try { store(provisional, entry.rule, entry.instance.onTick?.(at, model)) } catch (err) { entry.failed = `${entry.rule.id} stopped: ${messageOf(err)}` }
+            }
         },
         end(endT) {
             if (ended) return
             const at = Math.max(endT, model.nowT)
             provisional = new Map()
-            for (const { rule, instance } of entries) store(kept, rule, instance.onEnd?.(at, model))
+            for (const entry of entries) {
+                if (entry.failed) continue
+                try { store(kept, entry.rule, entry.instance.onEnd?.(at, model)) } catch (err) { entry.failed = `${entry.rule.id} stopped at the end: ${messageOf(err)}` }
+            }
             ended = true
         },
         findings() {
@@ -86,7 +103,8 @@ export function createEngine(options: EngineOptions = {}): Engine {
             return [...merged.values()].sort(byImportance)
         },
         coverage() {
-            return entries.map(({ rule, instance }): RuleCoverage => {
+            return entries.map(({ rule, instance, failed }): RuleCoverage => {
+                if (failed) return { ruleId: rule.id, ruleVersion: rule.version, title: rule.title, status: 'not-evaluated', missingCapabilities: [], missingKinds: [], notes: [`Not evaluated: ${failed}. The capture holds a record this check could not read.${skipped > 0 ? ` ${skipped} record${skipped === 1 ? ' was' : 's were'} left out altogether.` : ''}`] }
                 const missingCapabilities = rule.requires.filter((cap) => !CAPABILITY_EVIDENCE[cap].some((kind) => model.seenKinds.has(kind)))
                 const missingKinds = [...new Set(missingCapabilities.flatMap((cap) => CAPABILITY_EVIDENCE[cap]))]
                 if (missingCapabilities.length > 0) {

@@ -65,3 +65,14 @@ export function asProbeConfig(value: unknown): PayloadProbeConfig | undefined {
     if (text(v['partitionBy'])) out.partitionBy = v['partitionBy']
     return Object.keys(out).length > 0 ? out : undefined
 }
+
+/**
+ * The identity of a shared connection. Tabs that ask for the same stream share one connection, but only when they would record it
+ * the same way: a different profile (the fields read from payloads), recording on or off, or proxy on or off is a different
+ * connection. Without that, saving a profile and reconnecting inside the worker's idle grace kept the old connection, whose recorder
+ * still read the old fields while the rules used the new profile. The page and the worker both call this, so they agree.
+ */
+export function streamKey(url: string, token: string | undefined, options: { recording: boolean; useProxy: boolean; probe?: PayloadProbeConfig | undefined }): string {
+    const variant = options.recording && options.useProxy && !options.probe ? '' : `#${options.recording ? 'r' : 'n'}${options.useProxy ? 'p' : 'd'}${options.probe ? JSON.stringify(options.probe) : ''}`
+    return `${url}::${token ?? ''}${variant}`
+}
