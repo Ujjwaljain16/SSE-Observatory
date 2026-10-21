@@ -12,6 +12,8 @@ Debugging **Server-Sent Events (SSE)** in production is hard. Browser network to
 
 **SSE Observatory** is a browser-native debugging toolkit. It lets you inspect, filter, transform, correlate and replay event streams without any extra backend logging or APM, and it stays responsive under heavy load because parsing, filtering and sandboxed code all run off the main thread with every buffer bounded.
 
+Since v2 it also answers the harder question, **why** a stream is stuck, late or losing events, and turns the answer into a regression test: **Inspect, Diagnose, Reproduce, Test, Monitor** (see [the Stream Doctor](#the-stream-doctor)).
+
 ## 2. Platform Showcases
 
 ### 🔍 Monitor Mode
@@ -34,6 +36,19 @@ Upload an exported `.sse-record`, get a private replay URL (0.5x, 1x or 2x, opti
 
 ![Mock Server](./public/screenshots/mock-server.png)
 
+### 🩺 Stream Doctor
+Says what looks wrong with a stream and shows the evidence: a stream that went quiet, with what was measured, what is only inferred ("Likely: …", with the other explanations) and what the check cannot know.
+
+![Stream Doctor findings](./public/screenshots/doctor-findings.png)
+
+One row per connection attempt, with the `Last-Event-ID` each one resumed from and how long the client waited:
+
+![Reconnect timeline](./public/screenshots/doctor-timeline.png)
+
+Export a report, a shareable capture, a curl command or a test scenario. Redaction shows what it replaced, and a scan gates sharing:
+
+![Export with redaction](./public/screenshots/doctor-export.png)
+
 ## 3. Key Features
 
 - **Spec-compliant SSE client:** fetch-based, with named events, `Last-Event-ID` resume, exponential backoff with jitter, and a clear difference between retryable failures and fatal ones (wrong URL, 401/403/404, wrong content type). `event: end` or a 204 stops a stream for good.
@@ -47,6 +62,35 @@ Upload an exported `.sse-record`, get a private replay URL (0.5x, 1x or 2x, opti
 - **Mock server and replay:** export a session, replay it from a private URL at adjustable speed; finished replays send `event: end`.
 - **Secure proxy:** `/api/sse` relays streams for sites without CORS. It is closed by default in production, blocks private and metadata addresses after DNS resolution, pins the connection to the validated IP and keeps tokens out of URLs.
 - **Resilient transport:** one connection per URL shared across tabs through a SharedWorker; if the worker is missing or dies, the tab notices and carries on in the page.
+- **Stream Doctor:** fourteen rules over what the client observed (status and content type, framing, first-event timing, silences, bursts, reconnect loops, resume with `Last-Event-ID`, sequence gaps and duplicates, heartbeats, slow consumers, credentials in the request, proxy masking), each shown as facts, deductions and limits, with the records behind them.
+- **Capture, redact, replay, test:** `.sse-capture` files with redaction by numbered placeholders, a `sse-doctor` command line, and scenarios that turn a captured failure into a CI check.
+
+### The Stream Doctor
+
+| Step | In the app | On the command line |
+|---|---|---|
+| **Inspect** | the viewer | `sse-doctor probe <url>` records a stream |
+| **Diagnose** | the Doctor panel: findings, timeline, sequence | `sse-doctor analyze <capture>`, `report` |
+| **Reproduce** | Export a capture; Replay in Mock mode | `sse-doctor replay`, `repro` (smallest capture that still shows a finding) |
+| **Test** | Export a test scenario | `sse-doctor test scenarios/*.json` (JUnit and exit codes for CI) |
+| **Monitor** | a saved library of captures, compare two | `compare`, the composite `action.yml` |
+
+```bash
+npm run build:cli
+npm run doctor -- probe https://example.com/stream --duration 30 --out incident.sse-capture
+npm run doctor -- analyze incident.sse-capture
+npm run doctor -- report incident.sse-capture --format md
+npm run doctor -- test scenarios/ci/pass/*.json
+```
+
+What it will not pretend to know (the full list is in [Known limitations](https://sse-observatory.vercel.app/docs/technical/limitations)):
+
+- A browser sees that bytes stopped arriving, not which hop stopped them. Findings say *likely* and list the alternatives; a stall is judged against the stream's own rhythm and says so when it cannot tell a stall from a legitimate idle.
+- Gaps and duplicates are judged only when you declare which numbers count; ids that merely look sequential prove nothing.
+- **No findings is not proof of health.** Checks that had nothing to look at are listed as *not evaluated*.
+- The app records what happened on the wire, not what events said, so exports hold no event bodies, and a replay uses placeholders of the original size.
+- Captures saved in the browser are not redacted; only an export goes through redaction, and its scan is a check, not a guarantee.
+- The command line is built to be publishable and is not published.
 
 ## 4. System Architecture
 
@@ -117,6 +161,10 @@ src/
   ├── workers/       # sharedSSEWorker, filterWorker, interceptorWorker, timelineWorker
   ├── utils/         # SSEClient/parser, query language, IndexedDB, pattern engine, sandbox hardening
   ├── pipeline/      # Pipeline and SSE-spec tests
+  ├── core/          # The Doctor's pure TypeScript core (no DOM): SSE client and parser with observation hooks, recorder, diagnostics rules, capture format and redaction, reports, scenarios
+  ├── doctor/        # In-app Doctor logic: registry, store, sessions, export artifacts, capture library, profile
+  ├── cli/           # The sse-doctor command line (bundled with esbuild into dist-cli)
+  ├── fixtures/      # Deterministic fixture servers for the failure cases and their healthy twins
 lib/                 # Server code shared by Express and Vercel: proxy (guard, streamProxy) and mock replay API
 api/                 # Thin Vercel function adapters
 e2e/                 # Playwright specs
@@ -133,6 +181,9 @@ npm run test          # unit and integration tests (Vitest, fast-check property 
 npm run test:coverage
 npm run test:e2e      # Playwright against the dev servers; start `npm run chaos` or let Playwright start it
 npm run test:soak     # long-running memory soak
+npm run build:cli && npm run doctor:selftest   # build the command line and check every shipped rule against its fixtures
+npm run cli:check     # pack the CLI, install the tarball in a clean folder, run it against a stream with canary secrets
+npm run doctor:scenarios   # scenario files against the built-in fixture streams (pass, fail, inconclusive)
 ```
 
 The unit suite covers the proxy guard and SSRF filter, the SSE parser and client, the query language, the filter engine, patterns, correlation, storage, the sandbox and the worker protocol. The e2e specs drive a real browser through connecting, filtering, interceptor failures (errors, infinite loops, escape attempts), bursts and backpressure, reconnect storms, multi-tab SharedWorker use, a killed SharedWorker, and mock replay.
@@ -161,6 +212,8 @@ Reproduce with `npm run bench` (add `-- --throttle 4` for the slow-CPU run, `-- 
 - **Why virtualisation?** Only the visible rows are in the DOM, so 1,000 buffered events cost the same as 20.
 
 ## 12. Future Improvements
+
+What v2 deliberately left out (a fault-injection proxy, environment comparison, a server SDK, OpenTelemetry export, an AI explainer, npm publishing of the CLI) and the places it was built to grow are in [the later track](https://sse-observatory.vercel.app/docs/technical/roadmap-later).
 
 - **WASM query engine** for even tighter filtering loops.
 - **Protobuf / gRPC-Web decoding** beyond stringified JSON.

@@ -47,7 +47,10 @@ export default defineConfig({
                         { text: 'Proxy Diagnostics', link: '/technical/proxy-diagnostics' },
                         { text: 'Diagnostics', link: '/technical/diagnostics' },
                         { text: 'Capture Format', link: '/technical/capture-format' },
-                        { text: 'Known Limitations', link: '/technical/limitations' }
+                        { text: 'Known Limitations', link: '/technical/limitations' },
+                        { text: 'Security Review', link: '/technical/security' },
+                        { text: 'Later Track', link: '/technical/roadmap-later' },
+                        { text: 'Publishing sse-doctor', link: '/technical/publishing' }
                     ]
                 }
             ]
