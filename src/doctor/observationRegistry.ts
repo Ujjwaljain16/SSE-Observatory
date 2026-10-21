@@ -50,6 +50,11 @@ export class ObservationRegistry {
         return [...this.entries.keys()]
     }
 
+    /** Elapsed time of this stream's page-domain recorder, in its own clock. */
+    pageElapsed(streamId: string): number | undefined {
+        return this.entries.get(streamId)?.pageRecorder.elapsed()
+    }
+
     /** Records from the SharedWorker for this stream. */
     receive(streamId: string, message: IncomingObservations): void {
         let entry = this.entries.get(streamId)
