@@ -27,7 +27,7 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
-    "test:soak": "playwright test e2e/soak.spec.ts",
+    "test:soak": "playwright test e2e/soak.spec.ts --config=playwright.soak.config.ts",
     "bench": "node scripts/bench.mjs",
     "screenshots": "node scripts/screenshots.mjs",
     "demo": "node test-servers/demo-server.js",

@@ -13,6 +13,7 @@ export const VIOLATIONS = {
     // error: a conforming client fails the connection
     BAD_CONTENT_TYPE: { severity: 'error', note: 'The response is not text/event-stream, so a conforming EventSource fails the connection.' },
     HTTP_STATUS_NOT_200: { severity: 'error', note: 'The response status is not 200, so a conforming EventSource fails the connection (204 means stop reconnecting).' },
+    EVENT_TOO_LONG: { severity: 'error', note: 'One event grew past this client\'s safety limit without ending (many short lines and no blank line), so the stream was abandoned. This is the client\'s limit, not a spec rule.' },
     LINE_TOO_LONG: { severity: 'error', note: 'A single line exceeded this client\'s safety limit, so the stream was abandoned. This is the client\'s limit, not a spec rule.' },
 
     // warning: handled by the spec, but data is lost or a producer mistake is likely

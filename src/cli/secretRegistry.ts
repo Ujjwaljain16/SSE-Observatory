@@ -19,8 +19,19 @@ export class SecretRegistry {
     register(value: string | undefined): boolean {
         if (value === undefined || value === '') return true
         if (value.length < MIN_SECRET_LENGTH) return false
-        const forms = new Set<string>([value, encodeURIComponent(value), Buffer.from(value, 'utf8').toString('base64')])
+        const b64 = Buffer.from(value, 'utf8').toString('base64')
+        const forms = new Set<string>([
+            value, encodeURIComponent(value), b64,
+            // the ways a server echoing the value back may have written it: inside a JSON string, percent-encoded in lower case, base64url
+            JSON.stringify(value).slice(1, -1),
+            encodeURIComponent(value).replace(/%[0-9A-F]{2}/g, (m) => m.toLowerCase()),
+            b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''),
+            b64.replace(/=+$/, ''),
+        ])
         // Basic auth sends user:password in Base64; a credential pair is registered both ways by the caller.
+        // `Scheme value` (Bearer T, Token T): the value alone is the secret too, wherever it is echoed.
+        const scheme = /^(?:Bearer|Basic|Token|Digest|ApiKey)\s+(\S{4,})$/i.exec(value)
+        if (scheme) forms.add(scheme[1]!)
         for (const form of forms) if (form.length >= MIN_SECRET_LENGTH && !this.forms.includes(form)) this.forms.push(form)
         this.forms.sort((a, b) => b.length - a.length) // longest first, so a value that contains another is replaced whole
         return true

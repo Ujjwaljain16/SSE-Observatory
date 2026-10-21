@@ -25,6 +25,8 @@ npm run doctor -- analyze stream.sse-capture
 
 Options for every command: `--format human|json|md|junit`, `--fail-on info|warning|error|critical` (default `error`), `--profile <file.json>`, `--quiet`, `--verbose`.
 
+A full (not redacted) capture served by `replay` is not readable by web pages unless you pass `--allow-origin <page origin>` (the app's proxy and `curl` work without it); a redacted capture keeps the open policy.
+
 ## Exit codes
 
 | Code | Meaning |
@@ -32,7 +34,7 @@ Options for every command: `--format human|json|md|junit`, `--fail-on info|warni
 | 0 | passed |
 | 1 | an open finding at or above `--fail-on` |
 | 2 | wrong usage, or an input that is not a capture |
-| 3 | could not run (file unreadable, connection failed without a diagnosis) |
+| 3 | could not run (file unreadable, or the server never answered: a probe that got no response exits 3 whatever `--fail-on` says) |
 | 4 | inconclusive: no check failed, but a scenario check could not be decided |
 | 130 | interrupted |
 

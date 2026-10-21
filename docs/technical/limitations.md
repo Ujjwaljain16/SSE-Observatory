@@ -50,3 +50,27 @@ On Vercel the upload and the stream are different functions with separate memory
 ## 9. The CLI reads whole files and uses Node's fetch
 
 `analyze` and `redact` read the file into memory; a 116 MB capture (1.2 million records) analyzes in about 24 s inside a 384 MB heap, and redaction handles 200,000 chunks with 200,000 secrets in about 4 s. Node's `fetch` decodes compressed responses itself, does not honour `HTTP_PROXY`, and chunks reads differently from a browser, so a CLI capture and a browser capture of the same stream can differ in chunk sizes; each capture records which client made it.
+
+## 10. What the Doctor can and cannot see
+
+The Doctor reads what the client observed, so it knows when bytes arrived, how large they were, what the response said and which events were parsed. It does not know what happened on the other side:
+
+- **No layer attribution.** A browser capture shows that bytes stopped arriving, not whether the producer, a proxy, a CDN or the network stopped them. Findings state the measurement, then a deduction worded "Likely: …" with its confidence and the other explanations that fit. The check to run next is the one that tells them apart.
+- **Cross-origin responses hide headers.** A page can read only the CORS-safelisted headers plus whatever the server exposes. Checks that need others report *not evaluated* for such a stream, and work in full through the app's own proxy (which adds `X-SSE-*` headers a page on the same origin can read) and in the command line.
+- **Silence is judged against the stream's own rhythm** (three times its 95th percentile gap, or twice its heartbeat interval, once enough gaps were seen). Before that, or for a stream that is quiet by design, it waits 30 s and says it cannot tell a stall from an idle period. A tab hidden for 2 s or more restarts the measurement instead of reporting the time away.
+- **Continuity needs a declaration.** Gaps and duplicates are judged only for a declared sequence (a JSON path or the SSE id, counted one by one or upwards). Ids that merely count up are shown as a hint.
+- **The app records what happened on the wire, not what events said.** Event bodies are not kept, so an export has no event data, a replay uses placeholder bodies of the original size, and checks that read a payload see only the fields the profile names, read as each event is recorded. A stream already connected when a profile is declared carries the numbers only after it reconnects.
+- **The recording is bounded** (8 MB per stream). Per-read detail is folded away first, and the recording and an exported capture say so.
+- **"No findings" is not "healthy".** Checks that had nothing to look at are listed as *not evaluated*, and a capture imported from an older `.sse-record` has event times only.
+
+## 11. What is kept in the browser
+
+A capture saved to the library is the recording as the app held it, **not redacted**, in this browser's IndexedDB (up to 20 captures of 20 MB), together with its bookmarks. The profile, pinned fields and saved filters are in `localStorage`. Clearing the site's data removes all of it, and a private window may not keep it. Nothing is uploaded; a capture leaves the browser only through Export, which redacts it, shows what it replaced, scans the result for anything that still looks secret and waits for a person to acknowledge a hit. The scan is a check and not a guarantee: a secret in free text that matches no known format and looks like ordinary words cannot be found.
+
+## 12. Reproduction is only as faithful as what was recorded
+
+Replaying an exported capture reproduces its timing, ids, event names, reconnects and the numbers the profile reads. It does not reproduce payloads, and it plays the timings back instead of measuring a network, so the Doctor labels a replay as one. The mock server it uses is on in development and off on a public deployment unless `ENABLE_MOCK_API=1` is set; when it is on, uploads and streams are rate limited per client and per hour (see [Mock Server & Replay](/guide/mock-server)).
+
+## 13. Not tested yet
+
+The Doctor has automated accessibility checks (axe, WCAG A and AA), keyboard-only runs and checks of the accessibility tree, but **has not been used with a real screen reader**, on Mac Safari or on mobile Chrome. It has been run through Chromium locally and in CI on Chromium, Firefox and WebKit; the soak run on a long continuous stream is ten minutes, not an hour.

@@ -6,8 +6,8 @@ type FlagKind = 'bool' | 'string' | 'multi'
 const FLAGS: Record<string, FlagKind> = {
     format: 'string', output: 'string', out: 'string', quiet: 'bool', verbose: 'bool', 'no-color': 'bool',
     profile: 'string', 'fail-on': 'string', redact: 'bool', 'no-redact': 'bool', timeout: 'string',
-    duration: 'string', 'max-events': 'string', 'idle-timeout': 'string',
-    'auth-env': 'string', 'cookie-env': 'string', 'header-env': 'multi', 'query-env': 'multi', header: 'multi',
+    duration: 'string', 'max-events': 'string', 'idle-timeout': 'string', 'max-mb': 'string',
+    'auth-env': 'string', 'cookie-env': 'string', 'header-env': 'multi', 'query-env': 'multi', header: 'multi', 'allow-env': 'multi', 'allow-origin': 'string',
     fixtures: 'bool', port: 'string', speed: 'string', 'honor-last-event-id': 'bool', 'drop-after': 'string', 'skip-ids': 'string',
     'allow-inconclusive': 'bool', end: 'string', shell: 'string', finding: 'string', scenario: 'string', test: 'string',
 }

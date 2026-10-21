@@ -59,6 +59,20 @@ describe('sharedSSEWorker.ts - multi-tab bookkeeping', () => {
         expect(a.received()[0]).toMatchObject({ type: 'status', phase: 'connecting' })
     })
 
+    it('a different profile, recording or proxy setting is a different connection (S18), the same one shares', () => {
+        const probe = { sequence: { field: '$.seq' } }
+        const a = newPort(); const b = newPort(); const c = newPort(); const d = newPort(); const e = newPort()
+        a.send({ type: 'connect', url: '/events', useProxy: true })
+        b.send({ type: 'connect', url: '/events', useProxy: true, profile: probe })
+        expect(FakeClient.instances).toHaveLength(2) // the profile changes what is read from each payload
+        c.send({ type: 'connect', url: '/events', useProxy: true, profile: { sequence: { field: '$.seq' } } })
+        expect(FakeClient.instances).toHaveLength(2) // the same profile shares the second connection
+        d.send({ type: 'connect', url: '/events', useProxy: true, recording: false })
+        expect(FakeClient.instances).toHaveLength(3)
+        e.send({ type: 'connect', url: '/events', useProxy: false })
+        expect(FakeClient.instances).toHaveLength(4)
+    })
+
     it('shares ONE connection between tabs with the same url+token, and a different token gets its own', () => {
         const a = newPort(); const b = newPort(); const c = newPort()
         connect(a, '/events', 't1')

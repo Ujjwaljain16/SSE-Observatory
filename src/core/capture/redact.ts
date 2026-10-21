@@ -62,8 +62,13 @@ export class RedactionError extends Error {
 interface Span { start: number; end: number; rule: string; quote: boolean }
 
 // flag d (match indices) is built at run time: the regex literal needs a newer compile target than the core uses
-const JSON_PAIR = new RegExp(/"([^"\\\r\n]{1,64})"\s*:\s*("(?:[^"\\\r\n]|\\.)*"|-?\d[\w.+-]*|true|false)/g.source, 'gd')
-const PLAIN_PAIR = new RegExp(/\b([A-Za-z][A-Za-z0-9_.-]{1,40})\s*[=:]\s*(?:(?:Bearer|Basic)\s+)?([^\s'",;&<>{}()[\]]{4,})/g.source, 'gd')
+const JSON_PAIR = new RegExp(/"([^"\\\r\n]{1,64})"\s*:\s*("(?:[^"\\\r\n]|\\.)*"|-?\d[\w.+-]*|true|false|\[[^[\]]{0,2000}\]|\{[^{}]{0,2000}\})/g.source, 'gd')
+// A value that starts with // is the rest of a URL (https://host/?token=x), not the value of a pair named `https`: skipping it lets the
+// pair inside the URL be found. Any single-word scheme after Authorization (Token x, Digest x) is skipped like Bearer and Basic.
+const PLAIN_PAIR = new RegExp(/\b([A-Za-z][A-Za-z0-9_.-]{1,40})\s*[=:]\s*(?!\/\/)(?:(?:Bearer|Basic|Token|Digest|ApiKey)\s+)?([^\s'",;&<>{}()[\]]{4,})/g.source, 'gd')
+// the same pairs as they appear inside a JSON string (double-encoded JSON), and in a Python repr with single quotes
+const ESCAPED_JSON_PAIR = new RegExp(/\\"([^"\\\r\n]{1,64})\\"\s*:\s*\\"((?:[^"\\]|\\(?!"))*?)\\"/g.source, 'gd')
+const SINGLE_QUOTE_PAIR = new RegExp(/'([^'\\\r\n]{1,64})'\s*:\s*'([^'\\\r\n]*)'/g.source, 'gd')
 
 /**
  * Skipped when walking records because they are structural or already opaque. Event ids are NOT skipped: an ordinary id
@@ -115,9 +120,24 @@ class Redactor {
             if (raw.startsWith('"')) add(indices[0] + 1, indices[1] - 1, 'secret-key') // inside the quotes, so the JSON stays valid
             else add(indices[0], indices[1], 'secret-key', true)
         }
-        for (const m of text.matchAll(PLAIN_PAIR)) {
+        for (const m of text.matchAll(ESCAPED_JSON_PAIR)) {
             if (!isSensitiveName(m[1]!, this.policy.extraKeys)) continue
             const indices = (m as RegExpMatchArray & { indices: Array<[number, number]> }).indices[2]!
+            add(indices[0], indices[1], 'secret-key')
+        }
+        for (const m of text.matchAll(SINGLE_QUOTE_PAIR)) {
+            if (!isSensitiveName(m[1]!, this.policy.extraKeys)) continue
+            const indices = (m as RegExpMatchArray & { indices: Array<[number, number]> }).indices[2]!
+            add(indices[0], indices[1], 'secret-key')
+        }
+        // A pair whose name is harmless (Location: https://h/?token=x) can hold a pair that is not, so after a miss the search
+        // goes on from inside its value instead of past it.
+        const plain = new RegExp(PLAIN_PAIR.source, PLAIN_PAIR.flags)
+        for (let m = plain.exec(text); m !== null; m = plain.exec(text)) {
+            if (!isSensitiveName(m[1]!, this.policy.extraKeys)) { plain.lastIndex = m.index + m[1]!.length + 1; continue }
+            const indices = (m as RegExpMatchArray & { indices: Array<[number, number]> }).indices[2]!
+            // `Authorization: Bearer [REDACTED_1]` (already redacted): the scheme word is not the secret
+            if (/^(?:Bearer|Basic|Token|Digest|ApiKey)$/i.test(m[2]!) && /^\s+\[REDACTED_/.test(text.slice(indices[1], indices[1] + 14))) continue
             add(indices[0], indices[1], 'secret-key')
         }
         found.sort((a, b) => a.start - b.start || b.end - a.end)

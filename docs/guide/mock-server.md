@@ -31,6 +31,8 @@ When a non-looping replay finishes, the server sends an `event: end` message so 
   | `MOCK_STREAMS_PER_MINUTE` | 60 | stream requests per client per minute |
   | `MOCK_SESSIONS_PER_HOUR` | 500 | stored sessions per hour, all clients |
   | `MOCK_MB_PER_HOUR` | 50 | stored megabytes per hour, all clients |
+  | `MOCK_MAX_OPEN_STREAMS` | 50 | mock streams open at once, all clients (more get 429) |
+  | `MOCK_MAX_STREAM_SECONDS` | 300 | how long one stream may stay open; a looping or held replay is ended after this |
 
   On Vercel a mock stream is cut after 60 seconds; a client that reconnects counts against the stream limit.
 

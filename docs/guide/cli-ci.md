@@ -35,7 +35,7 @@ A scenario is a JSON file that says what a stream must do, and `sse-doctor test`
 
 A `replay` capture path is relative to the folder you run the command from, not to the scenario file. On shells that do not expand wildcards (PowerShell), `sse-doctor test scenarios/*.json` expands a `*` in the last path segment itself.
 
-Secrets enter only through `${ENV:NAME}`. A literal token, key or password in a scenario is rejected (exit 2), and every value taken from the environment is scrubbed from all output.
+Secrets enter only through `${ENV:NAME}`, and only for variables named `STREAM_*` or `SSE_*` (a scenario is configuration that runs, and one from a pull request must not be able to read `GITHUB_TOKEN`); name another one yourself with `--allow-env NAME`. A literal token, key or password in a scenario is rejected (exit 2), and every value taken from the environment is scrubbed from all output.
 
 ## Steps
 

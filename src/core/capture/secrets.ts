@@ -20,13 +20,17 @@ export const SECRET_PATTERNS: readonly SecretPattern[] = [
     { name: 'stripe-key', regex: /\b[sr]k_(?:live|test)_[A-Za-z0-9]{16,}\b/g, group: 0 },
     { name: 'google-key', regex: /\bAIza[0-9A-Za-z_-]{35}\b/g, group: 0 },
     { name: 'private-key', regex: /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g, group: 0 },
-    { name: 'url-credentials', regex: /\b[a-z][a-z0-9+.-]*:\/\/[^\s/:@]+:([^\s/@]+)@/gi, group: 1 },
+    // The scheme is bounded: an unbounded one made every word boundary scan to the end of a long a-a-a-a run (quadratic).
+    { name: 'url-credentials', regex: /\b[a-z][a-z0-9+.-]{0,31}:\/\/[^\s/:@]+:([^\s/@]+)@/gi, group: 1 },
+    // A user name alone (https://TOKEN@host/) is how some APIs take a key; user names in URLs are not worth keeping.
+    { name: 'url-userinfo', regex: /\b[a-z][a-z0-9+.-]{0,31}:\/\/([^\s/:@]{1,200})@/gi, group: 1 },
 ]
 
 const SENSITIVE_NAMES = new Set([
     'password', 'passwd', 'pwd', 'passphrase', 'secret', 'token', 'apikey', 'accesskey', 'secretkey', 'privatekey', 'clientsecret',
     'authorization', 'auth', 'bearer', 'credential', 'credentials', 'session', 'sessionid', 'cookie', 'setcookie', 'signature', 'otp',
     'xapikey', 'xauthtoken', 'proxyauthorization',
+    'secretaccesskey', 'sessionkey', 'authkey', 'sid', 'signingkey', 'ticket', 'sig', 'passcode', 'licensekey', 'connectsid', 'accesstoken', 'refreshtoken', 'idtoken',
 ])
 const SENSITIVE_SUFFIXES = ['token', 'secret', 'password', 'passwd', 'apikey', 'privatekey']
 
@@ -34,7 +38,9 @@ const SENSITIVE_SUFFIXES = ['token', 'secret', 'password', 'passwd', 'apikey', '
 export function isSensitiveName(name: string, extra: readonly string[] = []): boolean {
     const normal = name.toLowerCase().replace(/[^a-z0-9]/g, '')
     if (normal.length === 0) return false
-    if (SENSITIVE_NAMES.has(normal) || SENSITIVE_SUFFIXES.some((s) => normal.endsWith(s))) return true
+    // tokens, secrets, credentials: a list of them is as secret as one
+    const one = normal.length > 3 && normal.endsWith('s') ? normal.slice(0, -1) : normal
+    if (SENSITIVE_NAMES.has(normal) || SENSITIVE_NAMES.has(one) || SENSITIVE_SUFFIXES.some((s) => normal.endsWith(s) || one.endsWith(s))) return true
     return extra.some((e) => e.toLowerCase().replace(/[^a-z0-9]/g, '') === normal)
 }
 
@@ -59,6 +65,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 /** A long, random-looking token that no pattern recognised. Flagged by the residual scan, never auto-replaced. */
 export function looksLikeRandomToken(token: string): boolean {
     if (token.length < 24 || UUID.test(token) || hasPlaceholder(token)) return false
+    // A long run of hex is a hash, a trace id or a key, and its entropy is capped at 4 bits, so it never reaches the test below.
+    if (/^[0-9a-f]{32,}$/i.test(token)) return true
     if (!/[A-Za-z]/.test(token) || !/\d/.test(token)) return false
     return entropy(token) >= 4.0
 }

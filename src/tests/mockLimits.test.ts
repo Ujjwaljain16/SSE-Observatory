@@ -25,7 +25,7 @@ const upload = (base: string) => fetch(`${base}/api/mock/session`, { method: 'PO
 
 describe('mock API abuse limits', () => {
     it('defaults are finite and can be switched off per limit with 0', () => {
-        expect(loadLimits({})).toEqual({ uploadsPerMinute: 20, streamsPerMinute: 60, sessionsPerHour: 500, bytesPerHour: 50 * 1024 * 1024 })
+        expect(loadLimits({})).toEqual({ uploadsPerMinute: 20, streamsPerMinute: 60, sessionsPerHour: 500, maxOpenStreams: 50, maxStreamSeconds: 300, bytesPerHour: 50 * 1024 * 1024 })
         expect(loadLimits({ MOCK_UPLOADS_PER_MINUTE: '0', MOCK_MB_PER_HOUR: 'junk' }).uploadsPerMinute).toBe(0)
         expect(loadLimits({ MOCK_MB_PER_HOUR: 'junk' }).bytesPerHour).toBe(50 * 1024 * 1024)
     })

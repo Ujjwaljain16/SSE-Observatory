@@ -36,6 +36,8 @@ export interface CaptureStats {
 type Marker = Extract<Observation, { kind: 'truncated' }>
 type Series = Extract<Observation, { kind: 'heartbeatSeries' }>
 const digitsToHash = (text: string) => text.replace(/\d+/g, '#')
+/** What makes two comments the same heartbeat. A very long comment is keyed by its start and its length, so the key never holds the whole text. */
+const commentKey = (source: string, text: string): string => `${source}|${text.length > 200 ? `${digitsToHash(text.slice(0, 200))}...${text.length}` : digitsToHash(text)}`
 
 // Calibrated against measured V8 heap use per retained record (object, map entry, strings), so the cap bounds real memory.
 function estimateBytes(o: Observation): number {
@@ -85,7 +87,7 @@ export class CaptureStore {
             case 'event': this.eventQueue.push(o.seq); break
             case 'comment': {
                 this.commentQueue.push(o.seq)
-                const key = `${o.source}|${digitsToHash(o.text)}`
+                const key = commentKey(o.source, o.text)
                 this.commentsPerKey.set(key, (this.commentsPerKey.get(key) ?? 0) + 1)
                 break
             }
@@ -167,12 +169,14 @@ export class CaptureStore {
         const comment = this.records.get(seq)
         if (!comment || comment.kind !== 'comment') return true
 
-        const key = `${comment.source}|${digitsToHash(comment.text)}`
+        const key = commentKey(comment.source, comment.text)
         const remaining = (this.commentsPerKey.get(key) ?? 1) - 1
-        this.commentsPerKey.set(key, remaining)
+        // The entry goes with its last comment: keeping it for every text ever seen made memory grow past the cap (a unique comment each time).
+        if (remaining <= 0) this.commentsPerKey.delete(key)
+        else this.commentsPerKey.set(key, remaining)
         // Repeated text folds into its own series; unique texts fold into one catch-all series per source.
         const seriesKey = this.series.has(key) || remaining >= 1 ? key : `${comment.source}|*`
-        const text = seriesKey.endsWith('|*') ? '(various)' : digitsToHash(comment.text)
+        const text = seriesKey.endsWith('|*') ? '(various)' : digitsToHash(comment.text.slice(0, 200))
         const existing = this.series.get(seriesKey)
 
         if (existing) {

@@ -17,6 +17,7 @@ import { createObservedStream, type ObservedStream } from '../core/sse/observedS
 import { MAIN_STREAM, observationRegistry } from '../doctor/observationRegistry'
 import { recordingEnabled } from '../doctor/recordingConfig'
 import { getProfile } from '../doctor/profileStore'
+import { asProbeConfig, streamKey } from '../workers/contracts'
 import { probeConfigOf } from '../core/diagnostics/profile'
 import { buildSSERequest } from '../utils/sseProxyUrl'
 import type { IncomingSSE } from '../utils/buildEvent'
@@ -196,7 +197,7 @@ export function useSharedStream(
         directRef.current?.stop()
         directRef.current = null
         lastParamsRef.current = { url: trimmed, token, useProxy }
-        keyRef.current = `${trimmed}::${token ?? ''}`
+        keyRef.current = streamKey(trimmed, token, { recording: recordingEnabled(), useProxy, probe: asProbeConfig(probeConfigOf(getProfile())) })
         lastSeqRef.current = 0
         lastEventIdRef.current = '' // a new connection starts fresh; only a takeover resumes
         observationRegistry.reset(MAIN_STREAM)

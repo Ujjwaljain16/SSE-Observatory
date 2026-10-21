@@ -7,6 +7,7 @@ import type { StreamProfile } from '../core/diagnostics/thresholds'
 import type { CaptureRecord } from '../core/capture/format'
 import type { PayloadProbeConfig } from '../core/observe/payloadProbe'
 import { createObservedStream } from '../core/sse/observedStream'
+import { safeFetch } from './safeFetch'
 import type { Scenario, ScenarioStep } from '../core/scenario/types'
 import { planReplay, sessionFromCapture } from '../../lib/mock/capturePlan.js'
 import { FIXTURE_ROUTES, startFixtureServer } from '../fixtures/server'
@@ -30,9 +31,19 @@ export interface ScenarioRun {
 const ENV_REF = /\$\{ENV:([A-Za-z_][A-Za-z0-9_]*)\}/g
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
+/**
+ * A scenario is executable configuration: `${ENV:NAME}` in its URL reads an environment variable and sends it where the scenario says
+ * (a scenario that came with a pull request could put `${ENV:GITHUB_TOKEN}` in a URL it controls). So only names that are meant for
+ * scenarios are read: STREAM_* and SSE_*, plus any the person running it names with --allow-env.
+ */
+const SCENARIO_ENV = /^(?:STREAM|SSE)_[A-Za-z0-9_]+$/
+
 /** Replaces `${ENV:NAME}` with the variable's value and registers every value as a secret. Names that are not set are all reported at once. */
-function substitute(text: string, io: CliIo, secrets: SecretRegistry, missing: Set<string>): string {
+function substitute(text: string, io: CliIo, secrets: SecretRegistry, missing: Set<string>, allowed: ReadonlySet<string> = new Set()): string {
     return text.replace(ENV_REF, (_m, name: string) => {
+        if (!SCENARIO_ENV.test(name) && !allowed.has(name)) {
+            throw new CliError(`The scenario reads the environment variable ${name}, which is not a STREAM_ or SSE_ variable. A scenario is configuration that runs: to allow it, pass --allow-env ${name}.`, EXIT.usage)
+        }
         const value = io.env?.[name]
         if (value === undefined || value === '') { missing.add(name); return '' }
         secrets.register(value)
@@ -85,9 +96,9 @@ async function serveReplay(scenario: Scenario, io: CliIo): Promise<{ url: string
     return { url: `http://127.0.0.1:${(server.address() as AddressInfo).port}/replay`, close: () => new Promise((resolve) => { server.closeAllConnections(); server.close(() => resolve()) }) }
 }
 
-async function resolveTarget(scenario: Scenario, io: CliIo, secrets: SecretRegistry, cleanup: Array<() => Promise<void>>): Promise<{ url: string; headers: Record<string, string> }> {
+async function resolveTarget(scenario: Scenario, io: CliIo, secrets: SecretRegistry, cleanup: Array<() => Promise<void>>, allowed: ReadonlySet<string>): Promise<{ url: string; headers: Record<string, string> }> {
     const missing = new Set<string>()
-    const headers = Object.fromEntries(Object.entries(scenario.target.headers ?? {}).map(([k, v]) => [k, substitute(v, io, secrets, missing)]))
+    const headers = Object.fromEntries(Object.entries(scenario.target.headers ?? {}).map(([k, v]) => [k, substitute(v, io, secrets, missing, allowed)]))
     let url: string
     const raw = scenario.target.url
     if (scenario.target.replay) {
@@ -102,7 +113,7 @@ async function resolveTarget(scenario: Scenario, io: CliIo, secrets: SecretRegis
         cleanup.push(() => fixtures.close())
         url = `${fixtures.url}${route.path}${query ? `?${query}` : ''}`
     } else if (raw) {
-        url = substitute(raw, io, secrets, missing)
+        url = substitute(raw, io, secrets, missing, allowed)
     } else throw new CliError('The scenario has no target.url and no target.replay.', EXIT.usage)
     if (missing.size > 0) throw new CliError(`Environment variable${missing.size > 1 ? 's' : ''} not set: ${[...missing].join(', ')}.`, EXIT.usage)
     return { url, headers }
@@ -110,11 +121,11 @@ async function resolveTarget(scenario: Scenario, io: CliIo, secrets: SecretRegis
 
 const mediaType = (value: string): string => value.split(';')[0]!.trim().toLowerCase()
 
-export async function runScenario(scenario: Scenario, file: string, io: CliIo, secrets: SecretRegistry): Promise<ScenarioRun> {
+export async function runScenario(scenario: Scenario, file: string, io: CliIo, secrets: SecretRegistry, allowEnv: readonly string[] = []): Promise<ScenarioRun> {
     const cleanup: Array<() => Promise<void>> = []
     const startedAt = Date.now()
     try {
-        const target = await resolveTarget(scenario, io, secrets, cleanup)
+        const target = await resolveTarget(scenario, io, secrets, cleanup, new Set(allowEnv))
         const profile = profileOf(scenario)
         const records: CaptureRecord[] = []
         let events = 0
@@ -123,7 +134,7 @@ export async function runScenario(scenario: Scenario, file: string, io: CliIo, s
             request: () => ({ url: target.url, headers: { Accept: 'text/event-stream', 'Cache-Control': 'no-cache', ...target.headers } }),
             sinks: { onMessage: () => { events++ }, onPhase: (p) => { phase = p } },
             recording: { ...(Object.keys(probeOf(profile)).length > 0 ? { profile: probeOf(profile) } : {}), onObservations: (batch) => { records.push(...batch) }, flushMs: 10 },
-            clientOptions: { initialDelayMs: 20, maxDelayMs: 200, jitter: 0, maxRetries: 5 },
+            clientOptions: { initialDelayMs: 20, maxDelayMs: 200, jitter: 0, maxRetries: 5, fetchImpl: safeFetch },
         })
         const waitFor = async (done: () => boolean, timeoutMs: number): Promise<boolean> => {
             const until = Date.now() + timeoutMs

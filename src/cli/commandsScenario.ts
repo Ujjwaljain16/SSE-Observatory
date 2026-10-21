@@ -7,8 +7,9 @@ import { numberFlag, stringFlag, type ParsedArgs } from './args'
 import { CliError, EXIT, requireFiles, type CliIo } from './io'
 import { runScenario, type CheckStatus, type ScenarioRun } from './scenarioRunner'
 import type { SecretRegistry } from './secretRegistry'
+import { sanitizeText } from './sanitize'
 
-const xml = (s: string): string => s.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[ch]!)
+const xml = (s: string): string => sanitizeText(s).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[ch]!)
 const MARK: Record<CheckStatus, string> = { pass: 'PASS', fail: 'FAIL', inconclusive: 'INCONCLUSIVE' }
 
 function renderHuman(runs: ScenarioRun[]): string {
@@ -76,7 +77,7 @@ export async function testCommand(io: CliIo, args: ParsedArgs, secrets: SecretRe
             const lines = errors.map((e) => `  ${e.line !== undefined ? `line ${e.line}, column ${e.column}` : e.pointer || '(document)'}: ${e.message}`)
             throw new CliError(`"${file}" is not a valid scenario:\n${lines.join('\n')}`, EXIT.usage)
         }
-        runs.push(await runScenario(value, file, io, secrets))
+        runs.push(await runScenario(value, file, io, secrets, args.multi['allow-env'] ?? []))
     }
     const format = stringFlag(args, 'format') ?? 'human'
     let text: string
@@ -86,7 +87,7 @@ export async function testCommand(io: CliIo, args: ParsedArgs, secrets: SecretRe
     else if (format === 'human') text = renderHuman(runs)
     else throw new CliError(`--format must be human, json, md or junit, got "${format}".`, EXIT.usage)
     const out = stringFlag(args, 'output')
-    if (out) { await fs.writeText(out, text); io.out(renderHuman(runs)) } else io.out(text)
+    if (out) { await fs.writeText(out, text); io.out(sanitizeText(renderHuman(runs))) } else io.out(sanitizeText(text))
     if (runs.some((r) => r.status === 'fail')) return EXIT.gateFailed
     if (runs.some((r) => r.status === 'inconclusive')) return args.flags['allow-inconclusive'] === true ? EXIT.ok : EXIT.inconclusive
     return EXIT.ok
@@ -104,13 +105,17 @@ export async function replayCommand(io: CliIo, args: ParsedArgs): Promise<number
     const speed = numberFlag(args, 'speed', 1) || 1
     const dropAfter = args.flags['drop-after'] !== undefined ? numberFlag(args, 'drop-after', 0) : undefined
     const skipIds = (stringFlag(args, 'skip-ids') ?? '').split(',').filter(Boolean)
+    // A full capture holds what the stream sent, unredacted. Any web page that finds this port could read it, so a full capture is served
+    // without CORS unless a page origin is named; a redacted capture is meant to be shared and keeps the open policy.
+    const origin = stringFlag(args, 'allow-origin') ?? (session.captureKind === 'sanitized' ? '*' : undefined)
+    if (origin === undefined) io.err('note: this capture is not redacted, so pages in a browser cannot read the replay unless you pass --allow-origin <page origin>.\n')
     let requests = 0
     const server = http.createServer((req, res) => {
         const plan = planReplay(session, {
             connection: requests++, speed, honorLastEventId: args.flags['honor-last-event-id'] === true,
             lastEventId: String(req.headers['last-event-id'] ?? ''), skipIds, ...(dropAfter !== undefined ? { dropAfter } : {}),
         })
-        res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Access-Control-Allow-Origin': '*', 'X-Mock-Fidelity': plan.mode })
+        res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', ...(origin !== undefined ? { 'Access-Control-Allow-Origin': origin, Vary: 'Origin' } : {}), 'X-Mock-Fidelity': plan.mode })
         let closed = false
         res.on('close', () => { closed = true })
         void (async () => {

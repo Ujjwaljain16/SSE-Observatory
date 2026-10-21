@@ -9,7 +9,7 @@ import { compareCaptures } from '../../core/capture/derived/compare'
 import { describeProfile } from '../../core/diagnostics/profile'
 import { addBookmark, deleteCapture, listBookmarks, listCaptures, readCaptureText, saveCapture, type Bookmark, type SavedCaptureMeta } from '../../doctor/captureLibrary'
 import { captureOf } from '../../doctor/captureOf'
-import { loadCaptureText } from '../../doctor/loadCapture'
+import { loadCaptureText, MAX_OPEN_BYTES } from '../../doctor/loadCapture'
 import { getProfile } from '../../doctor/profileStore'
 import type { DoctorView } from '../../doctor/doctorSession'
 import { fmtBytes, fmtDuration } from './format'
@@ -92,7 +92,8 @@ export default function CapturesTab({ theme, streamId, view }: Props) {
 
     const openFile = async (file: File) => {
         setError(''); setNotice('')
-        const result = loadCaptureText(await file.text(), file.size)
+        // the size is checked before the file is read: reading a huge file is the cost the limit is there to avoid
+        const result = file.size > MAX_OPEN_BYTES ? loadCaptureText('', file.size) : loadCaptureText(await file.text(), file.size)
         if (!result.ok) { setError(`${file.name}: ${result.error}`); return }
         const text = `${result.format === 'sse-record' ? 'Older recording' : 'Capture'} opened: ${file.name}.`
         const note = [text, ...result.warnings, ...(result.integrity === 'mismatch' ? ['The file does not match its own integrity hash: it was changed after it was written, or damaged.'] : [])].join(' ')
