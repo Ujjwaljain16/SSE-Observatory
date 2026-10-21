@@ -100,6 +100,24 @@ describe('isTrustedBrowserRequest', () => {
     })
 })
 
+describe('isTrustedBrowserRequest: a rebound name in development (S19)', () => {
+    const req = (headers: Record<string, string>) => ({ headers })
+    it('same-origin means nothing when the page reached the server under a name that is not ours', () => {
+        expect(isTrustedBrowserRequest(req({ 'sec-fetch-site': 'same-origin', host: 'evil.example:3000' }), dev)).toBe(false)
+        expect(isTrustedBrowserRequest(req({ 'sec-fetch-site': 'same-origin', host: 'evil.example' }), dev)).toBe(false)
+        expect(isTrustedBrowserRequest(req({ 'sec-fetch-site': 'same-site', host: '169.254.169.254' }), dev)).toBe(false)
+    })
+    it('loopback names and the host of a configured origin are ours', () => {
+        for (const host of ['localhost:3001', '127.0.0.1:3000', '[::1]:3000', 'app.localhost:3001']) expect(isTrustedBrowserRequest(req({ 'sec-fetch-site': 'same-origin', host }), dev), host).toBe(true)
+        const cfg = loadConfig({ PROXY_ALLOWED_ORIGINS: 'http://dev.team.test:3001' })
+        expect(isTrustedBrowserRequest(req({ 'sec-fetch-site': 'same-origin', host: 'dev.team.test:3001' }), cfg)).toBe(true)
+        expect(isTrustedBrowserRequest(req({ 'sec-fetch-site': 'same-origin', host: 'dev.team.test:9999' }), cfg)).toBe(false)
+    })
+    it('production is unchanged', () => {
+        expect(isTrustedBrowserRequest(req({ 'sec-fetch-site': 'same-origin', host: 'anything.example' }), prod)).toBe(true)
+    })
+})
+
 describe('loadConfig', () => {
     it('is closed-by-default in production and open in development', () => {
         expect(prod.open).toBe(false)
