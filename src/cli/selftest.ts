@@ -36,6 +36,69 @@ export function selftestChecks(): SelftestCheck[] {
             },
         },
         { name: 'R01 flags a wrong content type, and is silent for a correct one', run: () => expectKey(keysOf(build().connect().response({ contentType: 'text/html' })), 'proto.content-type') ?? expectNone(keysOf(steady(3))) },
+        {
+            name: 'R02 raises one finding per kind of framing violation, not one per occurrence',
+            run() {
+                const b = healthyStart()
+                for (let i = 0; i < 3; i++) b.violation('UNKNOWN_FIELD', `field ${i}`)
+                b.violation('UNTERMINATED_FRAME')
+                const keys = keysOf(b)
+                return expectKey(keys, 'proto.framing:UNKNOWN_FIELD') ?? expectKey(keys, 'proto.framing:UNTERMINATED_FRAME') ?? (keys.filter((k) => k === 'proto.framing:UNKNOWN_FIELD').length === 1 ? null : 'one finding per code expected')
+            },
+        },
+        { name: 'R03 hints at a compressed response', run: () => expectKey(keysOf(build().connect().response({ headers: { 'content-encoding': 'gzip' } }).frame()), 'proto.headers-hints') },
+        { name: 'R04 measures slow response headers', run: () => expectKey(keysOf(build().connect().at(4200).response().frame()), 'timing.first-event') },
+        {
+            name: 'R06 raises a hypothesis, not a fact, for events that arrive in periodic lumps',
+            run() {
+                const b = healthyStart()
+                for (let burst = 0; burst < 6; burst++) { b.silence(3000); for (let i = 0; i < 12; i++) b.frame('tick', String(burst * 12 + i), 40) }
+                return expectKey(keysOf(b), 'delivery.bursty')
+            },
+        },
+        {
+            name: 'R07 notices a reconnect loop',
+            run() {
+                const b = build().connect().response({ status: 502, contentType: 'text/plain' })
+                for (let i = 0; i < 4; i++) b.silence(1000).reconnect({ delayMs: 1000 }).silence(1000).connect().response({ status: 502, contentType: 'text/plain' })
+                return expectKey(keysOf(b), 'reconnect.loop')
+            },
+        },
+        {
+            name: 'R08 sees a resume that skipped events, only under a declared sequence',
+            run() {
+                const b = healthyStart()
+                for (let i = 1; i <= 5; i++) b.silence(100).frame('tick', String(i))
+                b.reconnect({ lastEventIdSent: '5' }).connect({ sentLastEventId: '5' }).response()
+                for (let i = 9; i <= 12; i++) b.silence(100).frame('tick', String(i))
+                const records = b.build().map((r) => (r.kind === 'event' ? { ...r, extracted: { seq: Number(r.sseId) } } : r)) as EngineInput[]
+                const found = analyze(records, { profile: declared, endT: b.now }).findings.map((f) => f.key)
+                const undeclared = analyze(records, { endT: b.now }).findings.map((f) => f.key).filter((k) => k.startsWith('resume.last-event-id:skipped'))
+                return expectKey(found, 'resume.last-event-id:skipped') ?? (undeclared.length === 0 ? null : 'a skipped resume was judged without a declared sequence')
+            },
+        },
+        { name: 'R10 notes the absence of heartbeats on a stream with long quiet periods', run: () => expectKey(keysOf(healthyStart().frame().silence(35_000).frame()), 'heartbeat.absent') },
+        {
+            name: 'R11 reports a page that processes events late, from page-domain samples',
+            run() {
+                const b = healthyStart()
+                for (let i = 0; i < 30; i++) b.silence(100).frame('tick', String(i))
+                const records: unknown[] = [...b.build()]
+                for (let i = 0; i < 30; i++) records.push({ seq: 1000 + i, t: 4000 + i * 100, conn: 0, domain: 'page', kind: 'consumer', n: 1, queueDepth: i * 60, receivedT: i, processedT: i + 900, lagMs: 900 })
+                return expectKey(analyze(records as EngineInput[], { endT: 8000 }).findings.map((f) => f.key), 'consumer.slow')
+            },
+        },
+        { name: 'R12 notices a credential-like query parameter without printing its value', run: () => expectKey(keysOf(build().connect({ url: 'http://x.test/s?token=abc123' }).response()), 'security.credentials-in-metadata') },
+        {
+            name: 'R13 sees proxy heartbeats going on while the upstream it reports on grows idle',
+            run() {
+                const b = build().connect().response({ headers: { 'x-sse-proxy': 'observatory/1', 'x-sse-upstream-status': '200', 'x-sse-upstream-content-type': 'text/event-stream' } })
+                for (let i = 0; i < 12; i++) { b.silence(1000).frame('tick', String(i + 1)); b.beat('proxy', `sse-proxy hb up_idle=200 n=${i + 1}`) }
+                for (let k = 0; k < 8; k++) { b.silence(1000); b.beat('proxy', `sse-proxy hb up_idle=${1200 + k * 1000} n=${100 + k}`) }
+                return expectKey(keysOf(b), 'proxy.masking')
+            },
+        },
+        { name: 'R15 records a clock jump and does not read the time asleep as a stall', run: () => { const keys = keysOf(steady(3).silence(35_000).discontinuity(35_000, 'resume').silence(5000).frame()); return expectKey(keys, 'clock.discontinuity') ?? (keys.some((k) => k.startsWith('stall.silent')) ? 'the time across the jump was read as a stall' : null) } },
         { name: 'R01 flags a failing status', run: () => expectKey(keysOf(build().connect().response({ status: 502, contentType: 'text/plain' })), 'http.status') },
         { name: 'R05 flags a stream that goes silent', run: () => expectKey(keysOf(steady(12).silence(90_000)), 'stall.silent') },
         {
@@ -47,7 +110,6 @@ export function selftestChecks(): SelftestCheck[] {
                 return expectKey(withContract, 'seq.integrity:gap') ?? (without.length === 0 ? null : `continuity was judged without a declared sequence: [${without.join(', ')}]`)
             },
         },
-        { name: 'R12 notices a credential-like query parameter without printing its value', run: () => expectKey(keysOf(build().connect({ url: 'http://x.test/s?token=abc123' }).response()), 'security.credentials-in-metadata') },
         {
             name: 'redaction removes a secret that was split across two chunks',
             run() {

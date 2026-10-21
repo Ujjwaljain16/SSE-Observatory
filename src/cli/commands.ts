@@ -16,6 +16,7 @@ import { createObservedStream } from '../core/sse/observedStream'
 import { redactUrl } from '../core/observe/redactUrl'
 import { parseProfile, probeConfigOf } from '../core/diagnostics/profile'
 import { numberFlag, stringFlag, type ParsedArgs } from './args'
+import { safeFetch } from './safeFetch'
 import { CliError, EXIT, requireFiles, type CliIo } from './io'
 import { parseFailOn, parseFormat, render, gate, type Result } from './output'
 import type { SecretRegistry } from './secretRegistry'
@@ -167,8 +168,17 @@ function resolveEnv(io: CliIo, name: string, secrets: SecretRegistry, what: stri
     return value
 }
 
+const safeDecode = (text: string): string => { try { return decodeURIComponent(text) } catch { return text } }
+
 function requestFor(io: CliIo, args: ParsedArgs, url: string, secrets: SecretRegistry): { url: string; headers: Record<string, string>; sentNames: string[] } {
     const headers: Record<string, string> = { Accept: 'text/event-stream', 'Cache-Control': 'no-cache' }
+    // Secrets typed into the URL itself (user:password@, ?token=) are secrets too: registered, so no message can echo them. A URL the
+    // platform cannot read is refused here, because its own error message would quote the whole thing, userinfo and query included.
+    let parsed: URL
+    try { parsed = new URL(url) } catch { throw new CliError(`"${redactUrl(url)}" is not a valid URL.`, EXIT.usage) }
+    secrets.register(safeDecode(parsed.username))
+    secrets.register(safeDecode(parsed.password))
+    for (const value of parsed.searchParams.values()) secrets.register(value)
     const authEnv = stringFlag(args, 'auth-env')
     if (authEnv) headers['Authorization'] = `Bearer ${resolveEnv(io, authEnv, secrets, '--auth-env')}`
     const cookieEnv = stringFlag(args, 'cookie-env')
@@ -196,12 +206,21 @@ function requestFor(io: CliIo, args: ParsedArgs, url: string, secrets: SecretReg
     return { url: full, headers, sentNames: Object.keys(headers).map((h) => h.toLowerCase()) }
 }
 
+/** The longest wait a timer can hold (2^31 ms), in seconds. */
+const MAX_SECONDS = Math.floor(2 ** 31 / 1000)
+
 export async function probeCommand(io: CliIo, args: ParsedArgs, secrets: SecretRegistry): Promise<number> {
     const target = args.positionals[1]
-    if (!target || !/^https?:\/\//i.test(target)) throw new CliError('Usage: sse-doctor probe <http(s) url> [--duration s] [--max-events n] [--idle-timeout s] [--out capture]', EXIT.usage)
-    const durationMs = numberFlag(args, 'duration', 30) * 1000
+    if (!target || !/^https?:\/\//i.test(target)) throw new CliError('Usage: sse-doctor probe <http(s) url> [--duration s] [--max-events n] [--idle-timeout s] [--timeout s] [--max-mb n] [--out capture]', EXIT.usage)
+    const duration = numberFlag(args, 'duration', 30)
+    // setTimeout holds at most 2^31 ms; a longer wait fires at once, and a probe that ends before it began must not pass as a clean one
+    if (duration <= 0 || duration > MAX_SECONDS) throw new CliError(`--duration must be more than 0 and at most ${MAX_SECONDS} seconds, got ${duration}.`, EXIT.usage)
+    const durationMs = duration * 1000
     const maxEvents = numberFlag(args, 'max-events', 0)
     const idleMs = numberFlag(args, 'idle-timeout', 0) * 1000
+    const timeout = numberFlag(args, 'timeout', 0)
+    if (timeout > MAX_SECONDS || idleMs > MAX_SECONDS * 1000) throw new CliError(`--timeout and --idle-timeout must be at most ${MAX_SECONDS} seconds.`, EXIT.usage)
+    const maxBytes = numberFlag(args, 'max-mb', 256) * 1024 * 1024
     const profile = await loadProfile(io, args, undefined)
     const req = requestFor(io, args, target, secrets)
     const out = stringFlag(args, 'out')
@@ -209,6 +228,8 @@ export async function probeCommand(io: CliIo, args: ParsedArgs, secrets: SecretR
 
     const records: CaptureRecord[] = []
     let events = 0
+    let held = 0
+    let answered = false
     let lastActivity = Date.now()
     let finish!: (reason: string) => void
     const done = new Promise<string>((resolve) => { finish = resolve })
@@ -221,18 +242,31 @@ export async function probeCommand(io: CliIo, args: ParsedArgs, secrets: SecretR
         recording: {
             ...(Object.keys(probeConfigOf(profile)).length > 0 ? { profile: probeConfigOf(profile) } : {}),
             captureBytes: true,
-            onObservations: (batch) => { for (const o of batch) records.push(o); lastActivity = Date.now() },
+            onObservations: (batch) => {
+                for (const o of batch) {
+                    records.push(o)
+                    if (o.kind === 'response') answered = true
+                    held += o.kind === 'chunk' ? 120 + (o.b64?.length ?? 0) : 200
+                }
+                lastActivity = Date.now()
+                // Every read is kept (with its bytes) so the capture can be replayed; a fast server would fill the heap before the duration ended.
+                if (maxBytes > 0 && held > maxBytes) finish('max-size')
+            },
             flushMs: 25,
         },
-        clientOptions: { maxRetries: 2 },
+        // redirects are followed by hand, and a header that carries a key is not sent to another origin
+        clientOptions: { maxRetries: 2, fetchImpl: safeFetch },
     })
     const timer = setTimeout(() => finish('duration'), durationMs)
+    // --timeout: how long to wait for the server to answer at all
+    const answerTimer = timeout > 0 ? setTimeout(() => { if (!answered) finish('timeout') }, timeout * 1000) : undefined
     const idle = idleMs > 0 ? setInterval(() => { if (Date.now() - lastActivity >= idleMs) finish('idle') }, Math.min(250, idleMs)) : undefined
     const onAbort = () => finish('interrupted')
     io.signal?.addEventListener('abort', onAbort)
     stream.start()
     const reason = await done
     clearTimeout(timer)
+    if (answerTimer) clearTimeout(answerTimer)
     if (idle) clearInterval(idle)
     io.signal?.removeEventListener('abort', onAbort)
     stream.flushObservations()
@@ -256,10 +290,12 @@ export async function probeCommand(io: CliIo, args: ParsedArgs, secrets: SecretR
         }
     }
     const a = analysisOf(capture, profile)
-    const notes = [`Observed ${events} event${events === 1 ? '' : 's'} for ${(endT / 1000).toFixed(1)} s (stopped: ${reason}).`, ...(out ? [`Capture written to ${out}${args.flags['no-redact'] === true ? ' (NOT redacted)' : ' (redacted)'}.`] : [])]
+    const notes = [`Observed ${events} event${events === 1 ? '' : 's'} for ${(endT / 1000).toFixed(1)} s (stopped: ${reason}).`, ...(reason === 'max-size' ? [`The capture reached ${(maxBytes / 1048576).toFixed(0)} MB (--max-mb) and the probe stopped there.`] : []), ...(answered ? [] : ['The server never answered: no response was received.']), ...(out ? [`Capture written to ${out}${args.flags['no-redact'] === true ? ' (NOT redacted)' : ' (redacted)'}.`] : [])]
     const code = show(io, { command: 'probe', subject: redactUrl(target), findings: a.findings, coverage: a.coverage, notes }, args)
     // An interrupted probe still reports what it saw and saves the capture; only the exit code says it was cut short.
     if (reason === 'interrupted') return EXIT.interrupted
+    // A server that never answered is "could not run", whatever the findings and the gate say: a dead endpoint must not pass a gate set above its findings.
+    if (!answered) return EXIT.couldNotRun
     if (reason === 'failed' && code === EXIT.ok && a.findings.length === 0) return EXIT.couldNotRun
     return code
 }

@@ -1,3 +1,4 @@
+import { sanitizeText } from './sanitize'
 import { SEVERITY_RANK, type Finding, type Severity } from '../core/diagnostics/finding'
 import type { RuleCoverage } from '../core/diagnostics/engine'
 import { CliError, EXIT } from './io'
@@ -77,7 +78,7 @@ function markdown(r: Result): string {
     return lines.join('\n').trimEnd() + '\n'
 }
 
-const xml = (s: string): string => s.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[ch]!)
+const xml = (s: string): string => sanitizeText(s).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[ch]!)
 
 /** One testsuite, one testcase per rule. A rule with an open finding at or above the threshold fails; a rule that could not look is skipped. */
 function junit(r: Result, failOn: Severity): string {
@@ -99,8 +100,9 @@ function junit(r: Result, failOn: Severity): string {
 export function render(r: Result, format: OutputFormat, opts: { failOn: Severity; verbose: boolean }): string {
     switch (format) {
         case 'json': return JSON.stringify({ schemaVersion: 1, command: r.command, subject: r.subject, findings: r.findings, coverage: r.coverage, notes: r.notes }, null, 2) + '\n'
-        case 'md': return markdown(r)
+        // stream text reaches these: control characters are shown as \uXXXX, so they cannot drive a terminal or break the XML
+        case 'md': return sanitizeText(markdown(r))
         case 'junit': return junit(r, opts.failOn)
-        default: return human(r, opts.verbose)
+        default: return sanitizeText(human(r, opts.verbose))
     }
 }

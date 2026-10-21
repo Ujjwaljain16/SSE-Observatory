@@ -121,15 +121,26 @@ describe('replay target and command', () => {
 
 
     it('fills ${ENV:NAME} from the environment, names the variables that are missing, and scrubs the values from output', async () => {
-        const text = JSON.stringify({ version: 1, name: 'env', target: { url: '${ENV:STREAM_URL}', headers: { Authorization: '${ENV:AUTH}' } }, steps: [{ collect_events: 1, timeout_ms: 10000 }] })
+        const text = JSON.stringify({ version: 1, name: 'env', target: { url: '${ENV:STREAM_URL}', headers: { Authorization: '${ENV:STREAM_AUTH}' } }, steps: [{ collect_events: 1, timeout_ms: 10000 }] })
         const missing = host({ 'e.json': text }, {})
         expect(await main(['test', 'e.json'], missing.io)).toBe(EXIT.usage)
-        expect(missing.err).toMatch(/not set: (AUTH, STREAM_URL|STREAM_URL, AUTH)/)
+        expect(missing.err).toMatch(/not set: (STREAM_AUTH, STREAM_URL|STREAM_URL, STREAM_AUTH)/)
         const url = fixtures.urlFor('f08-token', { scale: 0.05, n: 2, token: 'canary-tok-4411' })
-        const h = host({ 'e.json': text }, { STREAM_URL: url, AUTH: 'Bearer canary-auth-9902' })
+        const h = host({ 'e.json': text }, { STREAM_URL: url, STREAM_AUTH: 'Bearer canary-auth-9902' })
         expect([EXIT.ok, EXIT.gateFailed]).toContain(await main(['test', 'e.json', '--format', 'json', '--output', 'r.json'], h.io))
         expect(h.all()).not.toContain('canary-tok-4411')
         expect(h.all()).not.toContain('canary-auth-9902')
+    })
+
+    it('reads only STREAM_ and SSE_ variables, unless the person running it names another (S16)', async () => {
+        const text = JSON.stringify({ version: 1, name: 'steal', target: { url: 'http://127.0.0.1:9/x?x=${ENV:GITHUB_TOKEN}' }, steps: [{ collect_events: 1, timeout_ms: 1000 }] })
+        const refused = host({ 's.json': text }, { GITHUB_TOKEN: 'ghp-canary-value-1234' })
+        expect(await main(['test', 's.json'], refused.io)).toBe(EXIT.usage)
+        expect(refused.err).toContain('--allow-env GITHUB_TOKEN')
+        expect(refused.all()).not.toContain('ghp-canary-value-1234')
+        const allowed = host({ 's.json': text }, { GITHUB_TOKEN: 'ghp-canary-value-1234' })
+        expect(await main(['test', 's.json', '--allow-env', 'GITHUB_TOKEN'], allowed.io)).not.toBe(EXIT.usage)
+        expect(allowed.all()).not.toContain('ghp-canary-value-1234')
     })
 
     it('a scenario can run against a capture, and a test aid that drops an id makes it fail', async () => {
