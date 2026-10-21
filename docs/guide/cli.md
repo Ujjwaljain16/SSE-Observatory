@@ -53,6 +53,8 @@ sse-doctor probe https://api.example.com/stream --header-env X-Api-Key=API_KEY -
 
 ## Stream profile
 
+A profile file is checked before it is used: an unknown field, a sequence without a policy, a path that is not a JSON path, or a delivery name that does not exist stops the command with exit code 2 and a list of every problem. The app's Doctor has a form for the same file (see [Stream Doctor](/guide/stream-doctor)).
+
 A profile tells the tool what the stream promises. Continuity checks (gaps, duplicates, skipped events on resume) run only when a sequence is declared, because ids that merely look sequential prove nothing.
 
 ```json

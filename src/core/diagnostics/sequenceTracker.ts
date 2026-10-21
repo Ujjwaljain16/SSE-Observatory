@@ -110,6 +110,16 @@ export class SequenceTracker {
         return this.drain()
     }
 
+    /**
+     * Open gaps that the reorder window will have closed by `now` on time alone (no further event needed). For a live view of a
+     * stream that went quiet right after a gap. Does not change anything.
+     */
+    dueGaps(now: number): TrackerOutput[] {
+        return this.pending
+            .filter((p) => now - p.opened.t >= this.options.reorderWindowMs)
+            .map((p): TrackerOutput => ({ kind: 'gap', from: p.lo, to: p.hi, before: p.before, after: p.opened }))
+    }
+
     /** Gaps that are still open (not yet confirmed), for a provisional view. Does not change anything. */
     openGaps(): Array<{ from: number; to: number }> {
         return this.pending.map((p) => ({ from: p.lo, to: p.hi }))

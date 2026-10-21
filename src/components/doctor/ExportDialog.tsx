@@ -4,6 +4,7 @@ import type { Finding } from '../../core/diagnostics/finding'
 import type { Theme } from '../../types'
 import { ARTIFACTS, prepare, type ArtifactKind, type Prepared } from '../../doctor/artifacts'
 import { captureOf } from '../../doctor/captureOf'
+import { getProfile } from '../../doctor/profileStore'
 import { downloadText } from '../../doctor/download'
 import { useModalFocus } from '../../hooks/useModalFocus'
 
@@ -24,7 +25,7 @@ export default function ExportDialog({ theme, streamId, findings, endT, onClose 
     useModalFocus(dialogRef, true, onClose)
 
     // The recording as it is when the dialog opens; later records do not change what is previewed.
-    const snapshot = useMemo(() => captureOf(streamId, endT), [streamId]) // eslint-disable-line react-hooks/exhaustive-deps -- taken once, on open
+    const snapshot = useMemo(() => captureOf(streamId, endT, getProfile()), [streamId]) // eslint-disable-line react-hooks/exhaustive-deps -- taken once, on open
     const [kind, setKind] = useState<ArtifactKind>('report-md')
     const [shell, setShell] = useState<'posix' | 'powershell'>('posix')
     const [findingKey, setFindingKey] = useState(findings[0]?.key ?? '')

@@ -14,7 +14,7 @@ import { SEVERITY_RANK } from '../core/diagnostics/finding'
 import { localCapture } from '../core/capture/build'
 import { createObservedStream } from '../core/sse/observedStream'
 import { redactUrl } from '../core/observe/redactUrl'
-import type { PayloadProbeConfig } from '../core/observe/payloadProbe'
+import { parseProfile, probeConfigOf } from '../core/diagnostics/profile'
 import { numberFlag, stringFlag, type ParsedArgs } from './args'
 import { CliError, EXIT, requireFiles, type CliIo } from './io'
 import { parseFailOn, parseFormat, render, gate, type Result } from './output'
@@ -47,8 +47,9 @@ async function loadProfile(io: CliIo, args: ParsedArgs, fallback: StreamProfile 
     const files = requireFiles(io)
     let value: unknown
     try { value = JSON.parse(await files.readText(path)) } catch { throw new CliError(`Cannot read a JSON profile from "${path}".`, EXIT.usage) }
-    if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new CliError(`The profile in "${path}" must be a JSON object.`, EXIT.usage)
-    return value as StreamProfile
+    const checked = parseProfile(value)
+    if (!checked.ok) throw new CliError(`The profile in "${path}" is not valid:\n- ${checked.errors.join('\n- ')}`, EXIT.usage)
+    return checked.profile
 }
 
 function analysisOf(capture: Capture, profile: StreamProfile | undefined): Analysis {
@@ -182,16 +183,6 @@ function requestFor(io: CliIo, args: ParsedArgs, url: string, secrets: SecretReg
     return { url: full, headers, sentNames: Object.keys(headers).map((h) => h.toLowerCase()) }
 }
 
-function probeConfig(profile: StreamProfile | undefined): PayloadProbeConfig {
-    const config: PayloadProbeConfig = {}
-    if (profile?.sequence) {
-        config.sequence = { ...(profile.sequence.field ? { field: profile.sequence.field } : {}), ...(profile.sequence.useSseId ? { useSseId: true } : {}) }
-        if (profile.sequence.partitionBy) config.partitionBy = profile.sequence.partitionBy
-    }
-    if (profile?.timestampField) config.timestampField = profile.timestampField
-    return config
-}
-
 export async function probeCommand(io: CliIo, args: ParsedArgs, secrets: SecretRegistry): Promise<number> {
     const target = args.positionals[1]
     if (!target || !/^https?:\/\//i.test(target)) throw new CliError('Usage: sse-doctor probe <http(s) url> [--duration s] [--max-events n] [--idle-timeout s] [--out capture]', EXIT.usage)
@@ -215,7 +206,7 @@ export async function probeCommand(io: CliIo, args: ParsedArgs, secrets: SecretR
             onPhase: (phase) => { if (phase === 'ended' || phase === 'failed') finish(phase) },
         },
         recording: {
-            ...(Object.keys(probeConfig(profile)).length > 0 ? { profile: probeConfig(profile) } : {}),
+            ...(Object.keys(probeConfigOf(profile)).length > 0 ? { profile: probeConfigOf(profile) } : {}),
             captureBytes: true,
             onObservations: (batch) => { for (const o of batch) records.push(o); lastActivity = Date.now() },
             flushMs: 25,

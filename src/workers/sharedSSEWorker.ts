@@ -17,6 +17,8 @@ import { SSEClient, type SSEClientOptions, type SSEPhase, type SSEPhaseInfo } fr
 import { createObservedStream, type ObservedStream } from '../core/sse/observedStream'
 import { buildSSERequest } from '../utils/sseProxyUrl'
 import type { IncomingSSE } from '../utils/buildEvent'
+import type { PayloadProbeConfig } from '../core/observe/payloadProbe'
+import { asProbeConfig } from './contracts'
 
 const MAX_BUFFER = 50                // recent events kept so a late-joining tab can catch up
 const SWEEP_MS = 15_000              // how often silent tabs are looked for
@@ -73,7 +75,7 @@ function flushPending(conn: Connection) {
     broadcast(conn, { type: 'events', key: conn.key, payloads })
 }
 
-function openConnection(key: string, url: string, token: string | undefined, useProxy: boolean, recording: boolean): Connection {
+function openConnection(key: string, url: string, token: string | undefined, useProxy: boolean, recording: boolean, profile: PayloadProbeConfig | undefined): Connection {
     const conn: Connection = {
         key,
         ports: new Set(),
@@ -90,7 +92,7 @@ function openConnection(key: string, url: string, token: string | undefined, use
         clientFactory: (options) => clientFactory(options), // read at call time: tests swap it
         // Records go to every tab in batches; the page runs the analysis, so the worker only records and forwards. A tab that
         // turned recording off asks for none; the tab that opens the connection decides for everyone sharing it.
-        recording: recording ? { onObservations: (batch) => broadcast(conn, { type: 'observations', key, captureId: conn.client.captureId, batch }) } : undefined,
+        recording: recording ? { ...(profile ? { profile } : {}), onObservations: (batch) => broadcast(conn, { type: 'observations', key, captureId: conn.client.captureId, batch }) } : undefined,
         sinks: {
             onMessage: (payload) => {
                 conn.buffer.push(payload)
@@ -130,14 +132,14 @@ function leave(port: MessagePort) {
     }
 }
 
-function join(port: MessagePort, url: string, token: string | undefined, useProxy: boolean, recording: boolean) {
+function join(port: MessagePort, url: string, token: string | undefined, useProxy: boolean, recording: boolean, profile: PayloadProbeConfig | undefined) {
     const key = makeKey(url, token)
     const st = portState.get(port)!
     if (st.key && st.key !== key) leave(port)  // switching streams must not leave the old subscription behind
     st.key = key
 
     let conn = connections.get(key)
-    if (!conn) conn = openConnection(key, url, token, useProxy, recording)
+    if (!conn) conn = openConnection(key, url, token, useProxy, recording, profile)
     if (conn.idleTimer) { clearTimeout(conn.idleTimer); conn.idleTimer = null }
     conn.ports.add(port)
 
@@ -179,7 +181,7 @@ setInterval(() => sweep(Date.now()), SWEEP_MS)
 
         switch (msg.type) {
             case 'connect':
-                if (typeof msg.url === 'string' && msg.url) join(port, msg.url, msg.token || undefined, msg.useProxy !== false, msg.recording !== false)
+                if (typeof msg.url === 'string' && msg.url) join(port, msg.url, msg.token || undefined, msg.useProxy !== false, msg.recording !== false, asProbeConfig(msg.profile))
                 return
             case 'disconnect':
                 leave(port)

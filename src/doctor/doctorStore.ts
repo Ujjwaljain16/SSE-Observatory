@@ -9,6 +9,7 @@
 
 import { observationRegistry, type ObservationRegistry } from './observationRegistry'
 import type { DoctorSession, DoctorView } from './doctorSession'
+import { getProfile, subscribeProfile } from './profileStore'
 
 const SYNC_MS = 250
 const TICK_MS = 1000
@@ -21,6 +22,8 @@ export interface DoctorStoreOptions {
     now?: () => number
     isHidden?: () => boolean
     loadEngine?: () => Promise<typeof import('./doctorSession')>
+    /** Where the stream profile comes from; the saved one by default. */
+    profile?: { get: () => import('../core/diagnostics').StreamProfile | undefined; subscribe: (listener: () => void) => () => void }
 }
 
 export type DoctorViews = ReadonlyMap<string, DoctorView>
@@ -41,12 +44,15 @@ export class DoctorStore {
     private lastSync = -Infinity
     private hiddenAt: number | null = null
     private onVisibility: (() => void) | null = null
+    private readonly profile: NonNullable<DoctorStoreOptions['profile']>
+    private unsubscribeProfile: (() => void) | null = null
 
     constructor(options: DoctorStoreOptions = {}) {
         this.registry = options.registry ?? observationRegistry
         this.now = options.now ?? (() => performance.now())
         this.isHidden = options.isHidden ?? (() => typeof document !== 'undefined' && document.hidden)
         this.loadEngine = options.loadEngine ?? (() => import('./doctorSession'))
+        this.profile = options.profile ?? { get: getProfile, subscribe: subscribeProfile }
     }
 
     subscribe = (listener: () => void): (() => void) => {
@@ -69,6 +75,11 @@ export class DoctorStore {
     private start(): void {
         this.unsubscribeRegistry = this.registry.subscribe(() => this.schedule())
         this.tickTimer = setInterval(() => this.tick(), TICK_MS)
+        // A new profile changes what the rules judge, so each stream is diagnosed again from the records it holds.
+        this.unsubscribeProfile = this.profile.subscribe(() => {
+            for (const session of this.sessions.values()) session.setProfile(this.profile.get())
+            this.schedule()
+        })
         if (typeof document !== 'undefined') {
             this.onVisibility = () => this.visibilityChanged()
             document.addEventListener('visibilitychange', this.onVisibility)
@@ -79,6 +90,8 @@ export class DoctorStore {
     private stop(): void {
         this.unsubscribeRegistry?.()
         this.unsubscribeRegistry = null
+        this.unsubscribeProfile?.()
+        this.unsubscribeProfile = null
         if (this.tickTimer) clearInterval(this.tickTimer)
         if (this.syncTimer) clearTimeout(this.syncTimer)
         this.tickTimer = this.syncTimer = null
@@ -112,7 +125,7 @@ export class DoctorStore {
         const ids = new Set(this.registry.ids())
         for (const id of [...this.sessions.keys()]) if (!ids.has(id)) this.sessions.delete(id)
         for (const id of ids) {
-            if (!this.sessions.has(id)) this.sessions.set(id, new this.engine.DoctorSession(id))
+            if (!this.sessions.has(id)) this.sessions.set(id, new this.engine.DoctorSession(id, this.profile.get()))
             const entry = this.registry.get(id)
             if (entry) this.sessions.get(id)!.sync(entry, t, this.registry.pageElapsed(id))
         }

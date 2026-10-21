@@ -43,6 +43,41 @@ diagnostics keep running while the panel is closed, so the badge appears without
 
 In Multi-Stream each lane gets its own card in the lane's colour, the lane with the most serious open finding first.
 
+## Sections
+
+The panel has three tabs. **Findings** is described above. **Sequence** and **Profile** are about the numbers in your events.
+
+### Profile
+
+Gaps and duplicates are only judged when you say which numbers count, because ids that merely look sequential prove
+nothing (a server may legitimately send 104 and then 111). The profile is where you say it:
+
+- **How the events are numbered**: the SSE `id:` field, or a JSON path into the event data such as `$.seq`; counted
+  *one by one* (a skipped number is a loss) or *upwards* (jumps are fine, repeats and going backwards are not); optionally
+  counted separately per `$.shard` or per event name (`$event`).
+- **Delivery**: at least once (a replay after a reconnect is expected), exactly once (a repeat is an error), at most once.
+- **Producer timestamp** and the timings you expect (time to the first event, longest silence, heartbeat interval).
+
+**Fields in recent events** lists the numeric fields of the latest events (a counter that goes up by one is listed first,
+then things that look like times), each with *Use as sequence* and *Use as timestamp*; the star pins a field to the top.
+Picking one only fills the form. **Edit as JSON** shows the same profile as the file the command line reads with
+`--profile`; a profile that cannot be used is refused with a plain message for every problem in it.
+
+It is kept in this browser and applies to every stream. The rules use a saved profile at once (the recording is judged
+again, and a silence that was going on keeps counting). The numbers themselves are read from each event as it is
+recorded, so reconnect after declaring a sequence for events from then on to carry them.
+
+### Sequence
+
+Says how far the numbers can be trusted: **declared**, **not declared but the ids count up** (a hint, never a verdict), or
+**not declared** (continuity cannot be verified). With a declared sequence it shows the latest numbers in order of
+arrival as a strip, and a table of every place where a number did not follow on: after a gap (with the numbers that are
+missing), seen before, or lower than before. The strip is a summary; the table is the same information as text.
+
+This is the plain order of arrival. The Findings tab is the rule: it gives a late number a short window before calling it
+lost, and treats events replayed after a reconnect as expected, so the two can differ, and that difference is worth looking at.
+A gap that appears right before a stream goes quiet is shown in Findings once the window has passed, without waiting for another event.
+
 ## Exporting
 
 **Export…** (top right of the panel) turns what the Doctor has seen into something you can keep or hand to someone. The
