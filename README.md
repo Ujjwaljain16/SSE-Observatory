@@ -201,6 +201,23 @@ Measured with `npm run bench` in Chrome: a 20,000-event burst that ends and reco
 
 Measured on a laptop with Chrome 155 against the production build (`NODE_ENV=production node server.js`), October 2026. Heap growth is the JS heap after 8 to 10 seconds of load and includes garbage not yet collected; it does not keep climbing (an earlier version grew by about 40 MB per second under the same burst).
 
+### What the Stream Doctor costs
+
+Measured the same way (production build, Chrome, `npm run bench -- --doctor all --runs 5`, medians of five runs, October 2026), with recording switched off (the viewer alone), with recording on and the Doctor panel closed (the normal state: the diagnostics run behind the badge), and with the panel open:
+
+| scenario | Doctor | timer late p95 | long frames | worst frame | heap growth |
+|---|---|---|---|---|---|
+| 20k-event burst, reconnecting every second | off | 16 ms | 0 | 0 ms | +19 MB |
+| | closed | 31 ms | 7 (494 ms in total) | 81 ms | +52 MB |
+| | open | 36 ms | 10 (689 ms) | 96 ms | +86 MB |
+| sustained ~500 events/s | off | 8 ms | 0 | 0 ms | +29 MB |
+| | closed | 8 ms | 0 | 0 ms | +28 MB |
+| | open | 9 ms | 0 | 0 ms | +34 MB |
+
+At a realistic rate the Doctor adds nothing the page can feel. In the extreme burst it adds a few short stalls and tens of megabytes of heap (the recording and its copy; it does not keep growing). The first measurement of this build was much worse (timer late p95 about 600 ms, a worst frame near 900 ms): a profile showed that re-sorting a 256-sample window every time a rule asked for a quantile took about three of eight seconds of main-thread time, and keeping the window sorted as samples arrive removed it.
+
+What this does not show: the plan's target of "under 2% CPU at 500 events/s" **is not demonstrated**. The main thread is busy 70 to 98% of the time in every variant (rendering 500 rows a second dominates), the run-to-run spread is about ten points, and the SharedWorker's own work is not in the figure, so a difference of two points cannot be seen. Per record, the engine costs about 13 microseconds (50,000 records in 650 ms the first time, a refresh with 100 new records in about 2 ms); at 1,500 records a second that is about 2% of one core, which is the basis for the target but not a measurement of it.
+
 Reproduce with `npm run bench` (add `-- --throttle 4` for the slow-CPU run, `-- --app http://localhost:3100` to target a production build). Numbers vary by machine and from run to run; the budget the pipeline is built around is: no main-thread stall longer than a few frames, flat memory, and the first row on screen almost immediately.
 
 ## 11. Key Engineering Decisions

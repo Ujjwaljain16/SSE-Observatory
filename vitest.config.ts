@@ -17,8 +17,9 @@ export default defineConfig({
             // Measure everything we ship, not only the files tests happen to import.
             include: ['src/**/*.{ts,tsx}', 'lib/**/*.js'],
             exclude: ['src/**/*.test.*', 'src/**/__tests__/**', 'src/test/**', 'src/perf/**', 'src/tests/**', 'src/types/**', 'src/core/testing/**', 'src/cli/bin.ts', 'src/fixtures/**'],
-            // Ratchet: set just under the current level (66.6% statements, 49.1% branches) so coverage can only go up.
-            thresholds: { lines: 65, statements: 64, functions: 50, branches: 47 },
+            // Ratchet: set just under the current level (80.9% statements, 66.9% branches, 71.6% functions, 82.7% lines) so coverage can only go up.
+            // The Doctor's React components are covered by the Playwright specs, not by unit tests, which is why these are not higher.
+            thresholds: { lines: 82, statements: 80, functions: 71, branches: 66 },
         },
         projects: [
             {
