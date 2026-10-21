@@ -111,7 +111,7 @@ describe('S08: a hostile severity in a capture file', () => {
         const b = healthyStart()
         b.frame('tick', '1')
         b.violation('UNKNOWN_FIELD', 'a field name')
-        return (b.observations() as Array<Record<string, unknown>>).map((r) => (r['kind'] === 'violation' ? { ...r, severity: hostile } : r)) as unknown as CaptureRecord[]
+        return (b.observations() as unknown as Array<Record<string, unknown>>).map((r) => (r['kind'] === 'violation' ? { ...r, severity: hostile } : r)) as unknown as CaptureRecord[]
     }
 
     it('is shown as info, so nothing from the file reaches an attribute or a label', () => {

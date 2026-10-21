@@ -8,7 +8,6 @@
  * two noncharacters XML forbids, and an unpaired surrogate are replaced.
  */
 
-// eslint-disable-next-line no-control-regex -- matching the control characters is the point
 const UNSAFE = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F￾￿]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g
 
 export function sanitizeText(text: string): string {

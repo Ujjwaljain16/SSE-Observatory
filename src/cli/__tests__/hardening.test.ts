@@ -140,7 +140,6 @@ describe('S07: warnings come with every shareable output', () => {
 describe('S13: text from a stream cannot drive a terminal or break the XML', () => {
     // C0 controls, an escape sequence that sets the window title, and a noncharacter XML forbids
     const hostile = ['weird', '\u0001', 'line', '\u0000', '\u001b[31mred', '\u001b]0;title\u0007', String.fromCharCode(0xfffe)].join('')
-    // eslint-disable-next-line no-control-regex -- looking for exactly these characters
     const CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]|￾|￿/
 
     // a finding whose text came from the stream, rendered every way the CLI can
