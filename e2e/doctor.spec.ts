@@ -135,6 +135,41 @@ test.describe('Stream Doctor', () => {
         await expect(stall.locator('pre')).toBeVisible()
     })
 
+    test('is exposed to assistive technology with structure, names, states and a quiet live region', async ({ page }) => {
+        // A real screen reader is not run here. This checks what one is given: Chrome's accessibility tree for the panel.
+        test.setTimeout(60_000)
+        await page.goto('/')
+        await connect(page, '/silent')
+        await openDoctor(page)
+        const stall = page.locator('[data-testid="doctor-finding"][data-finding-key^="stall"]')
+        await expect(stall).toBeVisible({ timeout: 25_000 })
+        const panel = page.getByTestId('doctor-panel')
+
+        // Headings form an outline with no skipped level.
+        const levels = await panel.locator('h1,h2,h3,h4,h5,h6').evaluateAll((hs) => hs.map((h) => Number(h.tagName[1])))
+        expect(levels[0]).toBe(2)
+        levels.forEach((level, i) => { if (i > 0) expect(level - levels[i - 1]!, 'heading levels: ' + levels.join(',')).toBeLessThanOrEqual(1) })
+
+        // Each disclosure says whether it is open, and the figures are a labelled group of terms and values.
+        await expect(stall.getByRole('button').first()).toHaveAttribute('aria-expanded', /true|false/)
+        await expect(panel.getByRole('list', { name: 'Open findings' })).toBeVisible()
+        await expect(panel.locator('dl[aria-label="Stream health"]')).toBeVisible()
+        // Severity is in words, not only colour.
+        await expect(stall).toContainText(/Error|Warning/)
+
+        // The live region names the state and the counts, and does not change while the state does not.
+        const live = panel.getByRole('status')
+        await expect(live).toHaveText(/Connection open. [0-9]+ errors?, [0-9]+ warnings? open./)
+        await page.waitForTimeout(1500)
+        const mutations = await live.evaluate((el) => new Promise<number>((resolve) => {
+            let n = 0
+            const observer = new MutationObserver((list) => { n += list.length })
+            observer.observe(el, { childList: true, characterData: true, subtree: true })
+            setTimeout(() => { observer.disconnect(); resolve(n) }, 4000)
+        }))
+        expect(mutations, 'the live region must not change on every tick').toBe(0)
+    })
+
     test('has no accessibility violations with findings open (A and AA)', async ({ page }) => {
         test.setTimeout(60_000)
         await page.emulateMedia({ reducedMotion: 'reduce' })

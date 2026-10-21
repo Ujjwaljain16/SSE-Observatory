@@ -31,6 +31,7 @@ export default function DoctorPanel({ theme, streamId, title = 'Stream Doctor', 
     const dark = theme === 'dark'
     const view = useDoctorView(streamId)
     const Heading = heading
+    const sectionHeading = heading === 'h2' ? 'h3' : 'h4'
     const errors = view ? view.open.error + view.open.critical : 0
     const warnings = view?.open.warning ?? 0
     const announcement = useAnnouncement(view?.health.phase, errors, warnings)
@@ -64,7 +65,7 @@ export default function DoctorPanel({ theme, streamId, title = 'Stream Doctor', 
 
                     {open.length > 0 ? (
                         <ul className="space-y-2" aria-label="Open findings">
-                            {open.map((f, i) => <FindingCard key={f.key} theme={theme} streamId={streamId} finding={f} defaultOpen={i === 0 && f.severity !== 'info'} />)}
+                            {open.map((f, i) => <FindingCard key={f.key} theme={theme} streamId={streamId} finding={f} sectionHeading={sectionHeading} defaultOpen={i === 0 && f.severity !== 'info'} />)}
                         </ul>
                     ) : (
                         <p className={`text-sm ${muted}`} data-testid="doctor-none">
@@ -77,7 +78,7 @@ export default function DoctorPanel({ theme, streamId, title = 'Stream Doctor', 
                         <details>
                             <summary className={`cursor-pointer text-sm font-medium ${dark ? 'text-slate-100' : 'text-slate-900'}`}>Resolved ({resolved.length})</summary>
                             <ul className="space-y-2 mt-2" aria-label="Resolved findings">
-                                {resolved.map((f) => <FindingCard key={f.key} theme={theme} streamId={streamId} finding={f} />)}
+                                {resolved.map((f) => <FindingCard key={f.key} theme={theme} streamId={streamId} finding={f} sectionHeading={sectionHeading} />)}
                             </ul>
                         </details>
                     )}
