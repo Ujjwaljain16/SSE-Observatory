@@ -209,6 +209,25 @@ export const sequenceIntegrity: Rule = {
                 const changed = apply(st.tracker.accept(value, o.dataHash ?? '', { seq: o.seq, t: o.t }, { boundary, replay }), partition)
                 return [...new Set(changed)].map((k) => finding(k, o.t, false)).filter((d): d is FindingDraft => d !== undefined)
             },
+            /**
+             * A gap is normally confirmed by the events that follow it. When the stream goes quiet right after one, time alone
+             * confirms it: show it provisionally. The state is put back afterwards, so ticks change nothing.
+             */
+            onTick(nowT) {
+                if (!contract) return
+                const due: Array<{ partition: string; output: TrackerOutput }> = []
+                for (const [partition, st] of partitions) for (const output of st.tracker.dueGaps(nowT)) due.push({ partition, output })
+                if (due.length === 0) return
+                const saved = { ...agg.gap, examples: [...agg.gap.examples], evidence: [...agg.gap.evidence] }
+                const savedMissing = totalMissing
+                const savedRanges = gapRanges.length
+                for (const { partition, output } of due) apply([output], partition)
+                const draft = finding('gap', nowT, false)
+                agg.gap = saved
+                totalMissing = savedMissing
+                gapRanges.length = savedRanges
+                return draft ? [draft] : undefined
+            },
             onEnd(endT) {
                 if (!contract) return
                 const drafts: FindingDraft[] = []

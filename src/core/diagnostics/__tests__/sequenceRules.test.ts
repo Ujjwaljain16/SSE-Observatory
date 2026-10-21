@@ -91,6 +91,39 @@ describe('R09 seq.integrity under a declared contract', () => {
     })
 })
 
+describe('R09 gap shown while the stream is quiet (live)', () => {
+    const records = () => withSeq(frames(healthyStart(), [1, 2, 3, 6]).build())
+
+    it('shows a gap provisionally once the reorder window has passed, without another event', () => {
+        const engine = createEngine({ rules: RULES, profile: declared })
+        for (const r of records()) engine.feed(r)
+        engine.tick(engine.model.nowT + 500)
+        expect(find(engine.findings(), 'seq.integrity:gap')).toBeUndefined() // still inside the window: a late number could fill it
+        engine.tick(engine.model.nowT + 5000)
+        const gap = find(engine.findings(), 'seq.integrity:gap')!
+        expect(gap.summary).toContain('2 numbers never arrived')
+        expect(gap.summary).toContain('4-5')
+    })
+
+    it('a tick changes nothing: the final result is the same as without it', () => {
+        const withTicks = createEngine({ rules: RULES, profile: declared })
+        const without = createEngine({ rules: RULES, profile: declared })
+        for (const r of records()) { withTicks.feed(r); without.feed(r) }
+        withTicks.tick(60_000)
+        withTicks.tick(120_000)
+        withTicks.end(130_000)
+        without.end(130_000)
+        expect(withTicks.findings()).toEqual(without.findings())
+    })
+
+    it('does not show it provisionally when the missing number arrives in time', () => {
+        const engine = createEngine({ rules: RULES, profile: declared })
+        for (const r of withSeq(frames(healthyStart(), [1, 2, 3, 6, 4, 5]).build())) engine.feed(r)
+        engine.tick(engine.model.nowT + 60_000)
+        expect(find(engine.findings(), 'seq.integrity:gap')).toBeUndefined()
+    })
+})
+
 describe('R09 without a declared contract', () => {
     it('never reports a gap, and says continuity could not be verified', () => {
         const a = run(frames(healthyStart(), [1, 2, 4, 9]), NO_CONTRACT)
