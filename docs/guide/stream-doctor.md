@@ -45,7 +45,46 @@ In Multi-Stream each lane gets its own card in the lane's colour, the lane with 
 
 ## Sections
 
-The panel has three tabs. **Findings** is described above. **Sequence** and **Profile** are about the numbers in your events.
+The panel has five tabs. **Findings** is described above. **Timeline** and **Captures** are about the connection and about recordings you keep. **Sequence** and **Profile** are about the numbers in your events.
+
+### Timeline
+
+One row per connection attempt: how long it lived, each event as a tick, each comment line as a dot (filled from the origin,
+hollow from the proxy), and a dashed line for the wait before the next attempt. The table under it says the same in words:
+status and how long the headers took, time to the first event, the longest wait between byte arrivals, why it ended, the
+`Last-Event-ID` it resumed from, and how long the client waited (and what the server's `retry:` asked for). That is the
+place to check that a reconnect sent the id you expect.
+
+**Bookmarks** mark a moment (a label and the time) and show on the timeline. They stay in this browser with the recording
+and are copied when you save the recording to the library; they are not part of an exported file.
+
+### Captures
+
+A library of recordings kept in this browser (up to 20, 20 MB each, **not redacted**; share only through Export):
+
+- **Save this recording** keeps the recording as it is now, with the profile and its bookmarks.
+- **Open a file** reads an `.sse-capture` (from the command line or a teammate) or an older `.sse-record`; a file that is
+  empty, not a capture, over the size limit or damaged is refused or read as far as it goes, with the reason. An older
+  recording has event times only, so checks that need more say *not evaluated*. A file whose hash does not match is
+  flagged as changed after it was written.
+- **Analyse** runs the same checks on a saved or opened capture and lists its findings and what could not be evaluated.
+- **Compare** two captures (tick both) lists where their behaviour differs. Which layer caused a difference cannot be told from two recordings alone, and the page says so.
+
+### From a finding to the event, and to a replay
+
+An evidence chip opens the raw record behind a claim. When the record is an event, **Show this event in the list** scrolls
+the events list to it and marks it. If it is gone (the list keeps the latest 1000) or a filter hides it, the Doctor says
+so instead of doing nothing.
+
+In **Export**, a capture to share or the smallest capture can be played back with **Replay in Mock mode**: the capture
+goes to the app's own mock server and the viewer connects to the replay. The app records what happened on the wire, not what
+events said, so each body is a placeholder of the original size (carrying only the numbers your profile reads); the
+timing, ids, event names and reconnects are the recording's. The Doctor says it is a replay. The mock server is on in
+development and off on a public deployment unless it was enabled for it.
+
+### Saved filters
+
+In the query box, **Save this filter** keeps an expression under a name (up to 30, in this browser); a click applies it.
 
 ### Profile
 
