@@ -1,5 +1,6 @@
 import { localCapture } from '../core/capture/build'
 import type { Capture, CaptureRecord } from '../core/capture/format'
+import type { StreamProfile } from '../core/diagnostics/thresholds'
 import { observationRegistry } from './observationRegistry'
 
 export interface CaptureSnapshot {
@@ -13,9 +14,10 @@ export interface CaptureSnapshot {
  * The stream's recording as a capture file, as of now. It is a `local-full` capture: it holds what the recorder kept,
  * unredacted, and must go through `redactCapture` before it is shared. Page-domain consumer samples are left out: they
  * are measured in another clock with their own numbering, so they do not belong in the transport's record order.
+ * A declared profile travels in the header, so the file is analysed, reduced and turned into a scenario the way it was here.
  * `endT` is when the recording stops, in the recording's clock (the Doctor view's `nowT`).
  */
-export function captureOf(streamId: string, endT?: number): CaptureSnapshot | undefined {
+export function captureOf(streamId: string, endT?: number, profile?: StreamProfile): CaptureSnapshot | undefined {
     const entry = observationRegistry.get(streamId)
     if (!entry) return undefined
     const records = entry.store.snapshot() as CaptureRecord[]
@@ -27,6 +29,7 @@ export function captureOf(streamId: string, endT?: number): CaptureSnapshot | un
         source: { kind: 'browser-app', client: 'browser-fetch' },
         ...(connect?.url ? { request: { url: connect.url, method: connect.method ?? 'GET' } } : {}),
         ...(entry.captureId ? { captureId: entry.captureId } : {}),
+        ...(profile ? { profile } : {}),
         truncated,
         capBytes: stats.capBytes,
         endReason: 'stopped',

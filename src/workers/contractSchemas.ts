@@ -17,7 +17,7 @@ export const EventMessageSchema = z.object({
 // shared sse worker contracts (the SharedWorker validates nothing per event either)
 
 export const SSEWorkerRequestSchema = z.discriminatedUnion('type', [
-    z.object({ type: z.literal('connect'), url: z.string(), token: z.string().optional(), useProxy: z.boolean().optional(), recording: z.boolean().optional() }),
+    z.object({ type: z.literal('connect'), url: z.string(), token: z.string().optional(), useProxy: z.boolean().optional(), recording: z.boolean().optional(), profile: z.object({ sequence: z.object({ field: z.string().optional(), useSseId: z.boolean().optional() }).optional(), timestampField: z.string().optional(), partitionBy: z.string().optional() }).optional() }),
     z.object({ type: z.literal('disconnect') }),
     z.object({ type: z.literal('ping') })
 ])

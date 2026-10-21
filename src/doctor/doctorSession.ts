@@ -12,7 +12,7 @@
  * range, so they cannot collide with transport records.
  */
 
-import { SEVERITY_RANK, createEngine, type Engine, type Finding, type RuleCoverage, type Severity } from '../core/diagnostics'
+import { SEVERITY_RANK, createEngine, type Engine, type Finding, type RuleCoverage, type Severity, type StreamProfile } from '../core/diagnostics'
 import type { Observation } from '../core/observe/observation'
 import { RollingStats } from '../core/diagnostics/stats'
 import type { RegistryEntry } from './observationRegistry'
@@ -41,6 +41,8 @@ export interface HealthView {
 export interface DoctorView {
     streamId: string
     captureId: string | null
+    /** The profile the rules ran with, if one is declared. */
+    profile: StreamProfile | undefined
     /** The time this view was made at, in the recording's clock. */
     nowT: number
     findings: Finding[]
@@ -58,7 +60,7 @@ const emptyOpen = (): Record<Severity, number> => ({ info: 0, warning: 0, error:
 const age = (now: number, at: number | undefined): number | null => (at === undefined ? null : Math.max(0, now - at))
 
 export class DoctorSession {
-    private engine: Engine = createEngine()
+    private engine: Engine
     private store: RegistryEntry['store'] | undefined
     private captureId: string | null = null
     private lastSeq = -1
@@ -66,24 +68,47 @@ export class DoctorSession {
     private offset: number | undefined
     private lastRecordT = 0
     private lastRecordLocal = 0
+    /** The page time of the newest record has been noted at least once. */
+    private anchored = false
     private syncedVersion = -1
     private lag = new RollingStats(256)
     private queueDepth = 0
     private consumerSamples = 0
 
-    constructor(readonly streamId: string) {}
+    constructor(readonly streamId: string, private profile?: StreamProfile) {
+        this.engine = this.newEngine()
+    }
+
+    private newEngine(): Engine {
+        return createEngine(this.profile ? { profile: this.profile } : {})
+    }
 
     private reset(): void {
-        this.engine = createEngine()
+        this.engine = this.newEngine()
         this.lastSeq = -1
         this.lastConsumerSeq = -1
         this.offset = undefined
         this.lastRecordT = 0
         this.lastRecordLocal = 0
+        this.anchored = false
         this.syncedVersion = -1
         this.queueDepth = 0
         this.consumerSamples = 0
         this.lag = new RollingStats(256)
+    }
+
+    /**
+     * Judge the records again under a different profile. What was seen stays the same and so does the time that has passed
+     * since the last record, so a silence that was going on keeps counting; only the rules' reading changes.
+     */
+    setProfile(profile: StreamProfile | undefined): void {
+        const { lastRecordT, lastRecordLocal, offset, anchored } = this
+        this.profile = profile
+        this.reset()
+        this.lastRecordT = lastRecordT
+        this.lastRecordLocal = lastRecordLocal
+        this.anchored = anchored
+        this.offset = offset
     }
 
     /** The recorder-clock time that corresponds to page time `localNow`. */
@@ -113,16 +138,18 @@ export class DoctorSession {
             this.captureId = captureId
             this.store = store
         }
+        let advanced = false
         let from = records.length
         while (from > 0 && records[from - 1]!.seq > this.lastSeq) from--
         for (let i = from; i < records.length; i++) {
             const o = records[i]!
             this.engine.feed(o)
             this.lastSeq = o.seq
-            this.lastRecordT = Math.max(this.lastRecordT, o.t)
+            if (o.t > this.lastRecordT) { this.lastRecordT = o.t; advanced = true }
             changed = true
         }
-        if (changed) this.lastRecordLocal = localNow
+        // Only a record that is newer than the last moves the anchor; records fed again after a profile change do not.
+        if (advanced || (changed && !this.anchored)) { this.lastRecordLocal = localNow; this.anchored = true }
 
         const fresh = entry.consumer.filter((c) => c.seq > this.lastConsumerSeq)
         if (fresh.length > 0 && pageNow !== undefined) {
@@ -174,6 +201,7 @@ export class DoctorSession {
         return {
             streamId: this.streamId,
             captureId: this.captureId,
+            profile: this.profile,
             nowT: now,
             findings,
             coverage,
