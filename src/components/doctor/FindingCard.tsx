@@ -10,6 +10,8 @@ interface Props {
     streamId: string
     finding: Finding
     defaultOpen?: boolean
+    /** The heading level of the parts inside a finding: one below the panel's own heading. */
+    sectionHeading?: 'h3' | 'h4'
 }
 
 const ICON: Record<Severity, typeof Info> = { info: Info, warning: AlertTriangle, error: XCircle, critical: XCircle }
@@ -26,7 +28,7 @@ function EvidenceChip({ theme, streamId, seq, t, note }: { theme: Theme; streamI
             <button
                 type="button"
                 aria-expanded={shown}
-                aria-controls={id}
+                aria-controls={shown ? id : undefined}
                 onClick={() => setShown(!shown)}
                 className={`mr-1.5 mb-1 px-2 py-0.5 rounded text-xs font-mono ${dark ? 'bg-slate-700 text-slate-100 hover:bg-slate-600' : 'bg-slate-200 text-slate-900 hover:bg-slate-300'}`}
             >
@@ -41,7 +43,7 @@ function EvidenceChip({ theme, streamId, seq, t, note }: { theme: Theme; streamI
     )
 }
 
-export function FindingCard({ theme, streamId, finding, defaultOpen = false }: Props) {
+export function FindingCard({ theme, streamId, finding, defaultOpen = false, sectionHeading: Section = 'h4' }: Props) {
     const dark = theme === 'dark'
     const [open, setOpen] = useState(defaultOpen)
     const [copied, setCopied] = useState(false)
@@ -60,7 +62,7 @@ export function FindingCard({ theme, streamId, finding, defaultOpen = false }: P
             <button
                 type="button"
                 aria-expanded={open}
-                aria-controls={bodyId}
+                aria-controls={open ? bodyId : undefined}
                 onClick={() => setOpen(!open)}
                 className="w-full flex items-start gap-3 text-left px-4 py-3"
             >
@@ -81,7 +83,7 @@ export function FindingCard({ theme, streamId, finding, defaultOpen = false }: P
                 <div id={bodyId} className="px-4 pb-4 pl-11 space-y-3 text-sm">
                     {finding.facts.length > 0 && (
                         <section aria-label="What was observed">
-                            <h4 className={`text-xs font-bold uppercase tracking-wide mb-1 ${muted}`}>Observed</h4>
+                            <Section className={`text-xs font-bold uppercase tracking-wide mb-1 ${muted}`}>Observed</Section>
                             <ul className="space-y-2">
                                 {finding.facts.map((fact, i) => (
                                     <li key={i} className={strong}>
@@ -99,7 +101,7 @@ export function FindingCard({ theme, streamId, finding, defaultOpen = false }: P
 
                     {finding.deductions.length > 0 && (
                         <section aria-label="What it suggests">
-                            <h4 className={`text-xs font-bold uppercase tracking-wide mb-1 ${muted}`}>Inferred, not measured</h4>
+                            <Section className={`text-xs font-bold uppercase tracking-wide mb-1 ${muted}`}>Inferred, not measured</Section>
                             <ul className="space-y-2">
                                 {finding.deductions.map((d, i) => (
                                     <li key={i} className={strong}>
@@ -117,7 +119,7 @@ export function FindingCard({ theme, streamId, finding, defaultOpen = false }: P
 
                     {finding.nextCheck && (
                         <section aria-label="What to check next">
-                            <h4 className={`text-xs font-bold uppercase tracking-wide mb-1 ${muted}`}>Check next</h4>
+                            <Section className={`text-xs font-bold uppercase tracking-wide mb-1 ${muted}`}>Check next</Section>
                             <p className={strong}>{finding.nextCheck.description}</p>
                             {finding.nextCheck.command && (
                                 <div className="flex items-start gap-2 mt-1">
@@ -132,7 +134,7 @@ export function FindingCard({ theme, streamId, finding, defaultOpen = false }: P
 
                     {finding.limits.length > 0 && (
                         <section aria-label="What this cannot tell">
-                            <h4 className={`text-xs font-bold uppercase tracking-wide mb-1 ${muted}`}>Limits</h4>
+                            <Section className={`text-xs font-bold uppercase tracking-wide mb-1 ${muted}`}>Limits</Section>
                             <ul className={`list-disc pl-5 space-y-0.5 ${muted}`}>{finding.limits.map((l, i) => <li key={i}>{l}</li>)}</ul>
                         </section>
                     )}

@@ -43,6 +43,24 @@ diagnostics keep running while the panel is closed, so the badge appears without
 
 In Multi-Stream each lane gets its own card in the lane's colour, the lane with the most serious open finding first.
 
+## What it costs
+
+- **Download.** The diagnostics (the engine and all of its rules, with their explanations) are a separate file fetched the
+  first time a stream has records: about 28 KB with Brotli (32 KB gzip), including the panel. The main bundle grew by about 2.5 KB gzip.
+  Nothing is fetched if you never connect.
+- **CPU.** Feeding a record takes about 13 microseconds. After the first catch-up, a refresh with 100 new records on 50,000 held
+  takes about 2 ms, and the once-a-second update about 1 ms.
+- **Memory.** The recording that feeds it is capped at 8 MB per stream.
+
+## Accessibility
+
+The panel is built from native lists, headings and buttons. Each finding is a disclosure button that says whether it is
+open (`aria-expanded`), the parts inside it are headings in order, evidence chips are buttons, severity is written out as
+well as coloured, and a polite live region announces only changes of state (connection state and the counts of open
+errors and warnings), not the once-a-second figures. Automated checks (axe, WCAG A and AA), a keyboard-only run and a check
+of the accessibility tree run on every change. A run with a real screen reader has not been done, so treat it as untested
+with one: reports are welcome.
+
 ## Good to know
 
 - Silence is judged against the stream's own rhythm. A stream that sends nothing for a long time by design needs a
