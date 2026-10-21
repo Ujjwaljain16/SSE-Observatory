@@ -43,6 +43,34 @@ diagnostics keep running while the panel is closed, so the badge appears without
 
 In Multi-Stream each lane gets its own card in the lane's colour, the lane with the most serious open finding first.
 
+## Exporting
+
+**Export…** (top right of the panel) turns what the Doctor has seen into something you can keep or hand to someone. The
+file is made in your browser and saved to your computer; nothing is uploaded.
+
+| Choice | What it is |
+|---|---|
+| Report (Markdown, HTML or JSON) | the findings, the evidence and what could not be determined, ready for a ticket |
+| Capture to share | the recording as an `.sse-capture` file with secrets replaced, which the [command line](/guide/cli) can analyse and replay |
+| curl command | repeats the request; header and query values are not in it, only the names of the environment variables to set |
+| Test scenario | a [scenario](/guide/cli-ci) made from this capture, so what you saw becomes a check that runs in CI |
+| Smallest capture | removes records until nothing more can go and a finding you pick still shows: the minimal case to attach to a bug |
+| Full local capture | the recording exactly as held in this tab. **It may contain secrets; keep it on your machine** |
+
+Everything except the full local capture is made from a redacted copy. Redaction replaces secrets (tokens, keys, cookies,
+credentials in URLs and comments) with numbered placeholders, the same number for the same value inside one file, and
+the dialog shows how many values were replaced and by which rule before you save. It then scans the result for anything that
+still looks secret. If that finds something, the download stays disabled until you tick that you have looked at the
+preview and it is safe to share; the matches are listed by where they are, never by value. The scan is a check, not a
+guarantee: read the preview of anything you are about to send.
+
+What is recorded in the app is metadata (timings, sizes, comment text, response headers' names and values the browser
+exposes), not the body of your events, so there is no event data in these files.
+
+A stream that is still open has not ended at its last record. The export says when it stopped (`endT` in the capture's
+footer), so a silence at the end, the thing a stall finding is about, is part of the file and reproduces when the
+capture is analysed again or reduced to its smallest form.
+
 ## What it costs
 
 - **Download.** The diagnostics (the engine and all of its rules, with their explanations) are a separate file fetched the
