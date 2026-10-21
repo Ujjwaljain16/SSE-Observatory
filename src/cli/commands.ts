@@ -3,7 +3,7 @@ import type { EngineInput } from '../core/diagnostics/streamModel'
 import type { StreamProfile } from '../core/diagnostics/thresholds'
 import { parseCapture, serializeCapture, newHeader, captureEndT, CaptureFormatError, type Capture, type CaptureRecord } from '../core/capture/format'
 import { importV1, isV1Recording, V1ImportError } from '../core/capture/importV1'
-import { redactCapture, RedactionError } from '../core/capture/redact'
+import { redactCapture, RedactionError, type RedactionReport } from '../core/capture/redact'
 import type { RedactedCapture } from '../core/capture/redacted'
 import { buildReport } from '../core/capture/derived/report'
 import { compareCaptures } from '../core/capture/derived/compare'
@@ -63,12 +63,25 @@ function show(io: CliIo, result: Result, args: ParsedArgs): number {
     return gate(result.findings, failOn)
 }
 
+/** What a person must look at before sending a redacted file: ids that look like tokens, and anything the scan still flags. Never prints a value. */
+function warnAboutRedaction(io: CliIo, report: RedactionReport): void {
+    for (const w of report.idWarnings) io.err(`warning: ${w}\n`)
+    if (report.residual.length > 0) {
+        io.err(`warning: ${report.residual.length} thing${report.residual.length === 1 ? '' : 's'} still look like secrets after redaction (values not shown). Look before sharing:\n`)
+        for (const hit of report.residual.slice(0, 10)) io.err(`  - ${hit.where} (${hit.rule})\n`)
+    }
+}
+
 /** Reports and curl commands accept only a RedactedCapture. A sanitized file is run through the redactor again (it is idempotent) to get the type. */
-function shareable(capture: Capture, args: ParsedArgs): RedactedCapture {
+function shareable(io: CliIo, capture: Capture, args: ParsedArgs): RedactedCapture {
     if (capture.header.kind === 'local-full' && args.flags['redact'] !== true) {
         throw new CliError('This capture is a local full-fidelity capture and may contain secrets. Run "sse-doctor redact" first, or add --redact to redact it for this command.', EXIT.usage)
     }
-    try { return redactCapture(capture).capture } catch (error) {
+    try {
+        const result = redactCapture(capture)
+        warnAboutRedaction(io, result.report)
+        return result.capture
+    } catch (error) {
         if (error instanceof RedactionError) throw new CliError(error.message, EXIT.couldNotRun)
         throw error
     }
@@ -91,7 +104,7 @@ export async function reportCommand(io: CliIo, args: ParsedArgs): Promise<number
     const raw = stringFlag(args, 'format') ?? 'md'
     if (raw !== 'md' && raw !== 'html' && raw !== 'json') throw new CliError(`--format for report must be md, html or json, got "${raw}".`, EXIT.usage)
     const { capture } = await loadCapture(io, path)
-    const safe = shareable(capture, args)
+    const safe = shareable(io, capture, args)
     const profile = await loadProfile(io, args, safe.header.profile)
     const text = buildReport(safe, analysisOf(safe, profile), { format: raw })
     const out = stringFlag(args, 'output')
@@ -138,7 +151,7 @@ export async function curlCommand(io: CliIo, args: ParsedArgs): Promise<number> 
     if (/^https?:\/\//i.test(target)) {
         const stub: Capture = { header: newHeader({ kind: 'local-full', source: { kind: 'cli' }, request: { url: redactUrl(target), method: 'GET', headers: {} } }), records: [] }
         safe = redactCapture(stub).capture
-    } else safe = shareable((await loadCapture(io, target)).capture, args)
+    } else safe = shareable(io, (await loadCapture(io, target)).capture, args)
     const shell = stringFlag(args, 'shell') ?? (io.env?.['ComSpec'] && !io.env['SHELL'] ? 'powershell' : 'posix')
     if (shell !== 'posix' && shell !== 'powershell') throw new CliError('--shell must be posix or powershell.', EXIT.usage)
     io.out(toCurl(safe, { shell }) + '\n')
@@ -236,7 +249,11 @@ export async function probeCommand(io: CliIo, args: ParsedArgs, secrets: SecretR
     if (out) {
         const files = requireFiles(io)
         if (args.flags['no-redact'] === true) await files.writeText(out, serializeCapture(capture))
-        else await files.writeText(out, serializeCapture(redactCapture(capture).capture)) // secrets never reach the disk
+        else {
+            const result = redactCapture(capture) // secrets never reach the disk
+            warnAboutRedaction(io, result.report)
+            await files.writeText(out, serializeCapture(result.capture))
+        }
     }
     const a = analysisOf(capture, profile)
     const notes = [`Observed ${events} event${events === 1 ? '' : 's'} for ${(endT / 1000).toFixed(1)} s (stopped: ${reason}).`, ...(out ? [`Capture written to ${out}${args.flags['no-redact'] === true ? ' (NOT redacted)' : ' (redacted)'}.`] : [])]
@@ -284,7 +301,11 @@ export async function reproCommand(io: CliIo, args: ParsedArgs): Promise<number>
 
     // What leaves the machine is the redacted copy, and it must still show the finding.
     let redacted: RedactedCapture
-    try { redacted = redactCapture(result.capture).capture } catch (error) {
+    try {
+        const done = redactCapture(result.capture)
+        warnAboutRedaction(io, done.report)
+        redacted = done.capture
+    } catch (error) {
         if (error instanceof RedactionError) throw new CliError(error.message, EXIT.couldNotRun)
         throw error
     }
