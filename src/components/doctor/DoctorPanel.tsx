@@ -2,11 +2,15 @@ import { lazy, Suspense, useEffect, useState } from 'react'
 import { Share2, Stethoscope } from 'lucide-react'
 import type { Theme } from '../../types'
 import { useDoctorView } from '../../doctor/useDoctor'
+import { useUIContext } from '../../context/UIContext'
+import { useStreamContext } from '../../context/StreamContext'
+import { isMockStreamUrl } from '../../doctor/mockReplay'
 import { recordingEnabled } from '../../doctor/recordingConfig'
 import { HealthStrip } from './HealthStrip'
 import { FindingCard } from './FindingCard'
 import { Tabs } from './Tabs'
 import SequenceView from './SequenceView'
+import TimelineView from './TimelineView'
 import ProfileEditor from './ProfileEditor'
 
 interface Props {
@@ -20,6 +24,8 @@ interface Props {
 
 // Everything the export needs (redaction, reports, scenarios) is fetched when the dialog opens.
 const ExportDialog = lazy(() => import('./ExportDialog'))
+// Saved and opened captures need the capture reader and the comparison, so they are fetched when the tab opens.
+const CapturesTab = lazy(() => import('./CapturesTab'))
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 
@@ -38,6 +44,9 @@ export default function DoctorPanel({ theme, streamId, title = 'Stream Doctor', 
     const view = useDoctorView(streamId)
     const [exporting, setExporting] = useState(false)
     const [tab, setTab] = useState('findings')
+    const { requestEventJump, jumpResult, url, setUrl, setUseProxy, setAppMode } = useUIContext()
+    const { connect, disconnect } = useStreamContext()
+    const showEvent = (seq: number) => requestEventJump(streamId, seq)
     const Heading = heading
     const sectionHeading = heading === 'h2' ? 'h3' : 'h4'
     // The profile is shared by every stream, so it is edited once: in the single-stream panel, and above the lane cards.
@@ -50,6 +59,15 @@ export default function DoctorPanel({ theme, streamId, title = 'Stream Doctor', 
     const open = view?.findings.filter((f) => f.status === 'open') ?? []
     const resolved = view?.findings.filter((f) => f.status === 'resolved') ?? []
     const declared = view?.profile?.sequence !== undefined
+    const replaying = ownsProfile && isMockStreamUrl(url)
+    // A replay of an exported capture: the viewer is connected to the mock server, which plays the recording again.
+    const watchReplay = (replayUrl: string) => {
+        disconnect()
+        setAppMode('monitor')
+        setUseProxy(false) // the mock stream is on this origin
+        setUrl(replayUrl)
+        connect(replayUrl, '')
+    }
 
     return (
         <section aria-label={title} data-testid="doctor-panel" className="space-y-4">
@@ -73,9 +91,14 @@ export default function DoctorPanel({ theme, streamId, title = 'Stream Doctor', 
                 )}
             </div>
             <div role="status" aria-live="polite" className="sr-only">{announcement}</div>
+            {replaying && (
+                <p className={`text-sm rounded-lg p-3 ${dark ? 'bg-slate-800 text-slate-100' : 'bg-slate-100 text-slate-900'}`} data-testid="replay-banner">
+                    This stream is a replay of a recording, served by the mock server. The timings, ids and event names are the recording's, but the bodies are placeholders and the timings are played back, not measured on a network, so what these checks say describes the recording, not a live server.
+                </p>
+            )}
             {exporting && view && (
                 <Suspense fallback={null}>
-                    <ExportDialog theme={theme} streamId={streamId} findings={view.findings} endT={view.nowT} onClose={() => setExporting(false)} />
+                    <ExportDialog theme={theme} streamId={streamId} findings={view.findings} endT={view.nowT} {...(ownsProfile ? { onReplay: watchReplay } : {})} onClose={() => setExporting(false)} />
                 </Suspense>
             )}
 
@@ -104,15 +127,22 @@ export default function DoctorPanel({ theme, streamId, title = 'Stream Doctor', 
                         onChange={setTab}
                         tabs={[
                             { id: 'findings', label: 'Findings', badge: open.length > 0 ? String(open.length) : undefined },
+                            { id: 'timeline', label: 'Timeline', badge: view.health.reconnects > 0 ? `${view.health.reconnects + 1} attempts` : undefined },
                             { id: 'sequence', label: 'Sequence', badge: declared ? 'declared' : undefined },
-                            ...(ownsProfile ? [{ id: 'profile', label: 'Profile' }] : []),
+                            ...(ownsProfile ? [{ id: 'captures', label: 'Captures' }, { id: 'profile', label: 'Profile' }] : []),
                         ]}
                     >
                         {tab === 'findings' && (
                             <div className="space-y-4">
+                                {jumpResult === 'missing' && (
+                                    <p role="status" className={`text-sm ${dark ? 'text-amber-200' : 'text-amber-900'}`} data-testid="jump-missing">
+                                        That event is not in the events list any more: the list keeps the latest 1000, or a filter hides it. The record above still has what was seen.
+                                    </p>
+                                )}
+                                {jumpResult === 'found' && <p role="status" className="sr-only">The event is shown in the events list.</p>}
                                 {open.length > 0 ? (
                                     <ul className="space-y-2" aria-label="Open findings">
-                                        {open.map((f, i) => <FindingCard key={f.key} theme={theme} streamId={streamId} finding={f} sectionHeading={sectionHeading} defaultOpen={i === 0 && f.severity !== 'info'} />)}
+                                        {open.map((f, i) => <FindingCard key={f.key} theme={theme} streamId={streamId} finding={f} sectionHeading={sectionHeading} onShowEvent={showEvent} defaultOpen={i === 0 && f.severity !== 'info'} />)}
                                     </ul>
                                 ) : (
                                     <p className={`text-sm ${muted}`} data-testid="doctor-none">
@@ -125,7 +155,7 @@ export default function DoctorPanel({ theme, streamId, title = 'Stream Doctor', 
                                     <details>
                                         <summary className={`cursor-pointer text-sm font-medium ${dark ? 'text-slate-100' : 'text-slate-900'}`}>Resolved ({resolved.length})</summary>
                                         <ul className="space-y-2 mt-2" aria-label="Resolved findings">
-                                            {resolved.map((f) => <FindingCard key={f.key} theme={theme} streamId={streamId} finding={f} sectionHeading={sectionHeading} />)}
+                                            {resolved.map((f) => <FindingCard key={f.key} theme={theme} streamId={streamId} finding={f} sectionHeading={sectionHeading} onShowEvent={showEvent} />)}
                                         </ul>
                                     </details>
                                 )}
@@ -146,7 +176,13 @@ export default function DoctorPanel({ theme, streamId, title = 'Stream Doctor', 
                                 </details>
                             </div>
                         )}
+                        {tab === 'timeline' && <TimelineView theme={theme} streamId={streamId} view={view} />}
                         {tab === 'sequence' && <SequenceView theme={theme} streamId={streamId} view={view} {...(ownsProfile ? { onDeclare: () => setTab('profile') } : {})} />}
+                        {tab === 'captures' && ownsProfile && (
+                            <Suspense fallback={<p role="status" className={`text-sm ${muted}`}>Loading…</p>}>
+                                <CapturesTab theme={theme} streamId={streamId} view={view} />
+                            </Suspense>
+                        )}
                         {tab === 'profile' && ownsProfile && <ProfileEditor theme={theme} />}
                     </Tabs>
                 </>

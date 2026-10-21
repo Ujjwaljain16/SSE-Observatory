@@ -20,6 +20,20 @@ test.beforeAll(async () => {
         if (req.method === 'OPTIONS') { res.writeHead(204, headers); res.end(); return }
         res.writeHead(200, headers)
         res.write(': open\n\n')
+        if (req.url?.startsWith('/drop')) {
+            const last = Number(req.headers['last-event-id'] ?? -1)
+            let k = last + 1
+            let sent = 0
+            res.write('retry: 300\n\n')
+            const t = setInterval(() => {
+                if (last < 0 && sent === 3) { clearInterval(t); res.end(); return }
+                res.write(`id: ${k}\nevent: tick\ndata: {"seq":${k}}\n\n`)
+                k++
+                sent++
+            }, 200)
+            req.on('close', () => clearInterval(t))
+            return
+        }
         if (req.url?.startsWith('/seq')) {
             const skip = new URL(req.url, 'http://x').searchParams.get('run') === '2' ? 4 : -1
             let k = 0
@@ -358,8 +372,10 @@ test.describe('Stream Doctor', () => {
             await expect(findings).toHaveAttribute('aria-selected', 'true')
             await findings.focus()
             await page.keyboard.press('ArrowRight')
+            await expect(page.getByTestId('doctor-tab-timeline')).toHaveAttribute('aria-selected', 'true')
+            await expect(page.getByTestId('doctor-tab-timeline')).toBeFocused()
+            await page.keyboard.press('ArrowRight')
             await expect(page.getByTestId('doctor-tab-sequence')).toHaveAttribute('aria-selected', 'true')
-            await expect(page.getByTestId('doctor-tab-sequence')).toBeFocused()
             await page.keyboard.press('End')
             await expect(page.getByTestId('doctor-tab-profile')).toHaveAttribute('aria-selected', 'true')
             await page.keyboard.press('Home')
@@ -385,6 +401,173 @@ test.describe('Stream Doctor', () => {
             await check('sequence')
             await page.getByTestId('doctor-tab-profile').click()
             await check('profile')
+        })
+    })
+
+    test.describe('timeline, captures, evidence jump, replay and saved filters', () => {
+        const PROFILE = JSON.stringify({ sequence: { field: '$.seq', policy: 'consecutive' } })
+
+        test('the timeline shows each connection attempt, what it resumed from, and takes bookmarks', async ({ page }) => {
+            test.setTimeout(60_000)
+            await page.goto('/')
+            await connect(page, '/drop')
+            await openDoctor(page)
+            await page.getByTestId('doctor-tab-timeline').click()
+            const table = page.getByTestId('timeline-table')
+            await expect(table.getByRole('row')).toHaveCount(3, { timeout: 25_000 }) // header and two attempts
+            await expect(table.getByRole('row').nth(1)).toContainText('#1')
+            await expect(table.getByRole('row').nth(1)).toContainText('closed')
+            const second = table.getByRole('row').nth(2)
+            await expect(second).toContainText('#2')
+            await expect(second).toContainText('2') // resumed from the last id of the first connection
+            await expect(page.getByRole('img', { name: /Timeline of 2 connection attempts/ })).toBeVisible()
+
+            await page.getByTestId('bookmark-label').fill('connection dropped')
+            await page.getByTestId('bookmark-add').click()
+            await expect(page.getByTestId('bookmark-list')).toContainText('connection dropped')
+            await page.reload()
+            await connect(page, '/drop')
+            // a new connection is a new recording: the bookmark belongs to the old one
+            await openDoctor(page)
+            await page.getByTestId('doctor-tab-timeline').click()
+            await expect(page.getByTestId('bookmark-list')).toHaveCount(0)
+        })
+
+        test('opens a capture file, analyses it, and refuses a file that is not a capture', async ({ page }) => {
+            test.setTimeout(80_000)
+            await page.goto('/')
+            await connect(page, '/silent')
+            await openDoctor(page)
+            await expect(page.locator('[data-testid="doctor-finding"][data-finding-key^="stall"]')).toBeVisible({ timeout: 25_000 })
+
+            // take the recording out as a file...
+            await page.getByTestId('doctor-export').click()
+            await page.getByLabel(/Capture to share/).check()
+            const ack = page.getByTestId('export-ack')
+            if (await ack.count()) await ack.check()
+            const [download] = await Promise.all([page.waitForEvent('download'), page.getByTestId('export-download').click()])
+            const text = fs.readFileSync((await download.path())!, 'utf8')
+            await page.keyboard.press('Escape')
+
+            // ...and open it again
+            await page.getByTestId('doctor-tab-captures').click()
+            await page.getByTestId('capture-file').setInputFiles({ name: 'incident.sse-capture', mimeType: 'application/x-ndjson', buffer: Buffer.from(text) })
+            await expect(page.getByTestId('capture-notice')).toContainText('Capture opened: incident.sse-capture')
+            await page.getByRole('button', { name: 'Analyse incident.sse-capture' }).click()
+            const analysis = page.getByTestId('capture-analysis')
+            await expect(analysis).toContainText('Redacted capture')
+            // the stall is in the exported file, because the export says when the recording ended
+            await expect(analysis.locator('[data-finding-key^="stall"]')).toBeVisible()
+
+            await page.getByTestId('capture-file').setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('just some notes') })
+            await expect(page.getByTestId('capture-error')).toContainText('not a capture')
+            await page.getByTestId('capture-file').setInputFiles({ name: 'empty.sse-capture', mimeType: 'text/plain', buffer: Buffer.from('') })
+            await expect(page.getByTestId('capture-error')).toContainText('empty')
+        })
+
+        test('saves a recording in the library, keeps it across a reload, and compares two captures', async ({ page }) => {
+            test.setTimeout(80_000)
+            await page.goto('/')
+            await connect(page, '/steady')
+            await openDoctor(page)
+            await page.waitForTimeout(2500)
+            await page.getByTestId('doctor-tab-captures').click()
+            await page.getByTestId('capture-name').fill('steady one')
+            await page.getByTestId('capture-save').click()
+            await expect(page.getByTestId('capture-notice')).toContainText('not redacted')
+            await page.getByTestId('capture-name').fill('steady two')
+            await page.getByTestId('capture-save').click()
+            await expect(page.getByTestId('capture-list').getByRole('row')).toHaveCount(3) // header and two
+
+            await page.reload()
+            await page.getByTestId('url-input').fill(`${base}/steady`)
+            await page.getByTestId('connect-button').click()
+            await openDoctor(page)
+            await page.getByTestId('doctor-tab-captures').click()
+            await expect(page.getByTestId('capture-list')).toContainText('steady one')
+
+            await page.getByRole('checkbox', { name: 'Compare steady one' }).check()
+            await page.getByRole('checkbox', { name: 'Compare steady two' }).check()
+            await page.getByTestId('capture-compare').click()
+            await expect(page.getByTestId('capture-comparison')).toBeVisible()
+
+            await page.getByRole('button', { name: 'Delete steady one' }).click()
+            await expect(page.getByTestId('capture-list')).not.toContainText('steady one')
+        })
+
+        test('shows the event behind a piece of evidence in the events list, and says when it is not there', async ({ page }) => {
+            test.setTimeout(90_000)
+            await page.addInitScript((profile) => localStorage.setItem('sse.doctor.profile', profile), PROFILE)
+            await page.goto('/')
+            await page.getByTestId('url-input').fill(`${base}/seq?run=2`)
+            await page.getByTestId('connect-button').click()
+            await expect(page.locator('text=Connected').first()).toBeVisible({ timeout: 10_000 })
+            await openDoctor(page)
+            const gap = page.locator('[data-testid="doctor-finding"][data-finding-key="seq.integrity:gap"]')
+            await expect(gap).toBeVisible({ timeout: 30_000 })
+
+            await gap.getByRole('button', { name: /record #[0-9]+ · .*first number after the gap/ }).click()
+            await gap.getByTestId('show-event').click()
+            const highlighted = page.locator('[data-testid="event-row"][data-highlighted="true"]')
+            await expect(highlighted).toBeVisible()
+            await expect(highlighted).toContainText('"seq": 5')
+
+            // hidden by a filter: the Doctor says so instead of doing nothing
+            await page.fill('input[placeholder*="Search events..."]', 'no_such_text_anywhere')
+            await gap.getByTestId('show-event').click()
+            await expect(page.getByTestId('jump-missing')).toBeVisible()
+        })
+
+        test('replays an exported capture through the mock server, and says it is a replay', async ({ page }) => {
+            test.setTimeout(90_000)
+            await page.goto('/')
+            await connect(page, '/drop')
+            await openDoctor(page)
+            await page.waitForTimeout(3500)
+            await page.getByTestId('doctor-export').click()
+            await page.getByLabel(/Capture to share/).check()
+            const ack = page.getByTestId('export-ack')
+            if (await ack.count()) await ack.check()
+            await page.getByTestId('export-replay').click()
+            await expect(page.getByTestId('export-dialog')).toHaveCount(0, { timeout: 15_000 })
+            await expect(page.getByTestId('url-input')).toHaveValue(/\/api\/mock\/stream\?session=/)
+            await expect(page.getByTestId('replay-banner')).toBeVisible({ timeout: 15_000 })
+            await expect(page.getByTestId('event-row').first()).toBeVisible({ timeout: 15_000 })
+        })
+
+        test('saved filters survive a reload and apply with one click', async ({ page }) => {
+            await page.goto('/')
+            const input = page.getByPlaceholder('type == "message" AND data.value > 50')
+            await input.fill('type == "tick"')
+            await page.getByLabel('Name for this filter').fill('ticks')
+            await page.getByTestId('save-query').click()
+            await page.reload()
+            await expect(page.getByRole('list', { name: 'Saved filters' })).toContainText('ticks')
+            await page.getByRole('button', { name: 'ticks', exact: true }).click()
+            await expect(page.getByPlaceholder('type == "message" AND data.value > 50')).toHaveValue('type == "tick"')
+            await page.getByRole('button', { name: 'Remove saved filter ticks' }).click()
+            await expect(page.getByRole('list', { name: 'Saved filters' })).toHaveCount(0)
+        })
+
+        test('has no accessibility violations on the timeline and captures tabs (A and AA)', async ({ page }) => {
+            test.setTimeout(80_000)
+            await page.emulateMedia({ reducedMotion: 'reduce' })
+            await page.goto('/')
+            await connect(page, '/drop')
+            await openDoctor(page)
+            await page.waitForTimeout(3500)
+            const check = async (label: string) => {
+                await page.waitForTimeout(400)
+                const results = await new AxeBuilder({ page }).include('[data-testid="doctor-panel"]').withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze()
+                const found = results.violations.map((v) => `${label}: ${v.id} (${v.impact}) ${v.help} e.g. ${v.nodes[0]?.target.join(' ')}`)
+                expect(found, found.join('\n')).toEqual([])
+            }
+            await page.getByTestId('doctor-tab-timeline').click()
+            await check('timeline')
+            await page.getByTestId('doctor-tab-captures').click()
+            await page.getByTestId('capture-save').click()
+            await expect(page.getByTestId('capture-list')).toBeVisible()
+            await check('captures')
         })
     })
 

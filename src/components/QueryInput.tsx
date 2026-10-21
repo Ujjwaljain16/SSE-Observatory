@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Theme } from '../types'
-import { Terminal, Lightbulb, X, Zap, AlertTriangle, Check } from 'lucide-react'
+import { Terminal, Lightbulb, X, Zap, AlertTriangle, Check, Save } from 'lucide-react'
+import { getSavedQueries, removeQuery, saveQuery, type SavedQuery } from '../utils/savedQueries'
 
 interface QueryInputProps {
     theme: Theme
@@ -11,6 +12,8 @@ interface QueryInputProps {
 
 export const QueryInput = ({ theme, query, onQueryChange, error }: QueryInputProps) => {
     const [showExamples, setShowExamples] = useState(false)
+    const [saved, setSaved] = useState<SavedQuery[]>(getSavedQueries)
+    const [saveName, setSaveName] = useState('')
     const isDark = theme === 'dark'
 
     const examples = [
@@ -143,6 +146,36 @@ export const QueryInput = ({ theme, query, onQueryChange, error }: QueryInputPro
                 )}
             </div>
 
+
+            <div className="mt-3 flex flex-wrap items-center gap-2" data-testid="saved-queries">
+                <label className="sr-only" htmlFor="saved-query-name">Name for this filter</label>
+                <input
+                    id="saved-query-name"
+                    value={saveName}
+                    onChange={(e) => setSaveName(e.target.value)}
+                    placeholder="name (optional)"
+                    className={`px-2 py-1 rounded-lg border text-xs w-40 ${isDark ? 'bg-slate-800 border-slate-600 text-white placeholder-slate-400' : 'bg-white border-slate-300 text-slate-900 placeholder-slate-500'}`}
+                />
+                <button
+                    type="button"
+                    disabled={!query.trim() || Boolean(error)}
+                    onClick={() => { setSaved(saveQuery(saveName, query)); setSaveName('') }}
+                    data-testid="save-query"
+                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 disabled:opacity-50 ${isDark ? 'bg-slate-700 text-slate-100 hover:bg-slate-600' : 'bg-slate-200 text-slate-900 hover:bg-slate-300'}`}
+                >
+                    <Save className="w-3 h-3" aria-hidden="true" /> Save this filter
+                </button>
+                {saved.length > 0 && (
+                    <ul className="flex flex-wrap gap-2" aria-label="Saved filters">
+                        {saved.map((q) => (
+                            <li key={q.name} className={`flex items-center rounded-lg border text-xs ${isDark ? 'border-slate-600 bg-slate-800' : 'border-slate-300 bg-white'}`}>
+                                <button type="button" onClick={() => onQueryChange(q.query)} title={q.query} className={`px-2 py-1 font-mono ${isDark ? 'text-sky-300' : 'text-blue-700'}`}>{q.name}</button>
+                                <button type="button" aria-label={`Remove saved filter ${q.name}`} onClick={() => setSaved(removeQuery(q.name))} className={`px-1.5 py-1 ${isDark ? 'text-slate-300 hover:text-white' : 'text-slate-700 hover:text-slate-900'}`}><X className="w-3 h-3" aria-hidden="true" /></button>
+                            </li>
+                        ))}
+                    </ul>
+                )}
+            </div>
 
             {error && (
                 <div className={`
