@@ -109,7 +109,7 @@ describe('SSEParser observability: what the spec ignores is still visible', () =
 describe('severity follows the spec', () => {
     it('only genuine failures are errors; ignored or normalised things are never errors', () => {
         const errors = (Object.keys(VIOLATIONS) as ViolationCode[]).filter((c) => violationSeverity(c) === 'error').sort()
-        expect(errors).toEqual(['BAD_CONTENT_TYPE', 'HTTP_STATUS_NOT_200', 'LINE_TOO_LONG'])
+        expect(errors).toEqual(['BAD_CONTENT_TYPE', 'EVENT_TOO_LONG', 'HTTP_STATUS_NOT_200', 'LINE_TOO_LONG'])
         for (const code of ['UNKNOWN_FIELD', 'INVALID_RETRY', 'ID_ONLY_FRAME', 'BOM_STRIPPED', 'LINE_NO_COLON', 'MIXED_LINE_ENDINGS'] as const) {
             expect(violationSeverity(code)).toBe('info')
         }

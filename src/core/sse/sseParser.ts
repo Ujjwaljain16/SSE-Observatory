@@ -58,6 +58,8 @@ export class SSEParser {
     private eventName = ''
     private rawLines: string[] = []
     private lastEventId = ''
+    /** Characters held by the event being built (its data and raw lines), so one event that never ends cannot grow without bound. */
+    private eventChars = 0
 
     // Diagnostics bookkeeping. Only touched when a diagnostics handler is attached.
     private readonly diagnostics: boolean
@@ -103,8 +105,9 @@ export class SSEParser {
                 this.violation('BOM_STRIPPED', 'A UTF-8 byte order mark was removed from the start of the stream.')
             }
         }
-        if (this.pendingCR) {
+        if (this.pendingCR && text.length > 0) {
             // A CR at the end of the previous chunk already terminated a line; swallow the LF of a CRLF pair.
+            // (An empty chunk in between is not the next text: the CR is still waiting for what follows it.)
             const crlf = text.startsWith('\n')
             if (crlf) text = text.slice(1)
             this.pendingCR = false
@@ -146,6 +149,18 @@ export class SSEParser {
         this.checkLimit()
     }
 
+    private countEventChars(n: number): void {
+        this.eventChars += n
+        if (this.eventChars > this.maxBufferBytes) {
+            this.dataLines = []
+            this.rawLines = []
+            this.eventName = ''
+            this.eventChars = 0
+            this.violation('EVENT_TOO_LONG', `One event grew past ${this.maxBufferBytes} characters without ending.`)
+            throw new SSEParserError('SSE event exceeds the maximum size')
+        }
+    }
+
     private checkLimit(): void {
         if (this.buffer.length > this.maxBufferBytes) {
             this.buffer = ''
@@ -167,6 +182,7 @@ export class SSEParser {
         this.dataLines = []
         this.eventName = ''
         this.rawLines = []
+        this.eventChars = 0
         this.decoder = new TextDecoder('utf-8')
         this.sawFirstChunk = false
         this.lineEnding = null
@@ -212,16 +228,19 @@ export class SSEParser {
             case 'event':
                 this.eventName = value
                 this.rawLines.push(line)
+                this.countEventChars(line.length + 1)
                 if (this.diagnostics) this.frameHadOtherField = true
                 break
             case 'data':
                 this.dataLines.push(value)
                 this.rawLines.push(line)
+                this.countEventChars(line.length + 1)
                 break
             case 'id':
                 if (!value.includes('\0')) this.lastEventId = value
                 else if (this.diagnostics) this.violation('NUL_IN_ID', 'An id field contained a NUL character and was ignored.')
                 this.rawLines.push(line)
+                this.countEventChars(line.length + 1)
                 if (this.diagnostics) this.frameHadId = true
                 break
             case 'retry':
@@ -258,6 +277,7 @@ export class SSEParser {
         this.dataLines = []
         this.eventName = ''
         this.rawLines = []
+        this.eventChars = 0
         if (message) this.handlers.onMessage(message)
     }
 }
