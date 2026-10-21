@@ -1,6 +1,6 @@
 // Capture files: the .sse-capture v2 format, reading old .sse-record files, and the branded RedactedCapture.
 
-export { CAPTURE_FORMAT, CAPTURE_VERSION, CaptureFormatError, capabilitiesOf, countByKind, newHeader, parseCapture, serializeCapture, integrityOf } from './format'
+export { CAPTURE_FORMAT, CAPTURE_VERSION, CaptureFormatError, capabilitiesOf, captureEndT, countByKind, newHeader, parseCapture, serializeCapture, integrityOf } from './format'
 export type { Capture, CaptureFooter, CaptureHeader, CaptureKind, CaptureRecord, IntegrityStatus, ParsedCapture, UnknownRecord } from './format'
 export type { RedactedCapture } from './redacted'
 export { importV1, isV1Recording, V1ImportError } from './importV1'

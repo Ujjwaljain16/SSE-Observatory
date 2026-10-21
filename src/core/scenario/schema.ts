@@ -282,6 +282,7 @@ export const CAPTURE_SCHEMA: Schema = {
                     properties: {
                         endReason: { type: 'string', minLength: 1 },
                         counts: { type: 'object', additionalProperties: nonNegInt },
+                        endT: { type: 'number', minimum: 0, description: 'When the recording stopped, in the clock of the records. Absent, the capture ends at its last record.' },
                         overhead: { type: 'object', additionalProperties: num },
                         integrity: {
                             type: 'object',

@@ -277,6 +277,11 @@
                 "minimum": 0
               }
             },
+            "endT": {
+              "type": "number",
+              "minimum": 0,
+              "description": "When the recording stopped, in the clock of the records. Absent, the capture ends at its last record."
+            },
             "overhead": {
               "type": "object",
               "additionalProperties": {
