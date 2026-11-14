@@ -4,6 +4,7 @@
 import { parseArgs } from './args'
 import { analyzeCommand, compareCommand, curlCommand, probeCommand, redactCommand, reportCommand, reproCommand } from './commands'
 import { envDiffCommand } from './commandsEnvDiff'
+import { validateCommand } from './commandsValidate'
 import { fixturesCommand, replayCommand, testCommand } from './commandsScenario'
 import { CliError, EXIT, type CliIo } from './io'
 import { SecretRegistry, scrubbedIo } from './secretRegistry'
@@ -26,6 +27,7 @@ Commands:
   analyze <capture>      analyze a saved capture (.sse-capture, or an old .sse-record)
   report <capture>       write a shareable report (md, html, json, or issue for a ticket or pull request comment); needs a redacted capture
   compare <a> <b>        compare two saved captures
+  validate <capture> <url> did the fix work? read the fixed stream the way the capture was read and say whether its finding is gone (exit 0 fixed, 1 not fixed, 4 inconclusive)
   env-diff <urlA> <urlB> read the same stream through two paths at once (origin and CDN, staging and production) and say where it differs
   repro <capture>        shrink a capture to the smallest one that still shows a finding (--finding key, --output, --scenario, --test)
   curl <capture|url>     print a curl command that reproduces the request, with secrets as variables
@@ -85,6 +87,7 @@ export async function main(argv: string[], rawIo: CliIo): Promise<number> {
             case 'redact': return await redactCommand(io, args)
             case 'compare': return await compareCommand(io, args)
             case 'env-diff': return await envDiffCommand(io, args, secrets)
+            case 'validate': return await validateCommand(io, args, secrets)
             case 'repro': return await reproCommand(io, args)
             case 'curl': return await curlCommand(io, args)
             case 'probe': return await probeCommand(io, args, secrets)

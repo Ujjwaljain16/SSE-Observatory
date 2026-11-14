@@ -16,6 +16,7 @@ npm run doctor -- analyze stream.sse-capture
 | `analyze <capture>` | Analyzes a saved capture (`.sse-capture`, or an old `.sse-record`). |
 | `report <capture>` | Writes a shareable report: `--format md` (default), `html` (one self-contained file), `json`, or `issue` (a short body for a ticket or pull request comment, see [Team reports](#team-reports)). `--output <file>`. |
 | `compare <a> <b>` | Compares two captures: status, headers, timing, heartbeat rhythm, chunk sizes, events. |
+| `validate <capture> <url>` | Did the fix work? Reads the fixed stream the way the capture was read and says whether the capture's finding is gone ([details](#checking-a-fix)). |
 | `env-diff <urlA> <urlB>` | Reads the same stream through two paths at the same time and says where its behaviour differs ([details](#comparing-two-environments)). |
 | `curl <capture\|url>` | Prints a curl command that reproduces the request. Header and query values become environment variables. `--shell posix\|powershell` picks the quoting. |
 | `repro <capture>` | Shrinks a capture to the smallest one that still reports a finding (`--finding <key>`, default the most severe), writes it redacted to `--output`, and can also write a matching scenario (`--scenario`) and a test template (`--test`). Stops after 3000 analyses and says if the result may not be minimal. |
@@ -69,6 +70,26 @@ sse-doctor env-diff https://origin.example.com/stream https://www.example.com/st
 - **The result is the comparison** that `sse-doctor compare` gives for two saved captures: status, headers, timing, heartbeat rhythm, chunk sizes, events. Each difference is a measurement; `Likely:` lines are guesses with their alternatives. It never names a layer, because two readings cannot say which hop caused a difference. Each side's own findings are listed in the notes, so "B alone is buffering" and "both are failing" read differently.
 - **`--out-a` and `--out-b`** save each capture, redacted, so the pair can be compared again later with `sse-doctor compare`, or one of them analysed, reported or shrunk.
 - **Exit codes.** `--fail-on` (default `error`) gates on the *differences*; use `--fail-on warning` to fail when the two behave differently at all. A side that never answers is exit 3 (could not run), whatever the gate says. Ctrl+C reports what was seen and exits 130. `env-diff` answers "do they behave the same?"; to ask whether either is healthy, `probe` each.
+
+## Checking a fix
+
+You captured a bug, someone fixed the producer, and you want to know whether it worked. `validate` takes the capture and the URL of the fixed stream:
+
+```sh
+sse-doctor validate bug.sse-capture https://staging.example.com/stream --finding stall.silent:events
+```
+
+It confirms the capture reports that finding (it picks the most serious one if you name none), reads the stream with the capture's own profile (so a declared sequence is still judged), for at least as long as the capture lasted and 30 s (`--duration` changes it; credentials are given as for `probe`), and says one of:
+
+| Exit | Verdict | Meaning |
+|---|---|---|
+| 0 | **Fixed**, as far as this reading shows | the finding is not reported, and the check that raises it ran |
+| 1 | **Not fixed** | the same finding is reported again |
+| 4 | **Inconclusive** | it is not reported, but the check could not run on this reading (a stall needs events to judge a silence in), or the stream was read under a different profile than the capture, so its absence does not show the fix worked |
+| 3 | could not run | the stream never answered |
+| 2 | usage | the capture does not report the finding asked about, or reports none |
+
+The profile guard matters: a check that needs a declared sequence cannot run without one, and its silence would otherwise look like a fix. Other findings the reading raises are listed, not judged. One reading is not proof, since a fault that comes and goes can be missing from it. When the verdict is fixed, `sse-doctor repro <capture> --scenario <file>` turns the capture into a [scenario](/guide/cli-ci) that fails if the problem comes back.
 
 ## Team reports
 

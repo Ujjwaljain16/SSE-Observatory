@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Theme } from '../../types'
 import { deleteAllCaptures, pruneOlderThan } from '../../doctor/captureLibrary'
+import { flightRecorderEnabled, setFlightRecorderEnabled } from '../../doctor/flightSetting'
 import { getProfile, setProfile } from '../../doctor/profileStore'
 import { RETENTION_CHOICES, libraryRetentionDays, recordingEnabled, setLibraryRetentionDays, setRecordingEnabled } from '../../doctor/recordingConfig'
 
@@ -24,6 +25,7 @@ export default function PrivacySettings({ theme, count, onChanged }: Props) {
 
     const [recording, setRecording] = useState(recordingEnabled)
     const [days, setDays] = useState(libraryRetentionDays)
+    const [flight, setFlight] = useState(flightRecorderEnabled)
     const [shapes, setShapes] = useState(() => getProfile()?.shapes !== false)
     const [confirming, setConfirming] = useState(false)
     const [notice, setNotice] = useState('')
@@ -83,6 +85,14 @@ export default function PrivacySettings({ theme, count, onChanged }: Props) {
                 <span>
                     Record the structure of JSON payloads
                     <span className={`block text-xs ${muted}`}>Field names and kinds (never values), so the Doctor can see a producer change its format. Turn off to keep no payload structure at all. It applies to streams started after the change.</span>
+                </span>
+            </label>
+
+            <label className={`flex items-start gap-2 text-sm ${strong}`}>
+                <input type="checkbox" checked={flight} className="mt-1" data-testid="privacy-flight" onChange={(e) => { setFlight(e.target.checked); setFlightRecorderEnabled(e.target.checked) }} />
+                <span>
+                    Keep a copy of the recording automatically
+                    <span className={`block text-xs ${muted}`}>When the Doctor first reports an error, and when you add a bookmark, a copy of the recording is saved to Captures as "Flight recorder: ...", so what led up to a problem is not lost when the recording moves on. At most 3 per recording and 8 per visit, a pause between them, and it never deletes anything to make room. Off unless you turn it on, because the copies are saved in this browser and are not redacted.</span>
                 </span>
             </label>
 

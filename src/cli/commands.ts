@@ -25,7 +25,7 @@ import type { SecretRegistry } from './secretRegistry'
 // ---------------------------------------------------------------- reading input
 
 /** Reads a capture file: `.sse-capture` v2 (NDJSON) or an old `.sse-record` v1 recording. */
-async function loadCapture(io: CliIo, path: string): Promise<{ capture: Capture; warnings: string[] }> {
+export async function loadCapture(io: CliIo, path: string): Promise<{ capture: Capture; warnings: string[] }> {
     const files = requireFiles(io)
     let text: string
     try { text = await files.readText(path) } catch { throw new CliError(`Cannot read "${path}".`, EXIT.couldNotRun) }
@@ -236,7 +236,8 @@ export interface Observed {
 }
 
 /** Connects, watches for the time asked, and returns what was recorded. Shared by `probe` (one stream) and `env-diff` (two at once). */
-export async function observe(io: CliIo, args: ParsedArgs, target: string, secrets: SecretRegistry): Promise<Observed> {
+/** `profileFallback` is the profile used when --profile is not given (`validate` reads the stream the way the original capture was read). */
+export async function observe(io: CliIo, args: ParsedArgs, target: string, secrets: SecretRegistry, profileFallback?: StreamProfile): Promise<Observed> {
     const duration = numberFlag(args, 'duration', 30)
     // setTimeout holds at most 2^31 ms; a longer wait fires at once, and a probe that ends before it began must not pass as a clean one
     if (duration <= 0 || duration > MAX_SECONDS) throw new CliError(`--duration must be more than 0 and at most ${MAX_SECONDS} seconds, got ${duration}.`, EXIT.usage)
@@ -246,7 +247,7 @@ export async function observe(io: CliIo, args: ParsedArgs, target: string, secre
     const timeout = numberFlag(args, 'timeout', 0)
     if (timeout > MAX_SECONDS || idleMs > MAX_SECONDS * 1000) throw new CliError(`--timeout and --idle-timeout must be at most ${MAX_SECONDS} seconds.`, EXIT.usage)
     const maxBytes = numberFlag(args, 'max-mb', 256) * 1024 * 1024
-    const profile = await loadProfile(io, args, undefined)
+    const profile = await loadProfile(io, args, profileFallback)
     const req = requestFor(io, args, target, secrets)
 
     const records: CaptureRecord[] = []
