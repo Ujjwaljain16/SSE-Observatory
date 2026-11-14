@@ -54,6 +54,7 @@ The type system enforces the split: reports, shared exports and generated scenar
 - **Event ids** stay readable so sequences can be analysed, unless an id is itself a credential.
 - **After redaction** the result is re-parsed and must contain the same events with the same names. If it does not, nothing is produced.
 - **Residual scan.** A second pass reports anything that still looks secret (for example a long random token that matches no known format). It reports where, never the value. Sharing should wait until a person has looked.
+- **Your own rules.** A [redaction policy](/guide/redaction-policy) adds key names, patterns and kept headers. A capture redacted with one carries `redaction.policy: "custom"` in its header (otherwise `"default"`), and the rule names appear in `redaction.applied`. A policy can only add to redaction; it cannot turn a built-in rule off or keep a header that carries credentials.
 - **Limits.** Redaction recognises shapes, not meaning. An ordinary-looking value that happens to be secret (a customer name, a random order id) is not found; the residual scan can only hint.
 
 ## Importing old recordings

@@ -114,3 +114,22 @@ export async function addBookmark(input: { captureId: string; label: string; t: 
 export async function deleteBookmark(id: string): Promise<void> {
     await store('bookmarks', 'readwrite', (s) => done(s.delete(id)))
 }
+
+/**
+ * Deletes the saved captures older than `days` days (and their bookmarks); returns how many went. 0 days means keep everything.
+ * Age is from the moment a capture was saved, not from the time of the stream it holds.
+ */
+export async function pruneOlderThan(days: number, now = Date.now()): Promise<number> {
+    if (!(days > 0)) return 0
+    const cutoff = now - days * 86_400_000
+    const old = (await listCaptures()).filter((c) => c.savedAt < cutoff)
+    for (const c of old) await deleteCapture(c.id)
+    return old.length
+}
+
+/** Deletes every saved capture and every bookmark; returns how many captures went. */
+export async function deleteAllCaptures(): Promise<number> {
+    const all = await listCaptures()
+    for (const c of all) await deleteCapture(c.id)
+    return all.length
+}
