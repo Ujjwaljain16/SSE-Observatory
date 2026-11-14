@@ -322,12 +322,21 @@ export async function observe(io: CliIo, args: ParsedArgs, target: string, secre
     return { target, capture, profile, events, endT, reason, answered, maxBytes }
 }
 
+/** A copy of `value` with `scrub` applied to every string in it, except the base64 of wire bytes (key `b64`). */
+function scrubStrings(value: unknown, scrub: (text: string) => string, key: string): unknown {
+    if (typeof value === 'string') return key === 'b64' ? value : scrub(value)
+    if (Array.isArray(value)) return value.map((v) => scrubStrings(v, scrub, key))
+    if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, scrubStrings(v, scrub, k)]))
+    return value
+}
+
 /** Writes a capture: redacted unless --no-redact, so secrets never reach the disk. */
 export async function saveObserved(io: CliIo, args: ParsedArgs, capture: Capture, out: string): Promise<void> {
     const files = requireFiles(io)
-    // --no-redact is the recording as it is. The scrub of registered secrets that protects every other output is not applied to this one file:
-    // the secrets are in the base64 of the wire bytes, and replacing part of a base64 string leaves a capture that cannot be read back.
-    if (args.flags['no-redact'] === true) await (io.writeRawText ?? files.writeText)(out, serializeCapture(capture))
+    // --no-redact is the recording as it is: the wire bytes (base64) are kept as they were, so what the server echoed may be in them. Everything else is
+    // scrubbed of the secrets this command was given, field by field BEFORE the file is made: a scrub of the finished text cuts into the base64 of the
+    // wire bytes and leaves a capture that cannot be read back, and the hash must be made from what is written.
+    if (args.flags['no-redact'] === true) await (io.writeRawText ?? files.writeText)(out, serializeCapture(scrubStrings(capture, io.scrub ?? ((t) => t), '') as Capture))
     else {
         const result = redactCapture(capture, await loadRedactionPolicy(io, args)) // secrets never reach the disk
         warnAboutRedaction(io, result.report)

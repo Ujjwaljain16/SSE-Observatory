@@ -33,7 +33,7 @@ The campaign's idea: more tests of the same shape find few bugs, so it uses **in
 | 7 | Observation batcher | A throwing observer escaped as an uncaught exception from a timer, which ends a Node process | `e00cf989` |
 | 8 | Redaction | A secret key (`password`, `token`, `api_key`...) inside an object or list under a harmless name (`{"user":{"password":"x"}}`, `{"items":[{"token":"x"}]}`) was **kept** in every shared capture and report, because the scan for `"name": value` pairs matched the whole inner object as the value of `user` and went on after it | the commit that adds `artifacts.canary.test.ts` |
 | 10 | CLI | Every value in the URL's query was registered as a secret, so a harmless `?scale=0.05`, `?limit=1000` or `?debug=true` made each `0.05`, `1000` or `true` in the output a placeholder, including inside JSON numbers: `--format json` output and the saved capture could be invalid (found as a flake in the canary sweep). A value is now a secret when its name says so or its shape does (12+ characters mixing letters and digits) | same commit |
-| 9 | CLI | `probe --no-redact --out` wrote a capture that could not be read back, redacted or replayed: the scrub of the secrets you gave the command replaced part of the base64 of an echoed secret inside the wire bytes. That one file is now written without the scrub | same commit |
+| 9 | CLI | `probe --no-redact --out` wrote a capture that could not be read back, redacted or replayed: the scrub of the secrets you gave the command replaced part of the base64 of an echoed secret inside the wire bytes. The capture is now scrubbed field by field before it is written, leaving only the base64 of the wire bytes as recorded | same commit |
 
 ## Open decisions
 
@@ -67,13 +67,13 @@ The limit is three times the 95th-percentile gap of the stream's own history. Wi
 - **Option 1 (recommended):** keep a gap that was itself reported as a stall out of the baseline it is judged by.
 - **Option 2:** document it in the known limitations.
 
-### Q14. `--no-redact` now writes the capture without the scrub of registered secrets
+### Q14. A `--no-redact` capture keeps the wire bytes as recorded, so the secrets you gave may be in them
 
-The command line scrubs every value you give it (`--auth-env`, `--cookie-env`, ...) from everything it writes. For `--no-redact` that corrupted the file (defect 9), so that one file is written as observed, and the values may be in it. The flag already says "may contain secrets, do not share". Test: `src/cli/__tests__/security.canary.test.ts`.
+The command line scrubs every value you give it (`--auth-env`, `--cookie-env`, ...) from everything it writes. For `--no-redact` that corrupted the file (defect 9). The capture is now scrubbed field by field, except the base64 of the wire bytes, which is the point of a byte-exact local capture. The flag already says "may contain secrets, do not share". Test: `src/cli/__tests__/security.canary.test.ts`, and `security.url.test.ts` for the URL's own secrets.
 
-- **Option 1 (current):** as above, and documented in `docs/guide/cli.md`.
+- **Option 1 (current):** as above, documented in `docs/guide/cli.md`.
 - **Option 2:** refuse `--no-redact` when any secret option was given, and say why.
-- **Option 3:** keep the scrub but make it skip the base64 fields, so registered secrets in headers are still replaced and the file stays valid (the wire bytes would still hold them).
+- **Option 3:** also scrub the decoded wire bytes and re-encode them, which is redaction under another name and defeats a byte-exact capture.
 
 ## Not covered
 

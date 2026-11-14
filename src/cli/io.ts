@@ -8,9 +8,12 @@ export interface CliIo {
     writeText?(path: string, text: string): Promise<void>
     /**
      * Writes a file exactly as given, without the scrub of known secrets that every other sink gets. Only the capture that `--no-redact` asks for
-     * uses it: that file is the recording byte for byte, and a scrub would cut into the base64 of the wire bytes and leave a file that cannot be read.
+     * uses it, after scrubbing it field by field itself: a scrub of the finished text would cut into the base64 of the wire bytes and leave a file
+     * that cannot be read.
      */
     writeRawText?(path: string, text: string): Promise<void>
+    /** Replaces the secrets the command line knows about in a piece of text. Present on the io the commands get. */
+    scrub?(text: string): string
     /** File names in a directory, for expanding `dir/*.json` where the shell does not (Windows). */
     listDir?(dir: string): Promise<string[]>
     /** Environment variables, by name. Secrets are passed this way, never on the command line. */

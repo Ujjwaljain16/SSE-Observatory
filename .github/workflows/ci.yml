@@ -34,6 +34,8 @@ jobs:
       # The CLI package: build it, run the built bundle, then install the packed tarball into a clean directory.
       - run: npm run build:cli
       - run: npm run doctor:selftest
+      # What the published command line holds: no machine path, no source map, no source path in its types; it runs from an empty directory.
+      - run: npm run doctor:buildcheck
       - run: npm run cli:check
       # Scenario files against the built-in fixture streams: passing ones pass, failing ones fail, unprovable ones are inconclusive (exit 4).
       - run: npm run doctor:scenarios

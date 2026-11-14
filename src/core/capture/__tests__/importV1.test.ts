@@ -36,7 +36,8 @@ describe('v1 samples (made by the v1.0.0 export code; see the note at the top)',
     it('are what they claim to be: version 1.0, pretty-printed, with the fields of a v1 export', () => {
         for (const name of SAMPLES) {
             const text = read(name)
-            expect(text.startsWith('{\n  "version": "1.0"'), name).toBe(true)
+            // a Windows checkout may turn the line feeds into CR LF; the export wrote line feeds, and what is checked is the layout
+            expect(text.replace(/\r\n/g, '\n').startsWith('{\n  "version": "1.0"'), name).toBe(true)
             const raw = rawOf(name)
             expect(raw.totalEvents, name).toBe(raw.events.length)
             expect(isV1Recording(raw), name).toBe(true)
