@@ -24,9 +24,10 @@ export async function observeUrl(url: string, rules: Rule[], profile: StreamProf
     let finished!: () => void
     const done = new Promise<void>((resolve) => { finished = resolve })
     let events = 0
+    const messages: Array<{ id: string; event: string; dataBytes: number }> = []
     const stream = createObservedStream({
         request: () => ({ url }),
-        sinks: { onMessage: () => { events++ }, onPhase: (p) => { if (p === 'ended' || p === 'failed') finished() } },
+        sinks: { onMessage: (m) => { events++; messages.push({ id: m.id, event: m.event, dataBytes: new TextEncoder().encode(m.data).length }) }, onPhase: (p) => { if (p === 'ended' || p === 'failed') finished() } },
         recording: {
             profile: { ...(profile?.sequence ? { sequence: { useSseId: profile.sequence.useSseId, field: profile.sequence.field } } : {}) },
             ...(options.captureBytes ? { captureBytes: true } : {}),
@@ -43,7 +44,7 @@ export async function observeUrl(url: string, rules: Rule[], profile: StreamProf
     engine.tick(endT)
     engine.end(endT)
     const capture: Capture = localCapture(observations, { source: { kind: 'fixture', client: 'node-undici' }, ...(profile ? { profile } : {}) })
-    return { findings: engine.findings(), observations, events, coverage: engine.coverage(), capture }
+    return { findings: engine.findings(), observations, events, messages, coverage: engine.coverage(), capture }
 }
 
 /** `observeUrl` for a route of the fixture server, with delays scaled down (default 0.05) and the route's own profile. */

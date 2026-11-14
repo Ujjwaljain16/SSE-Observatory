@@ -20,7 +20,10 @@ export function createBatcher<T>(flushMs: number, maxBatch: number, sink: (batch
         if (pending.length === 0) return
         const batch = pending
         pending = []
-        sink(batch)
+        // Whoever receives the records is not allowed to break the stream: a sink that throws (a failed post to another thread, a bug in a
+        // listener) would otherwise surface as an uncaught exception from a timer, which ends a Node process, or as an error inside the
+        // client's own read loop. The batch is lost to that sink; the stream and every other consumer carry on.
+        try { sink(batch) } catch { /* swallowed on purpose */ }
     }
 
     return {

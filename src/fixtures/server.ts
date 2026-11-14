@@ -13,18 +13,26 @@ import type { AddressInfo } from 'node:net'
 import { baseFamily } from './base'
 import { FAMILIES } from './families'
 import { STREAM_HEADERS, type Ctx, type FixtureRoute, type Script } from './kit'
+import { GroundTruth } from './groundTruth'
 
 export type { FixtureRoute } from './kit'
 
 export const FIXTURE_ROUTES: FixtureRoute[] = [baseFamily, ...FAMILIES].flatMap((f) => f.routes)
 const SCRIPTS = Object.assign({}, baseFamily.scripts, ...FAMILIES.map((f) => f.scripts)) as Record<string, Script>
-export interface FixtureServerOptions { port?: number; host?: string }
+export interface FixtureServerOptions {
+    port?: number
+    host?: string
+    /** Record what the server does (every request, write and end) in `groundTruth`. On by default; it costs a few array pushes. */
+    log?: boolean
+}
 
 export interface FixtureServer {
     /** `http://127.0.0.1:<port>` */
     url: string
     port: number
     routes: FixtureRoute[]
+    /** What this server did, as the server itself saw it (see groundTruth.ts). Empty when started with `log: false`. */
+    groundTruth: GroundTruth
     /** Full URL of a route by id, with optional query parameters. */
     urlFor(id: string, query?: Record<string, string | number>): string
     close(): Promise<void>
@@ -51,6 +59,8 @@ function resumeIndex(header: string | undefined): number {
 export async function startFixtureServer(options: FixtureServerOptions = {}): Promise<FixtureServer> {
     const host = options.host ?? '127.0.0.1'
     const live = new Set<http.ServerResponse>()
+    const groundTruth = new GroundTruth()
+    const logging = options.log !== false
 
     const server = http.createServer((req, res) => {
         const url = new URL(req.url ?? '/', 'http://fixture.local')
@@ -62,6 +72,24 @@ export async function startFixtureServer(options: FixtureServerOptions = {}): Pr
 
         const path = url.pathname
         if (path === '/') { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(FIXTURE_ROUTES)); return }
+
+        // The ground-truth log is written here, where every response passes, so no fixture has to know about it.
+        if (logging) {
+            const entry = groundTruth.open({ route: FIXTURE_ROUTES.find((r) => r.path === path)?.id ?? path, path, query: Object.fromEntries(url.searchParams), headers: req.headers })
+            const writeHead = res.writeHead.bind(res)
+            res.writeHead = ((status: number, ...rest: unknown[]) => { entry.status = status; return (writeHead as (...a: unknown[]) => unknown)(status, ...rest) }) as never
+            const write = res.write.bind(res)
+            res.write = ((chunk: string | Uint8Array, ...rest: unknown[]) => { groundTruth.write(entry, chunk); return (write as (...a: unknown[]) => unknown)(chunk, ...rest) }) as never
+            const end = res.end.bind(res)
+            res.end = ((chunk?: unknown, ...rest: unknown[]) => {
+                if (typeof chunk === 'string' || chunk instanceof Uint8Array) groundTruth.write(entry, chunk)
+                groundTruth.end(entry, 'server-end')
+                return (end as (...a: unknown[]) => unknown)(chunk, ...rest)
+            }) as never
+            const destroy = res.destroy.bind(res)
+            res.destroy = ((...rest: unknown[]) => { groundTruth.end(entry, 'server-destroy'); return (destroy as (...a: unknown[]) => unknown)(...rest) }) as never
+            res.on('close', () => groundTruth.end(entry, 'client-closed'))
+        }
 
         const fixed: Record<string, http.RequestListener> = {
             '/f01/text-plain': WRONG_TYPE('text/plain'),
@@ -120,6 +148,7 @@ export async function startFixtureServer(options: FixtureServerOptions = {}): Pr
         url: base,
         port,
         routes: FIXTURE_ROUTES,
+        groundTruth,
         urlFor(id, query = {}) {
             const route = FIXTURE_ROUTES.find((r) => r.id === id)
             if (!route) throw new Error(`unknown fixture "${id}"`)
