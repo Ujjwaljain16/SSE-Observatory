@@ -27,7 +27,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx vitest run src/fixtures/__tests__/nightly.twins.test.ts src/fixtures/__tests__/fixtures.sensitivity.test.ts src/fixtures/__tests__/replayTiming.test.ts --maxWorkers=1
+      - run: npx vitest run src/fixtures/__tests__/nightly.twins.test.ts src/fixtures/__tests__/fixtures.sensitivity.test.ts src/fixtures/__tests__/replayTiming.test.ts src/fixtures/__tests__/scaleInvariance.test.ts --maxWorkers=1
         env:
           NIGHTLY: '1'
 
