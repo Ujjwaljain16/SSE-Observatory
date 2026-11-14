@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest'
 const root = process.cwd()
 const read = (p: string): string => fs.readFileSync(path.join(root, p), 'utf8').replace(/\r\n/g, '\n')
 const ci = read('.github/workflows/ci.yml')
-const pkg = JSON.parse(read('package.json')) as { scripts: Record<string, string> }
+const pkg = JSON.parse(read('package.json')) as { scripts: Record<string, string>; engines?: { node?: string } }
 
 /** The text of each job, by its key under `jobs:`. */
 function jobs(text: string): Record<string, string> {
@@ -43,6 +43,13 @@ describe('the CI workflow still holds what the project depends on', () => {
     it('verify runs on Linux and on Windows', () => {
         expect(J['verify']).toMatch(/os: \[ubuntu-latest, windows-latest\]/)
         expect(J['verify']).toMatch(/fail-fast: false/)
+    })
+
+    it('verify also runs once on Node 20, the oldest the command line supports, and only one leg uploads the scenario results (two would collide)', () => {
+        expect(J['verify']).toMatch(/include:\n\s+#[^\n]*\n\s+- os: ubuntu-latest\n\s+node: 20/)
+        expect(J['verify']).toMatch(/node-version: \$\{\{ matrix\.node \}\}/)
+        expect(J['verify']).toMatch(/matrix\.node == 22/)
+        expect(pkg.engines?.node, 'the engines field and the oldest tested Node agree').toBe('>=20')
     })
 
     it('the dependency audit gates high and critical advisories in what ships', () => {

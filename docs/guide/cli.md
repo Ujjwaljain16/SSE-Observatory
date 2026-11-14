@@ -40,6 +40,15 @@ A full (not redacted) capture served by `replay` is not readable by web pages un
 | 4 | inconclusive: no check failed, but a scenario check could not be decided |
 | 130 | interrupted |
 
+## JSON output
+
+`--format json` prints a document a script can read, and its shape is a published contract:
+
+- `analyze`, `probe`, `compare` and the other commands that report findings print [`sse-cli-output-1.json`](/schemas/sse-cli-output-1.json): `schemaVersion`, `command`, `subject`, `findings` (each with its `facts`, `deductions`, `limits` and `status`), `coverage` (one entry per check, `evaluated` or `not-evaluated`) and `notes`.
+- `test` prints [`sse-test-output-1.json`](/schemas/sse-test-output-1.json): one entry per scenario file with its `status` (`pass`, `fail` or `inconclusive`) and its `checks`.
+
+Within version 1 fields may be added; a field is never removed, and its meaning never changed, without a new `schemaVersion` and a new file. The tests validate what the real commands print against these files.
+
 ## Secrets
 
 Put secrets in environment variables, never on the command line (where they end up in shell history and process lists):
