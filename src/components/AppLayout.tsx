@@ -28,6 +28,8 @@ import { PatternPanel } from './PatternPanel'
 import { PerfOverlay } from './PerfOverlay'
 import { DoctorToggle } from './doctor/DoctorToggle'
 import { exportEvents, getEventStats } from '../utils/exportUtils'
+import { useEventRate } from '../hooks/useEventRate'
+import { TypeChart } from './TypeChart'
 
 import {
     Activity, Server, Search, BarChart2, Dna, Download, Circle, Layers, Zap, GitBranch, AlertTriangle
@@ -99,6 +101,9 @@ export function AppLayout() {
     const { schema, isAnalyzing } = useSchemaInference(allEvents)
 
     const stats = useMemo(() => getEventStats(allEvents), [allEvents])
+    const monitorRate = useEventRate(allEvents, connected)
+    const multiConnected = streams.some((s) => s.connected)
+    const multiRate = useEventRate(mergedEvents, multiConnected)
 
     const handleConnect = () => connect(url, bearerToken)
 
@@ -190,7 +195,8 @@ export function AppLayout() {
                         )}
                         <EventsList
                             theme={theme}
-                            connected={streams.some(s => s.connected)}
+                            connected={multiConnected}
+                            ratePerSecond={multiRate}
                             filteredEvents={mergedEvents}
                             customFilters={[]}
                             copiedId={copiedId}
@@ -387,24 +393,7 @@ export function AppLayout() {
                                             </div>
                                         ))}
                                     </div>
-                                    {stats.topTypes.length > 0 && (
-                                        <div>
-                                            <div className={`text-sm font-medium mb-2 ${theme === 'dark' ? 'text-slate-300' : 'text-slate-700'}`}>
-                                                Top Event Types
-                                            </div>
-                                            <div className="flex flex-wrap gap-2">
-                                                {stats.topTypes.map(([type, count]) => (
-                                                    <span
-                                                        key={type}
-                                                        className={`px-3 py-1 rounded-full text-xs font-medium ${theme === 'dark' ? 'bg-slate-600 text-slate-200' : 'bg-slate-200 text-slate-700'
-                                                            }`}
-                                                    >
-                                                        {type}: {count}
-                                                    </span>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
+                                    <TypeChart events={allEvents} theme={theme} />
                                 </div>
                             )}
 
@@ -477,6 +466,7 @@ export function AppLayout() {
                         <EventsList
                             theme={theme}
                             connected={connected}
+                            ratePerSecond={monitorRate}
                             filteredEvents={filteredEvents}
                             customFilters={customFilters}
                             copiedId={copiedId}

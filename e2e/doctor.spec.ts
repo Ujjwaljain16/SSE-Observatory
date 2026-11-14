@@ -245,7 +245,9 @@ test.describe('Stream Doctor', () => {
             expect(JSON.parse(file.text.split('\n')[0]!).kind).toBe('local-full')
         })
 
-        test('a capture to share downloads as sanitized, and a scenario downloads valid JSON', async ({ page }) => {
+        // One download per test, on a fresh page. A second download on the same page never arrived on the CI runner (the test was
+        // "flaky" there for weeks, then failed three times in a row); each file is checked on its own so a failure names the file.
+        test('a capture to share downloads as sanitized', async ({ page }) => {
             test.setTimeout(60_000)
             await openExport(page, '/leaky')
             await page.getByLabel(/Capture to share/).check()
@@ -253,7 +255,11 @@ test.describe('Stream Doctor', () => {
             const capture = await download(page)
             expect(capture.text).not.toContain(JWT)
             expect(JSON.parse(capture.text.split('\n')[0]!).kind).toBe('sanitized')
+        })
 
+        test('a scenario downloads as valid JSON without the secrets', async ({ page }) => {
+            test.setTimeout(60_000)
+            await openExport(page, '/leaky')
             await page.getByLabel(/Test scenario/).check()
             await page.getByTestId('export-ack').check()
             const scenario = await download(page)
@@ -371,6 +377,9 @@ test.describe('Stream Doctor', () => {
             const findings = page.getByTestId('doctor-tab-findings')
             await expect(findings).toHaveAttribute('aria-selected', 'true')
             await findings.focus()
+            await page.keyboard.press('ArrowRight')
+            await expect(page.getByTestId('doctor-tab-request')).toHaveAttribute('aria-selected', 'true')
+            await expect(page.getByTestId('doctor-tab-request')).toBeFocused()
             await page.keyboard.press('ArrowRight')
             await expect(page.getByTestId('doctor-tab-timeline')).toHaveAttribute('aria-selected', 'true')
             await expect(page.getByTestId('doctor-tab-timeline')).toBeFocused()

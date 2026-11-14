@@ -28,6 +28,7 @@ export default defineConfig({
                 {
                     text: 'Features',
                     items: [
+                        { text: 'Viewing events', link: '/guide/viewing-events' },
                         { text: 'Query DSL', link: '/guide/query-dsl' },
                         { text: 'Multi-Stream Correlation', link: '/guide/multi-stream' },
                         { text: 'JavaScript Interceptors', link: '/guide/interceptors' },
