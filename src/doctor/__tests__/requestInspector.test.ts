@@ -32,7 +32,7 @@ describe('inspectRequests', () => {
 
     it('keeps an attempt that never got a response, without inventing timings for it', () => {
         const b = capture().connect()
-        b.silence(5000).phase('error', { attempt: 0, reason: 'connection refused' })
+        b.silence(5000).phase('failed', { attempt: 0, reason: 'connection refused' })
         const [r] = inspectRequests(b.observations(), 6000)
         expect(r!.response).toBeUndefined()
         expect(r!.timing).toEqual({ totalMs: 5000 })
