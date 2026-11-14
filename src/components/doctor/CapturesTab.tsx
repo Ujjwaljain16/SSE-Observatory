@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FolderOpen, Save, Trash2 } from 'lucide-react'
 import type { Theme } from '../../types'
 import type { Observation } from '../../core/observe/observation'
@@ -15,6 +15,9 @@ import type { DoctorView } from '../../doctor/doctorSession'
 import { fmtBytes, fmtDuration } from './format'
 import { FindingCard } from './FindingCard'
 import PrivacySettings from './PrivacySettings'
+
+// The lab's captures are fetched when it is opened; its page code only when the Captures tab is.
+const FailureLab = lazy(() => import('./FailureLab'))
 
 interface Props {
     theme: Theme
@@ -197,6 +200,8 @@ export default function CapturesTab({ theme, streamId, view }: Props) {
                     )}
                 </section>
             )}
+
+            <Suspense fallback={null}><FailureLab theme={theme} onSaved={() => void refresh()} /></Suspense>
 
             <PrivacySettings theme={theme} count={saved.length} onChanged={() => void refresh()} />
         </section>

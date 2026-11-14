@@ -17,6 +17,7 @@ import type { Observation } from '../core/observe/observation'
 import { RollingStats } from '../core/diagnostics/stats'
 import type { RegistryEntry } from './observationRegistry'
 import { CONSUMER_SEQ_BASE } from './recordLookup'
+import type { FlowBatch } from './flow'
 
 
 export interface HealthView {
@@ -48,6 +49,8 @@ export interface DoctorView {
     findings: Finding[]
     coverage: RuleCoverage[]
     health: HealthView
+    /** The page's processing batches in the recorder's clock, oldest first (the newest few hundred). Drawn by the Flow tab. */
+    flowBatches: readonly FlowBatch[]
     /** Open findings by severity. */
     open: Record<Severity, number>
     /** Highest severity among open findings, or null. */
@@ -72,6 +75,7 @@ export class DoctorSession {
     private anchored = false
     private syncedVersion = -1
     private lag = new RollingStats(256)
+    private batches: FlowBatch[] = []
     private queueDepth = 0
     private consumerSamples = 0
 
@@ -95,6 +99,7 @@ export class DoctorSession {
         this.queueDepth = 0
         this.consumerSamples = 0
         this.lag = new RollingStats(256)
+        this.batches = []
     }
 
     /**
@@ -162,6 +167,8 @@ export class DoctorSession {
                 this.lag.push(c.lagMs)
                 this.queueDepth = c.queueDepth
                 this.consumerSamples++
+                this.batches.push({ receivedT: shifted.receivedT, processedT: shifted.processedT, n: c.n, queueDepth: c.queueDepth, lagMs: c.lagMs })
+                if (this.batches.length > 600) this.batches.splice(0, this.batches.length - 600)
                 this.lastConsumerSeq = c.seq
             }
             changed = true
@@ -202,6 +209,7 @@ export class DoctorSession {
             streamId: this.streamId,
             captureId: this.captureId,
             profile: this.profile,
+            flowBatches: this.batches,
             nowT: now,
             findings,
             coverage,

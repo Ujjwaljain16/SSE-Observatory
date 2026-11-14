@@ -11,7 +11,7 @@ const open = (o: Partial<Record<'info' | 'warning' | 'error' | 'critical', numbe
 
 function view(over: { phase?: string; events?: number; lastEventAgeMs?: number | null; worst?: DoctorView['worst']; open?: ReturnType<typeof open>; lag?: number } = {}): DoctorView {
     return {
-        streamId: 'x', captureId: 'c', profile: undefined, nowT: 0, findings: [], coverage: [], open: over.open ?? open(), worst: over.worst ?? null, evaluated: 0, notEvaluated: 0,
+        streamId: 'x', captureId: 'c', profile: undefined, nowT: 0, flowBatches: [], findings: [], coverage: [], open: over.open ?? open(), worst: over.worst ?? null, evaluated: 0, notEvaluated: 0,
         health: {
             phase: over.phase ?? 'open', attempt: 0, phaseAgeMs: 0, lastByteAgeMs: null, lastOriginAgeMs: null, lastEventAgeMs: over.lastEventAgeMs === undefined ? 200 : over.lastEventAgeMs,
             proxyBeatAgeMs: null, originBeats: 0, proxyBeats: 0, originBeatMedianMs: null, events: over.events ?? 10, reconnects: 0,
