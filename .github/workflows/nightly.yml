@@ -27,7 +27,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx vitest run src/fixtures/__tests__/nightly.twins.test.ts src/fixtures/__tests__/fixtures.sensitivity.test.ts --maxWorkers=1
+      - run: npx vitest run src/fixtures/__tests__/nightly.twins.test.ts src/fixtures/__tests__/fixtures.sensitivity.test.ts src/fixtures/__tests__/replayTiming.test.ts --maxWorkers=1
         env:
           NIGHTLY: '1'
 
@@ -48,6 +48,30 @@ jobs:
         with:
           name: flake-loop
           path: flake.json
+          if-no-files-found: ignore
+
+  limits:
+    name: Documented limits, and the cost of a record
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Advisory: a hosted runner is a noisy machine. The documented limits (large captures, the 20 MB upload) must hold; the per-record cost is reported,
+    # and compared with a stored baseline once one has been recorded on a quiet machine.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build:cli
+      - run: node scripts/perf/large-capture.mjs
+      - run: node scripts/perf/record-cost.mjs --out record-cost.json
+        continue-on-error: true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: record-cost
+          path: record-cost.json
           if-no-files-found: ignore
 
   node20:
@@ -75,7 +99,7 @@ jobs:
 
   report:
     name: Results report
-    needs: [twins, flake, node20]
+    needs: [twins, flake, node20, limits]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -96,7 +120,7 @@ jobs:
 
   issue:
     name: Open an issue when something failed
-    needs: [twins, flake, node20]
+    needs: [twins, flake, node20, limits]
     if: failure() && github.event_name == 'schedule'
     runs-on: ubuntu-latest
     steps:
