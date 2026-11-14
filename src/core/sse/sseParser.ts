@@ -59,7 +59,10 @@ export class SSEParser {
     private dataLines: string[] = []
     private eventName = ''
     private rawLines: string[] = []
+    /** The id a reconnecting client sends (the specification's "last event ID string"): it changes only when an event is dispatched. */
     private lastEventId = ''
+    /** The specification's "last event ID buffer": what the `id` lines of the event being read say so far. It is discarded with the event if the connection ends before the blank line. */
+    private pendingId: string | null = null
     /** Characters held by the event being built (its data and raw lines), so one event that never ends cannot grow without bound. */
     private eventChars = 0
 
@@ -201,6 +204,7 @@ export class SSEParser {
         this.dataLines = []
         this.eventName = ''
         this.rawLines = []
+        this.pendingId = null
         this.eventChars = 0
         this.decoder = new TextDecoder('utf-8')
         this.sawFirstChunk = false
@@ -256,7 +260,7 @@ export class SSEParser {
                 this.countEventChars(line.length + 1)
                 break
             case 'id':
-                if (!value.includes('\0')) this.lastEventId = value
+                if (!value.includes('\0')) this.pendingId = value
                 else if (this.diagnostics) this.violation('NUL_IN_ID', 'An id field contained a NUL character and was ignored.')
                 this.rawLines.push(line)
                 this.countEventChars(line.length + 1)
@@ -278,6 +282,8 @@ export class SSEParser {
     }
 
     private dispatch() {
+        // The id lines of this event take effect now, even when it has no data to dispatch (the specification sets the string before it looks at the data).
+        if (this.pendingId !== null) { this.lastEventId = this.pendingId; this.pendingId = null }
         const hasData = this.dataLines.length > 0
         if (this.diagnostics) {
             if (!hasData && this.frameHadId) this.violation('ID_ONLY_FRAME', 'An event had an id but no data, so nothing was dispatched (the last event id still advanced).')
