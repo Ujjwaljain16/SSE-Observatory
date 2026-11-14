@@ -14,6 +14,7 @@ import { getProfile } from '../../doctor/profileStore'
 import type { DoctorView } from '../../doctor/doctorSession'
 import { fmtBytes, fmtDuration } from './format'
 import { FindingCard } from './FindingCard'
+import PrivacySettings from './PrivacySettings'
 
 interface Props {
     theme: Theme
@@ -196,6 +197,8 @@ export default function CapturesTab({ theme, streamId, view }: Props) {
                     )}
                 </section>
             )}
+
+            <PrivacySettings theme={theme} count={saved.length} onChanged={() => void refresh()} />
         </section>
     )
 }

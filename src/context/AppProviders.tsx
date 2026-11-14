@@ -1,9 +1,10 @@
 // orchestrates global context providers
 // separates high-frequency metrics (PerfContext) from UI state to prevent render thrashing
 
-import { useState, useMemo, useCallback, type ReactNode } from 'react'
+import { useState, useMemo, useCallback, useEffect, type ReactNode } from 'react'
 import { useTheme } from '../hooks/useTheme'
 import { useStreamState, MAX_EVENTS } from '../hooks/useStreamState'
+import { applyRetention } from '../doctor/retention'
 
 import { ThemeContext } from './ThemeContext'
 import { UIContext, type EventJump, type JumpResult } from './UIContext'
@@ -17,6 +18,9 @@ interface Props {
 export function AppProviders({ children }: Props) {
     const { theme, toggleTheme } = useTheme()
     const themeValue = useMemo(() => ({ theme, toggleTheme }), [theme, toggleTheme])
+
+    // Saved captures older than the time the person chose are deleted at start.
+    useEffect(() => { void applyRetention() }, [])
 
     // ui context only holds view toggles, connection fields live in stream context
     const [appMode, setAppMode] = useState<'monitor' | 'mock' | 'multistream'>('monitor')

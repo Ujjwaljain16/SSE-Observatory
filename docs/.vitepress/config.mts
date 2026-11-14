@@ -36,6 +36,7 @@ export default defineConfig({
                         { text: 'Mock Server & Replay', link: '/guide/mock-server' },
                         { text: 'Stream Doctor (in the app)', link: '/guide/stream-doctor' },
                         { text: 'Command Line (sse-doctor)', link: '/guide/cli' },
+                        { text: 'Redaction policy', link: '/guide/redaction-policy' },
                         { text: 'Scenarios & CI', link: '/guide/cli-ci' }
                     ]
                 }

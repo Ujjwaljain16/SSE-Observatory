@@ -3,7 +3,8 @@ import type { EngineInput } from '../core/diagnostics/streamModel'
 import type { StreamProfile } from '../core/diagnostics/thresholds'
 import { parseCapture, serializeCapture, newHeader, captureEndT, CaptureFormatError, type Capture, type CaptureRecord } from '../core/capture/format'
 import { importV1, isV1Recording, V1ImportError } from '../core/capture/importV1'
-import { redactCapture, RedactionError, type RedactionReport } from '../core/capture/redact'
+import { redactCapture, RedactionError, type RedactionPolicy, type RedactionReport } from '../core/capture/redact'
+import { describePolicy, isCustomPolicy, parseRedactionPolicy } from '../core/capture/policy'
 import type { RedactedCapture } from '../core/capture/redacted'
 import { buildReport } from '../core/capture/derived/report'
 import { compareCaptures } from '../core/capture/derived/compare'
@@ -53,6 +54,18 @@ async function loadProfile(io: CliIo, args: ParsedArgs, fallback: StreamProfile 
     return checked.profile
 }
 
+/** The person's own redaction rules, from --redact-policy <file>: more keys, more patterns, headers to keep. Without the flag, the built-in rules only. */
+async function loadRedactionPolicy(io: CliIo, args: ParsedArgs): Promise<RedactionPolicy | undefined> {
+    const path = stringFlag(args, 'redact-policy')
+    if (!path) return undefined
+    let text: string
+    try { text = await requireFiles(io).readText(path) } catch { throw new CliError(`Cannot read a redaction policy from "${path}".`, EXIT.usage) }
+    const checked = parseRedactionPolicy(text)
+    if (checked.errors.length > 0) throw new CliError(`The redaction policy in "${path}" is not valid:\n- ${checked.errors.join('\n- ')}`, EXIT.usage)
+    if (!checked.policy) throw new CliError(`The redaction policy in "${path}" holds no rules. Add extraKeys, extraPatterns or keepHeaders, or leave the flag out.`, EXIT.usage)
+    return checked.policy
+}
+
 function analysisOf(capture: Capture, profile: StreamProfile | undefined): Analysis {
     return analyze(capture.records as EngineInput[], { ...(profile ? { profile } : {}), endT: captureEndT(capture) })
 }
@@ -74,12 +87,12 @@ function warnAboutRedaction(io: CliIo, report: RedactionReport): void {
 }
 
 /** Reports and curl commands accept only a RedactedCapture. A sanitized file is run through the redactor again (it is idempotent) to get the type. */
-function shareable(io: CliIo, capture: Capture, args: ParsedArgs): RedactedCapture {
+async function shareable(io: CliIo, capture: Capture, args: ParsedArgs): Promise<RedactedCapture> {
     if (capture.header.kind === 'local-full' && args.flags['redact'] !== true) {
         throw new CliError('This capture is a local full-fidelity capture and may contain secrets. Run "sse-doctor redact" first, or add --redact to redact it for this command.', EXIT.usage)
     }
     try {
-        const result = redactCapture(capture)
+        const result = redactCapture(capture, await loadRedactionPolicy(io, args))
         warnAboutRedaction(io, result.report)
         return result.capture
     } catch (error) {
@@ -105,7 +118,7 @@ export async function reportCommand(io: CliIo, args: ParsedArgs): Promise<number
     const raw = stringFlag(args, 'format') ?? 'md'
     if (raw !== 'md' && raw !== 'html' && raw !== 'json') throw new CliError(`--format for report must be md, html or json, got "${raw}".`, EXIT.usage)
     const { capture } = await loadCapture(io, path)
-    const safe = shareable(io, capture, args)
+    const safe = await shareable(io, capture, args)
     const profile = await loadProfile(io, args, safe.header.profile)
     const text = buildReport(safe, analysisOf(safe, profile), { format: raw })
     const out = stringFlag(args, 'output')
@@ -119,14 +132,15 @@ export async function redactCommand(io: CliIo, args: ParsedArgs): Promise<number
     const out = stringFlag(args, 'output')
     if (!path || !out) throw new CliError('Usage: sse-doctor redact <capture> --output <file>', EXIT.usage)
     const { capture } = await loadCapture(io, path)
+    const policy = await loadRedactionPolicy(io, args)
     let result
-    try { result = redactCapture(capture) } catch (error) {
+    try { result = redactCapture(capture, policy) } catch (error) {
         if (error instanceof RedactionError) throw new CliError(error.message, EXIT.couldNotRun)
         throw error
     }
     await requireFiles(io).writeText(out, serializeCapture(result.capture))
     const { placeholders, residual, idWarnings } = result.report
-    io.out(`Wrote ${out}: ${placeholders} value${placeholders === 1 ? '' : 's'} replaced.\n`)
+    io.out(`Wrote ${out}: ${placeholders} value${placeholders === 1 ? '' : 's'} replaced${isCustomPolicy(policy) ? ` (built-in rules plus ${describePolicy(policy)})` : ''}.\n`)
     for (const w of idWarnings) io.err(`warning: ${w}\n`)
     if (residual.length > 0) {
         io.err(`warning: ${residual.length} thing${residual.length === 1 ? '' : 's'} still look like secrets (not shown). Look before sharing:\n`)
@@ -152,7 +166,7 @@ export async function curlCommand(io: CliIo, args: ParsedArgs): Promise<number> 
     if (/^https?:\/\//i.test(target)) {
         const stub: Capture = { header: newHeader({ kind: 'local-full', source: { kind: 'cli' }, request: { url: redactUrl(target), method: 'GET', headers: {} } }), records: [] }
         safe = redactCapture(stub).capture
-    } else safe = shareable(io, (await loadCapture(io, target)).capture, args)
+    } else safe = await shareable(io, (await loadCapture(io, target)).capture, args)
     const shell = stringFlag(args, 'shell') ?? (io.env?.['ComSpec'] && !io.env['SHELL'] ? 'powershell' : 'posix')
     if (shell !== 'posix' && shell !== 'powershell') throw new CliError('--shell must be posix or powershell.', EXIT.usage)
     io.out(toCurl(safe, { shell }) + '\n')
@@ -284,7 +298,7 @@ export async function probeCommand(io: CliIo, args: ParsedArgs, secrets: SecretR
         const files = requireFiles(io)
         if (args.flags['no-redact'] === true) await files.writeText(out, serializeCapture(capture))
         else {
-            const result = redactCapture(capture) // secrets never reach the disk
+            const result = redactCapture(capture, await loadRedactionPolicy(io, args)) // secrets never reach the disk
             warnAboutRedaction(io, result.report)
             await files.writeText(out, serializeCapture(result.capture))
         }
@@ -338,7 +352,7 @@ export async function reproCommand(io: CliIo, args: ParsedArgs): Promise<number>
     // What leaves the machine is the redacted copy, and it must still show the finding.
     let redacted: RedactedCapture
     try {
-        const done = redactCapture(result.capture)
+        const done = redactCapture(result.capture, await loadRedactionPolicy(io, args))
         warnAboutRedaction(io, done.report)
         redacted = done.capture
     } catch (error) {

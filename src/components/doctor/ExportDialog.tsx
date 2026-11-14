@@ -5,6 +5,8 @@ import type { Theme } from '../../types'
 import { ARTIFACTS, prepare, type ArtifactKind, type Prepared } from '../../doctor/artifacts'
 import { captureOf } from '../../doctor/captureOf'
 import { getProfile } from '../../doctor/profileStore'
+import { getRedactionPolicy } from '../../doctor/redactionPolicyStore'
+import RedactionRules from './RedactionRules'
 import { downloadText } from '../../doctor/download'
 import { startMockReplay } from '../../doctor/mockReplay'
 import { replayCopy } from '../../doctor/replayCopy'
@@ -30,6 +32,7 @@ export default function ExportDialog({ theme, streamId, findings, endT, onReplay
 
     // The recording as it is when the dialog opens; later records do not change what is previewed.
     const snapshot = useMemo(() => captureOf(streamId, endT, getProfile()), [streamId]) // eslint-disable-line react-hooks/exhaustive-deps -- taken once, on open
+    const [policy, setPolicy] = useState(getRedactionPolicy)
     const [kind, setKind] = useState<ArtifactKind>('report-md')
     const [shell, setShell] = useState<'posix' | 'powershell'>('posix')
     const [findingKey, setFindingKey] = useState(findings[0]?.key ?? '')
@@ -42,14 +45,14 @@ export default function ExportDialog({ theme, streamId, findings, endT, onReplay
         if (!snapshot) return { error: 'There is nothing recorded yet.' }
         if (kind === 'repro' && reproFor !== findingKey) return {}
         try {
-            return { prepared: prepare(kind, snapshot.capture, { shell, findingKey }) }
+            return { prepared: prepare(kind, snapshot.capture, { shell, findingKey, policy }) }
         } catch (err) {
             return { error: err instanceof Error ? err.message : String(err) }
         }
-    }, [snapshot, kind, shell, findingKey, reproFor])
+    }, [snapshot, kind, shell, findingKey, reproFor, policy])
     const { prepared, error } = result
 
-    useEffect(() => { setAcknowledged(false); setReplayError('') }, [kind, shell, findingKey, reproFor])
+    useEffect(() => { setAcknowledged(false); setReplayError('') }, [kind, shell, findingKey, reproFor, policy])
 
     const residual = prepared?.residual.length ?? 0
     const needsAck = prepared !== undefined && (!prepared.shareable || residual > 0)
@@ -119,6 +122,8 @@ export default function ExportDialog({ theme, streamId, findings, endT, onReplay
                             ))}
                         </div>
                     </fieldset>
+
+                    <RedactionRules theme={theme} policy={policy} onChange={setPolicy} />
 
                     {kind === 'curl' && (
                         <label className={`flex items-center gap-2 text-sm ${strong}`}>Shell
