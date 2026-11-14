@@ -15,9 +15,10 @@ The campaign's idea: more tests of the same shape find few bugs, so it uses **in
 | F | The built command line as a process: exit codes, clean stdout, no stack traces, always stops, expands its own globs (`npm run doctor:contract`) | done |
 | A1, A5 | The fixture server's own log, and the four-way comparison (server, transport, parser, findings) on ten routes | done |
 | E1 | A sweep of every export path for planted secrets (the plan treats a survivor as a release blocker): the Doctor's exports and the whole command line, searched for each planted value in five encodings | done for the Doctor and the CLI, **2 defects**; the browser end-to-end part and the encodings of E2 are not |
-| A2, A3, A4, A6 | Stepped server clock, new fixtures, fixture contract test, the proxy in the loop | not started |
-| D1, D2, D6 | Capture, replay and re-analysis round trip; damaged and truncated files; real v1 recordings | not started |
-| E2, E4, E5, E7 | Secret encodings, redirect policy, URL validation, build safety | not started |
+| A4, A6 | A contract for every fixture route checked against the server's own log; the real proxy in the loop (tags, resume, a dying upstream, a killed proxy) | done, **1 defect** |
+| A2, A3 | Stepped server clock; new fixtures (f05-ignores, h05, h06, slow start, gzip, malformed, rate) | not started (`f08-echo` exists, for E1) |
+| D1, D2, D6 | Round trip of every capture through the file, the mock replay and a sanitized export, with a class A/B/C comparison; damaged and truncated files (every byte offset); v1 recordings | done, **3 defects**; real v1 exports are still missing |
+| E2, E4, E5, E7 | Secret encodings (12 known gaps pinned), redirects to another origin, URL validation, and what the built CLI holds (`npm run doctor:buildcheck`) | done, **1 defect** |
 | G, H, I, J | Browser parity and lifecycle, performance and soak, an end-to-end journey, nightly and release-candidate workflows | not started |
 
 ## Defects found and fixed
@@ -32,6 +33,10 @@ The campaign's idea: more tests of the same shape find few bugs, so it uses **in
 | 6 | Engine thresholds | NaN, negative or infinite thresholds printed as "The threshold was NaN s" | `608dda6c` |
 | 7 | Observation batcher | A throwing observer escaped as an uncaught exception from a timer, which ends a Node process | `e00cf989` |
 | 8 | Redaction | A secret key (`password`, `token`, `api_key`...) inside an object or list under a harmless name (`{"user":{"password":"x"}}`, `{"items":[{"token":"x"}]}`) was **kept** in every shared capture and report, because the scan for `"name": value` pairs matched the whole inner object as the value of `user` and went on after it | the commit that adds `artifacts.canary.test.ts` |
+| 11 | SSE parser | The resume cursor (`lastId`) moved when an `id:` line was read, not when the event was dispatched, so a stream cut inside an event made the client resume after an event it never completed, and the server skipped it with no error and no finding. The specification sets a buffer at the `id:` line and commits it at dispatch; a browser's EventSource would send the earlier id | `4228c4f` |
+| 12 | CLI | A v1 `.sse-record` that starts with a byte order mark was refused ("not an .sse-capture file"), though the Doctor accepts the same file | `315a078` |
+| 13 | v1 import | A non-object event in a v1 recording was a raw TypeError (exit 3 instead of 2), and a `deltaMs` of `1e999` produced a capture with an infinite time that cannot be saved | `315a078` |
+| 14 | CLI | Control characters from argv or a file name (an escape sequence in a URL, an unknown command) reached stderr raw, as S13 closed for streams | `8075ed8` |
 | 10 | CLI | Every value in the URL's query was registered as a secret, so a harmless `?scale=0.05`, `?limit=1000` or `?debug=true` made each `0.05`, `1000` or `true` in the output a placeholder, including inside JSON numbers: `--format json` output and the saved capture could be invalid (found as a flake in the canary sweep). A value is now a secret when its name says so or its shape does (12+ characters mixing letters and digits) | same commit |
 | 9 | CLI | `probe --no-redact --out` wrote a capture that could not be read back, redacted or replayed: the scrub of the secrets you gave the command replaced part of the base64 of an echoed secret inside the wire bytes. The capture is now scrubbed field by field before it is written, leaving only the base64 of the wire bytes as recorded | same commit |
 
@@ -74,6 +79,40 @@ The command line scrubs every value you give it (`--auth-env`, `--cookie-env`, .
 - **Option 1 (current):** as above, documented in `docs/guide/cli.md`.
 - **Option 2:** refuse `--no-redact` when any secret option was given, and say why.
 - **Option 3:** also scrub the decoded wire bytes and re-encode them, which is redaction under another name and defeats a byte-exact capture.
+
+### Q15. Forged proxy tags
+
+The proxy forwards an upstream's `: sse-proxy hb up_idle=...` comment as it came, and the client labels any comment starting with `sse-proxy` as the proxy's. An upstream behind a proxy running with diagnostics off can make R13 report masking that is really the upstream (the `f04-masked` fixture has this shape). Test: `src/fixtures/__tests__/proxyInTheLoop.test.ts`.
+
+- **Option 1:** the proxy drops or escapes upstream comments that start with `sse-proxy`.
+- **Option 2:** the proxy adds a per-connection nonce to its tags and the client checks it.
+- **Option 3 (current):** accept it: the proxy is a diagnostic aid and its tags are not authenticated.
+
+### Q16. The proxy's `event: error` frame reaches the application as a message
+
+When the upstream connection is reset between events the proxy writes `event: error` into the stream; the application receives it as an ordinary message named `error`. Keep it (the proxy says why it closed) or send it as a comment so event consumers never see it.
+
+### Q17. `PROXY_DIAGNOSTICS=0` still sends `: sse-proxy-ping`
+
+It is labelled as the proxy's, and the client cannot tell the proxy's plain `keep-alive` from the upstream's. An existing test asserts the ping, so it looks intended. Say so if the switch should mean "no `sse-proxy` text at all".
+
+### Q6 (plan). A redirect to another origin drops the secrets silently
+
+`probe` follows a cross-origin redirect with the secret headers stripped, exits 0 and says nothing. Pinned in `src/cli/__tests__/security.redirect.test.ts`.
+
+- **Option 1:** refuse the redirect when a secret option is present, with a clear message, and a `--follow-redirects` to opt in.
+- **Option 2 (cheapest):** keep following, and print a note saying which headers were withheld from which origin.
+- **Option 3 (current):** keep as is.
+
+### Secret encodings the command line's scrub does not cover (E2)
+
+Pinned as known gaps in `src/cli/__tests__/security.encodings.test.ts` (each is a pair: a test that the form survives today and an `it.fails` for the wanted behaviour): hex (either case); a space written as `+`; `! ' ( ) * ~` percent-encoded; JSON unicode escapes of non-ASCII and surrogate pairs; PHP `\/`; Go's escaped angle brackets; HTML entities; double percent-encoding; base64 of `user:secret`; the secret inside a larger base64 value at an unaligned offset; a secret split across two writes; and two secrets that overlap without one containing the other.
+
+### Other open points from the same slices
+
+- Mock replay of a v1 recording emits the recording's internal uuid as the event id and merges the event name into the JSON data's `type` (pinned, "OPEN QUESTION" in `importV1.test.ts`).
+- A duplicate `seq` or a backwards `t` in a capture file is accepted without a warning; analysis does not fail.
+- Real v1 exports are still needed: the four samples were made by the v1 export code path, not downloaded from the running app.
 
 ## Not covered
 
