@@ -9,7 +9,7 @@
 import { SSEParser, SSEParserError, type SSEMessage } from './sseParser'
 import { performanceClock, type Clock } from '../clock'
 import { DIAGNOSTIC_RESPONSE_HEADERS, type Extracted, type ObservationDraft } from '../observe/observation'
-import { redactUrl } from '../observe/redactUrl'
+import { redactUrl, redactUrlsInText } from '../observe/redactUrl'
 import { utf8Length } from './utf8'
 import { bytesToBase64 } from '../capture/base64'
 import { violationSeverity, type ViolationCode } from './violations'
@@ -257,7 +257,8 @@ export class SSEClient {
                 } else if (err instanceof SSEParserError) {
                     this.finish('failed', { attempt, reason: err.message }); return
                 } else {
-                    reason = err instanceof Error && err.message ? `Network error: ${err.message}` : 'Network error'
+                    // A platform error can quote the request URL whole (a refused URL with a password in it does); the URL is recorded without its secrets, so the reason must be too.
+                    reason = err instanceof Error && err.message ? `Network error: ${redactUrlsInText(err.message)}` : 'Network error'
                 }
             }
 
