@@ -66,11 +66,11 @@ async function loadRedactionPolicy(io: CliIo, args: ParsedArgs): Promise<Redacti
     return checked.policy
 }
 
-function analysisOf(capture: Capture, profile: StreamProfile | undefined): Analysis {
+export function analysisOf(capture: Capture, profile: StreamProfile | undefined): Analysis {
     return analyze(capture.records as EngineInput[], { ...(profile ? { profile } : {}), endT: captureEndT(capture) })
 }
 
-function show(io: CliIo, result: Result, args: ParsedArgs): number {
+export function show(io: CliIo, result: Result, args: ParsedArgs): number {
     const failOn = parseFailOn(stringFlag(args, 'fail-on'))
     const text = render(result, parseFormat(stringFlag(args, 'format')), { failOn, verbose: args.flags['verbose'] === true })
     if (args.flags['quiet'] !== true || result.findings.length > 0) io.out(text)
@@ -114,9 +114,9 @@ export async function analyzeCommand(io: CliIo, args: ParsedArgs): Promise<numbe
 
 export async function reportCommand(io: CliIo, args: ParsedArgs): Promise<number> {
     const path = args.positionals[1]
-    if (!path) throw new CliError('Usage: sse-doctor report <capture> [--format md|html|json] [--output file]', EXIT.usage)
+    if (!path) throw new CliError('Usage: sse-doctor report <capture> [--format md|html|json|issue] [--output file]', EXIT.usage)
     const raw = stringFlag(args, 'format') ?? 'md'
-    if (raw !== 'md' && raw !== 'html' && raw !== 'json') throw new CliError(`--format for report must be md, html or json, got "${raw}".`, EXIT.usage)
+    if (raw !== 'md' && raw !== 'html' && raw !== 'json' && raw !== 'issue') throw new CliError(`--format for report must be md, html, json or issue, got "${raw}".`, EXIT.usage)
     const { capture } = await loadCapture(io, path)
     const safe = await shareable(io, capture, args)
     const profile = await loadProfile(io, args, safe.header.profile)
@@ -223,9 +223,20 @@ function requestFor(io: CliIo, args: ParsedArgs, url: string, secrets: SecretReg
 /** The longest wait a timer can hold (2^31 ms), in seconds. */
 const MAX_SECONDS = Math.floor(2 ** 31 / 1000)
 
-export async function probeCommand(io: CliIo, args: ParsedArgs, secrets: SecretRegistry): Promise<number> {
-    const target = args.positionals[1]
-    if (!target || !/^https?:\/\//i.test(target)) throw new CliError('Usage: sse-doctor probe <http(s) url> [--duration s] [--max-events n] [--idle-timeout s] [--timeout s] [--max-mb n] [--out capture]', EXIT.usage)
+/** What one probe saw. */
+export interface Observed {
+    target: string
+    capture: Capture
+    profile: StreamProfile | undefined
+    events: number
+    endT: number
+    reason: string
+    answered: boolean
+    maxBytes: number
+}
+
+/** Connects, watches for the time asked, and returns what was recorded. Shared by `probe` (one stream) and `env-diff` (two at once). */
+export async function observe(io: CliIo, args: ParsedArgs, target: string, secrets: SecretRegistry): Promise<Observed> {
     const duration = numberFlag(args, 'duration', 30)
     // setTimeout holds at most 2^31 ms; a longer wait fires at once, and a probe that ends before it began must not pass as a clean one
     if (duration <= 0 || duration > MAX_SECONDS) throw new CliError(`--duration must be more than 0 and at most ${MAX_SECONDS} seconds, got ${duration}.`, EXIT.usage)
@@ -237,8 +248,6 @@ export async function probeCommand(io: CliIo, args: ParsedArgs, secrets: SecretR
     const maxBytes = numberFlag(args, 'max-mb', 256) * 1024 * 1024
     const profile = await loadProfile(io, args, undefined)
     const req = requestFor(io, args, target, secrets)
-    const out = stringFlag(args, 'out')
-    if (out && args.flags['no-redact'] === true) io.err('warning: --no-redact writes a capture that may contain secrets. Do not share it.\n')
 
     const records: CaptureRecord[] = []
     let events = 0
@@ -294,15 +303,27 @@ export async function probeCommand(io: CliIo, args: ParsedArgs, secrets: SecretR
         captureId: stream.captureId,
         endReason: reason === 'failed' ? 'failed' : reason === 'ended' ? 'completed' : 'stopped',
     })
-    if (out) {
-        const files = requireFiles(io)
-        if (args.flags['no-redact'] === true) await files.writeText(out, serializeCapture(capture))
-        else {
-            const result = redactCapture(capture, await loadRedactionPolicy(io, args)) // secrets never reach the disk
-            warnAboutRedaction(io, result.report)
-            await files.writeText(out, serializeCapture(result.capture))
-        }
+    return { target, capture, profile, events, endT, reason, answered, maxBytes }
+}
+
+/** Writes a capture: redacted unless --no-redact, so secrets never reach the disk. */
+export async function saveObserved(io: CliIo, args: ParsedArgs, capture: Capture, out: string): Promise<void> {
+    const files = requireFiles(io)
+    if (args.flags['no-redact'] === true) await files.writeText(out, serializeCapture(capture))
+    else {
+        const result = redactCapture(capture, await loadRedactionPolicy(io, args)) // secrets never reach the disk
+        warnAboutRedaction(io, result.report)
+        await files.writeText(out, serializeCapture(result.capture))
     }
+}
+
+export async function probeCommand(io: CliIo, args: ParsedArgs, secrets: SecretRegistry): Promise<number> {
+    const target = args.positionals[1]
+    if (!target || !/^https?:\/\//i.test(target)) throw new CliError('Usage: sse-doctor probe <http(s) url> [--duration s] [--max-events n] [--idle-timeout s] [--timeout s] [--max-mb n] [--out capture]', EXIT.usage)
+    const out = stringFlag(args, 'out')
+    if (out && args.flags['no-redact'] === true) io.err('warning: --no-redact writes a capture that may contain secrets. Do not share it.\n')
+    const { capture, profile, events, endT, reason, answered, maxBytes } = await observe(io, args, target, secrets)
+    if (out) await saveObserved(io, args, capture, out)
     const a = analysisOf(capture, profile)
     const notes = [`Observed ${events} event${events === 1 ? '' : 's'} for ${(endT / 1000).toFixed(1)} s (stopped: ${reason}).`, ...(reason === 'max-size' ? [`The capture reached ${(maxBytes / 1048576).toFixed(0)} MB (--max-mb) and the probe stopped there.`] : []), ...(answered ? [] : ['The server never answered: no response was received.']), ...(out ? [`Capture written to ${out}${args.flags['no-redact'] === true ? ' (NOT redacted)' : ' (redacted)'}.`] : [])]
     const code = show(io, { command: 'probe', subject: redactUrl(target), findings: a.findings, coverage: a.coverage, notes }, args)

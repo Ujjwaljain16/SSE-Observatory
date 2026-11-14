@@ -14,8 +14,9 @@ npm run doctor -- analyze stream.sse-capture
 |---|---|
 | `probe <url>` | Connects, watches the stream, prints the findings. `--duration <s>` (default 30), `--max-events <n>`, `--idle-timeout <s>` decide when to stop. `--out <file>` saves the capture. |
 | `analyze <capture>` | Analyzes a saved capture (`.sse-capture`, or an old `.sse-record`). |
-| `report <capture>` | Writes a shareable report: `--format md` (default), `html` (one self-contained file) or `json`. `--output <file>`. |
+| `report <capture>` | Writes a shareable report: `--format md` (default), `html` (one self-contained file), `json`, or `issue` (a short body for a ticket or pull request comment, see [Team reports](#team-reports)). `--output <file>`. |
 | `compare <a> <b>` | Compares two captures: status, headers, timing, heartbeat rhythm, chunk sizes, events. |
+| `env-diff <urlA> <urlB>` | Reads the same stream through two paths at the same time and says where its behaviour differs ([details](#comparing-two-environments)). |
 | `curl <capture\|url>` | Prints a curl command that reproduces the request. Header and query values become environment variables. `--shell posix\|powershell` picks the quoting. |
 | `repro <capture>` | Shrinks a capture to the smallest one that still reports a finding (`--finding <key>`, default the most severe), writes it redacted to `--output`, and can also write a matching scenario (`--scenario`) and a test template (`--test`). Stops after 3000 analyses and says if the result may not be minimal. |
 | `redact <capture>` | Writes a copy that is safe to share: `--output <file>`. |
@@ -53,6 +54,35 @@ sse-doctor probe https://api.example.com/stream --header-env X-Api-Key=API_KEY -
 - `probe --out` writes a **redacted** capture, so secrets never reach the disk. `--no-redact` writes the raw capture (with the wire bytes, for byte-exact replay) and warns; do not share it.
 - `report` and `curl` accept only a redacted capture. Give them one made by `redact`, or add `--redact`.
 - `--redact-policy <file.json>` adds your own rules to the built-in ones for `redact`, `report`, `curl`, `repro` and `probe --out`: more payload key names, more patterns, and request headers whose value may stay. See [Redaction policy](/guide/redaction-policy). A policy with any problem stops the command with exit code 2 and a list of every problem, and nothing is written.
+
+## Comparing two environments
+
+`env-diff` is for "it works here and not there": the origin and the CDN, staging and production, a stream before and after a proxy change.
+
+```sh
+sse-doctor env-diff https://origin.example.com/stream https://www.example.com/stream \
+  --label-a origin --label-b edge --duration 30 --out-a origin.sse-capture --out-b edge.sse-capture
+```
+
+- **Both are read at the same time**, with the same settings, so they see the same stretch of the stream and not two moments apart. `--duration`, `--max-events`, `--profile` and the rest of the [probe options](#commands) apply to both.
+- **Credentials per side.** `--auth-env`, `--cookie-env`, `--header-env` and `--query-env` apply to both; add `-a` or `-b` (`--auth-env-b TOKEN_B`) to give one side its own, because two environments rarely share a token. Every value is scrubbed from all output, as for `probe`.
+- **The result is the comparison** that `sse-doctor compare` gives for two saved captures: status, headers, timing, heartbeat rhythm, chunk sizes, events. Each difference is a measurement; `Likely:` lines are guesses with their alternatives. It never names a layer, because two readings cannot say which hop caused a difference. Each side's own findings are listed in the notes, so "B alone is buffering" and "both are failing" read differently.
+- **`--out-a` and `--out-b`** save each capture, redacted, so the pair can be compared again later with `sse-doctor compare`, or one of them analysed, reported or shrunk.
+- **Exit codes.** `--fail-on` (default `error`) gates on the *differences*; use `--fail-on warning` to fail when the two behave differently at all. A side that never answers is exit 3 (could not run), whatever the gate says. Ctrl+C reports what was seen and exits 130. `env-diff` answers "do they behave the same?"; to ask whether either is healthy, `probe` each.
+
+## Team reports
+
+`sse-doctor report <capture> --format issue` writes a body to paste into a ticket or a pull request comment, for someone who has not seen the capture:
+
+- the verdict in one line (`Stream check: 2 findings, worst error`) and the request it is about;
+- a table of the findings, worst first;
+- what was observed for the worst three, with the `Likely:` deduction, its alternatives and the next check;
+- how to reproduce: attach the redacted capture and run `sse-doctor analyze`, or repeat the request with the listed environment variables;
+- the full report folded away in a `<details>` block (cut, with a note, if it would pass the 65,536 characters an issue or comment may hold).
+
+It ends with a hidden marker (`<!-- sse-doctor:report -->`) so a tool that updates a comment in place can find its own. Nothing is posted anywhere: the text is made, and you paste it. Like every report, it takes only a redacted capture and escapes anything that came from the stream. The app's Export dialog has the same thing as **For an issue or pull request**.
+
+For scenario runs in CI, `sse-doctor test --summary <file.md>` always writes a Markdown summary, whatever `--format` is. The [composite action](/guide/cli-ci#in-ci) uses it for the job summary and, if you ask, a pull request comment.
 
 ## Stream profile
 

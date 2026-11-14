@@ -3,6 +3,7 @@
 
 import { parseArgs } from './args'
 import { analyzeCommand, compareCommand, curlCommand, probeCommand, redactCommand, reportCommand, reproCommand } from './commands'
+import { envDiffCommand } from './commandsEnvDiff'
 import { fixturesCommand, replayCommand, testCommand } from './commandsScenario'
 import { CliError, EXIT, type CliIo } from './io'
 import { SecretRegistry, scrubbedIo } from './secretRegistry'
@@ -23,12 +24,13 @@ Usage: sse-doctor <command> [options]
 Commands:
   probe <url>            connect, watch the stream, analyze it and print the findings
   analyze <capture>      analyze a saved capture (.sse-capture, or an old .sse-record)
-  report <capture>       write a shareable report (md, html or json); needs a redacted capture
+  report <capture>       write a shareable report (md, html, json, or issue for a ticket or pull request comment); needs a redacted capture
   compare <a> <b>        compare two saved captures
+  env-diff <urlA> <urlB> read the same stream through two paths at once (origin and CDN, staging and production) and say where it differs
   repro <capture>        shrink a capture to the smallest one that still shows a finding (--finding key, --output, --scenario, --test)
   curl <capture|url>     print a curl command that reproduces the request, with secrets as variables
   redact <capture>       write a copy that is safe to share (--output <file>)
-  test <scenario.json>.. run scenario files: collect, disconnect, reconnect, verify (exit 4 = inconclusive)
+  test <scenario.json>.. run scenario files: collect, disconnect, reconnect, verify (exit 4 = inconclusive; --summary <file.md> also writes a Markdown summary)
   replay <capture>       serve a capture as a local SSE endpoint (--honor-last-event-id, --drop-after, --skip-ids)
   fixtures list|serve    the built-in faulty and healthy streams
   selftest               check that this build of the tool works
@@ -41,6 +43,9 @@ Options:
   --profile <file.json>          a stream profile: sequence contract, delivery, expected cadence
   --redact-policy <file.json>    your own redaction rules on top of the built-in ones (redact, report, curl, repro, probe --out)
   --quiet, --verbose, --no-color
+
+env-diff options: the probe options below apply to both sides; --label-a/--label-b name them, --out-a/--out-b save each capture,
+  and --auth-env-a/-b, --cookie-env-a/-b, --header-env-a/-b, --query-env-a/-b give one side its own credentials.
 
 probe options:
   --duration <s>  --max-events <n>  --idle-timeout <s>   when to stop (default 30 s)
@@ -79,6 +84,7 @@ export async function main(argv: string[], rawIo: CliIo): Promise<number> {
             case 'report': return await reportCommand(io, args)
             case 'redact': return await redactCommand(io, args)
             case 'compare': return await compareCommand(io, args)
+            case 'env-diff': return await envDiffCommand(io, args, secrets)
             case 'repro': return await reproCommand(io, args)
             case 'curl': return await curlCommand(io, args)
             case 'probe': return await probeCommand(io, args, secrets)
