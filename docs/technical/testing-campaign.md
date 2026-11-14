@@ -14,7 +14,7 @@ The campaign's idea: more tests of the same shape find few bugs, so it uses **in
 | E3 | Hostile text from a stream through every command and format, with a strict XML parser for JUnit | done |
 | F | The built command line as a process: exit codes, clean stdout, no stack traces, always stops, expands its own globs (`npm run doctor:contract`) | done |
 | A1, A5 | The fixture server's own log, and the four-way comparison (server, transport, parser, findings) on ten routes | done |
-| E1 | A sweep of every export path for planted secrets (the plan treats a survivor as a release blocker): the Doctor's exports and the whole command line, searched for each planted value in five encodings | done for the Doctor and the CLI, **2 defects**; the browser end-to-end part and the encodings of E2 are not |
+| E1 | A sweep of every export path for planted secrets (the plan treats a survivor as a release blocker): the Doctor's exports and the whole command line, searched for each planted value in five encodings | done for the Doctor, the CLI and the browser (export dialog, downloads, clipboard, local storage), **4 defects** in all (nested secret keys, an unreadable `--no-redact` capture, URL query values registered as secrets, a URL quoted in a browser error); what it does not cover is listed under "Not covered" |
 | A4, A6 | A contract for every fixture route checked against the server's own log; the real proxy in the loop (tags, resume, a dying upstream, a killed proxy) | done, **1 defect** |
 | F4, F5 | The verify job also runs once on Node 20; the command line's `--format json` output has published schemas (`docs/public/schemas/sse-cli-output-1.json`, `sse-test-output-1.json`) and the tests validate what the real commands print against them, and show the schemas reject damaged output | done; the Node 20 leg has not run on GitHub yet |
 | J | The CI workflow's required steps held by a test; a nightly workflow (healthy twins in real time with the default thresholds, a check that each fixture fails without its rule, a flake loop under CPU load, the suite and the command line on Node 20, a results report, an issue on failure); the report generator (`scripts/campaign/report.mjs`) and the flake loop (`scripts/campaign/flake-loop.mjs`) | done; the nightly workflow has **not yet run on GitHub** (its parts were run here once) |
@@ -24,7 +24,9 @@ The campaign's idea: more tests of the same shape find few bugs, so it uses **in
 | A2, A3 | A stepped server clock (`startFixtureServer({ clock: 'manual' })`, `server.advance(ms)`); new fixtures `f05-ignores`, `h05-declared-idle`, `h06-comments-only`, `f04-late-heartbeat`, `f11-slow-start`, `f12-gzip-sync`, `f15-malformed`, `f16-rate`, each with a contract and a healthy twin and run with thresholds scaled from the defaults | done, **2 defects**; they make R03, R04, R09 and R10 fire from a fixture |
 | D1, D2, D6 | Round trip of every capture through the file, the mock replay and a sanitized export, with a class A/B/C comparison; damaged and truncated files (every byte offset); v1 recordings | done, **3 defects**; real v1 exports are still missing |
 | E2, E4, E5, E7 | Secret encodings (12 known gaps pinned), redirects to another origin, URL validation, and what the built CLI holds (`npm run doctor:buildcheck`) | done, **1 defect** |
-| G, H, I, J | Browser parity and lifecycle, performance and soak, an end-to-end journey, nightly and release-candidate workflows | not started |
+| G | Browser end-to-end against the fixture server's own log: healthy and stalled streams (three different findings for three kinds of silence), two tabs on one URL (one connection), three lanes, a reconnect diagnosis checked against the log, the shared worker against the in-page fallback (equal reports), lifecycle (20 open/close rounds with no timer or listener left), the browser canary sweep (every export kind, the dialog preview, the clipboard, local storage), and a production-build smoke test | done, **1 defect**; each spec was run at least three times in the agent's run |
+| H, I | Performance and soak (H4-H6: Doctor overhead, workloads, a long run), and the end-to-end journey | not started; they need a quiet machine and, for the journey, a decision on Q4 |
+| G9 | Converting the waits in `e2e/doctor.spec.ts` to signals | not done (it edits an existing spec) |
 
 ## Defects found and fixed
 
@@ -42,6 +44,7 @@ The campaign's idea: more tests of the same shape find few bugs, so it uses **in
 | 12 | CLI | A v1 `.sse-record` that starts with a byte order mark was refused ("not an .sse-capture file"), though the Doctor accepts the same file | `315a078` |
 | 13 | v1 import | A non-object event in a v1 recording was a raw TypeError (exit 3 instead of 2), and a `deltaMs` of `1e999` produced a capture with an infinite time that cannot be saved | `315a078` |
 | 15 | R10 heartbeat | The "no heartbeats seen" note ignored a declared longest silence: a stream that declared a 60 s idle got the note after a 40 s gap, where R05 and R13 used the declaration | `95a8ab0` |
+| 17 | Browser client | A URL quoted in a browser's network error message (a refused URL with credentials is quoted whole) was stored as the reconnect reason, so its password and query values reached the status text, the Doctor's finding text, the local capture and, for a query name redaction does not know (`sc=`), every shared export | `6f41418` |
 | 16 | Redaction | A leading byte order mark was dropped from the text of a sanitized capture (the decoder removed it), so a replay lost the `BOM_STRIPPED` note | `e4ccb34` |
 | 14 | CLI | Control characters from argv or a file name (an escape sequence in a URL, an unknown command) reached stderr raw, as S13 closed for streams | `8075ed8` |
 | 10 | CLI | Every value in the URL's query was registered as a secret, so a harmless `?scale=0.05`, `?limit=1000` or `?debug=true` made each `0.05`, `1000` or `true` in the output a placeholder, including inside JSON numbers: `--format json` output and the saved capture could be invalid (found as a flake in the canary sweep). A value is now a secret when its name says so or its shape does (12+ characters mixing letters and digits) | same commit |
@@ -103,6 +106,18 @@ When the upstream connection is reset between events the proxy writes `event: er
 
 It is labelled as the proxy's, and the client cannot tell the proxy's plain `keep-alive` from the upstream's. An existing test asserts the ping, so it looks intended. Say so if the switch should mean "no `sse-proxy` text at all".
 
+### Q18. The Timeline's attempt label repeats
+
+After a connection that opened, the client's retry counter restarts, so `f05-drops` rows read `#1, #2, #2, #2`. Pinned in `e2e/doctor.fixtures.spec.ts`. Option 1: number the rows by connection and show the retry counter in its own column. Option 2: rename the column "Retry".
+
+### Q19. The live Doctor shows data as recorded
+
+The Sequence view lists event ids as received, so a JWT used as an event id is on screen, and the raw-record chips are unredacted (a local recording). Every export redacts it. Option 1: redact ids in the views with the same redactor. Option 2: label the views "as received, not redacted". Option 3: accept it, since it is the user's own screen.
+
+### Q20. Cookie and custom-header secrets cannot be sent from the UI
+
+The app has no input for them, so the browser sweep cannot plant them; the unit and command-line sweeps do. Add inputs if the browser should cover them.
+
 ### Q6 (plan). A redirect to another origin drops the secrets silently
 
 `probe` follows a cross-origin redirect with the secret headers stripped, exits 0 and says nothing. Pinned in `src/cli/__tests__/security.redirect.test.ts`.
@@ -126,7 +141,7 @@ Pinned as known gaps in `src/cli/__tests__/security.encodings.test.ts` (each is 
 - A real screen reader, Safari and mobile; a real CDN or reverse proxy buffering; the Vercel runtime; long soak runs; real network faults; CPU overhead on a quiet machine (the "under 2% CPU at 500 events/s" target is still **not demonstrated**, see the README).
 - Two of fifteen rules have no fixture stream that makes them fire (R13, which only the proxy-in-the-loop test fires, and R15, a clock jump a server cannot produce); the reasons are in `src/core/diagnostics/__tests__/ruleCoverage.test.ts`.
 - R07's coefficient-of-variation edge of exactly 0.03 cannot be built from whole-millisecond lifetimes, so `<` against `<=` there is untestable; it is pinned to within 1 ms.
-- E1 covers the Doctor's exports (each shareable kind, both curl shells) and every command and format of the command line, with the planted secrets in these places: Authorization, Cookie, API-key and Proxy-Authorization headers, a Set-Cookie response header, URL userinfo, `?token=` and `?api_key=` query values, a JWT in a payload and in an event id, a nested `password` key, a `token` inside a list, an `api_key=` in a comment, and a JWT split across two chunks. It does **not** yet cover the browser (the export dialog and clipboard in a real page), the v1 app's own JSON/CSV exports (never redacted, plan question Q2), or secrets that no rule can recognise: a random token in free text is flagged and kept, and a low-entropy secret sentence is neither removed nor flagged (both pinned by tests).
+- E1 covers the Doctor's exports (each shareable kind, both curl shells) and every command and format of the command line, with the planted secrets in these places: Authorization, Cookie, API-key and Proxy-Authorization headers, a Set-Cookie response header, URL userinfo, `?token=` and `?api_key=` query values, a JWT in a payload and in an event id, a nested `password` key, a `token` inside a list, an `api_key=` in a comment, and a JWT split across two chunks. It does **not** cover the v1 app's own JSON/CSV exports (never redacted, plan question Q2), or secrets that no rule can recognise: a random token in free text is flagged and kept, and a low-entropy secret sentence is neither removed nor flagged (both pinned by tests).
 
 ## Manual checks (what automation cannot judge)
 
