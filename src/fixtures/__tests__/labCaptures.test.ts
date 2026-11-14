@@ -33,7 +33,8 @@ describe('the failure lab', () => {
     for (const entry of index.entries) {
         it(`${entry.id}: the Doctor, with its default thresholds, finds what it must and nothing it must not`, () => {
             const text = fs.readFileSync(path.join(dir, entry.file), 'utf8')
-            const { capture } = parseCapture(text)
+            const { capture, integrity } = parseCapture(text)
+            expect(integrity, 'the file is byte-exact: its hash still matches (a checkout that changed line endings would break it)').toBe('ok')
             expect(capture.header.kind).toBe('sanitized')
             expect(JSON.stringify(capture.header.request)).not.toMatch(/127\.0\.0\.1|localhost/) // no local address in a shipped file
             const analysis = analyze(capture.records as never, { ...(capture.header.profile ? { profile: capture.header.profile } : {}), endT: captureEndT(capture) })
