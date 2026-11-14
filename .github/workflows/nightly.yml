@@ -1,0 +1,105 @@
+name: Nightly
+
+# The checks that take too long, or need a quiet and repeated run, to block a pull request: the healthy twins in real time with the default
+# thresholds, a flake loop under CPU load, the whole suite on Node 20, and a results report. A failure opens an issue; it does not block merges.
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+    inputs:
+      flake_runs:
+        description: 'Runs of the fixture suite in the flake loop'
+        default: '100'
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  twins:
+    name: Healthy twins in real time (default thresholds)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx vitest run src/fixtures/__tests__/nightly.twins.test.ts src/fixtures/__tests__/fixtures.sensitivity.test.ts --maxWorkers=1
+        env:
+          NIGHTLY: '1'
+
+  flake:
+    name: Flake loop under CPU load
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: node scripts/campaign/flake-loop.mjs --runs "${{ github.event.inputs.flake_runs || '100' }}" --burners 2 --out flake.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: flake-loop
+          path: flake.json
+          if-no-files-found: ignore
+
+  node20:
+    name: Suite and command line on Node 20
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx vitest run --reporter=json --outputFile=vitest.json
+      - run: npm run build:cli
+      - run: npm run doctor:selftest
+      - run: npm run doctor:buildcheck
+      - run: npm run doctor:contract
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: node20-results
+          path: vitest.json
+          if-no-files-found: ignore
+
+  report:
+    name: Results report
+    needs: [twins, flake, node20]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          path: results
+        continue-on-error: true
+      - run: node scripts/campaign/report.mjs --vitest results/node20-results/vitest.json --flake results/flake-loop/flake.json --out report.md
+      - run: cat report.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: results-report
+          path: report.md
+
+  issue:
+    name: Open an issue when something failed
+    needs: [twins, flake, node20]
+    if: failure() && github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - run: gh issue create --repo "$GITHUB_REPOSITORY" --title "Nightly failed ($(date -u +%F))" --body "A nightly job failed: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

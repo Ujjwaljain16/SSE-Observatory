@@ -8,6 +8,7 @@ on:
       - 'action.yml'
       - 'scenarios/**'
       - 'src/cli/**'
+      - 'src/fixtures/**'
       - '.github/workflows/action-test.yml'
   workflow_dispatch:
 
