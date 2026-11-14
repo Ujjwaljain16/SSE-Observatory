@@ -82,6 +82,14 @@ events said, so each body is a placeholder of the original size (carrying only t
 timing, ids, event names and reconnects are the recording's. The Doctor says it is a replay. The mock server is on in
 development and off on a public deployment unless it was enabled for it.
 
+### Privacy and retention
+
+At the bottom of the Captures tab: what is kept where (the live recording in this tab's memory, bounded to 8 MB per stream; saved captures in this browser's storage, not redacted; your profile and redaction rules in local storage), and the controls over it.
+
+- **Record what the Doctor reads**: turn it off to keep nothing for diagnosis. The viewer works as before and the Doctor says recording is off. It applies to streams started after the change.
+- **Delete saved captures after** never, 1, 7, 30 or 90 days, counted from when a capture was saved. It is checked when the app starts and when you change it, and a capture's bookmarks go with it.
+- **Delete all saved captures** asks first, then removes every saved capture and bookmark.
+
 ### Saved filters
 
 In the query box, **Save this filter** keeps an expression under a name (up to 30, in this browser); a click applies it.
@@ -131,7 +139,7 @@ file is made in your browser and saved to your computer; nothing is uploaded.
 | Smallest capture | removes records until nothing more can go and a finding you pick still shows: the minimal case to attach to a bug |
 | Full local capture | the recording exactly as held in this tab. **It may contain secrets; keep it on your machine** |
 
-Everything except the full local capture is made from a redacted copy. Redaction replaces secrets (tokens, keys, cookies,
+Everything except the full local capture is made from a redacted copy, with the built-in rules plus any [rules of your own](/guide/redaction-policy) from **Redaction rules** in the dialog (saved in this browser). Redaction replaces secrets (tokens, keys, cookies,
 credentials in URLs and comments) with numbered placeholders, the same number for the same value inside one file, and
 the dialog shows how many values were replaced and by which rule before you save. It then scans the result for anything that
 still looks secret. If that finds something, the download stays disabled until you tick that you have looked at the

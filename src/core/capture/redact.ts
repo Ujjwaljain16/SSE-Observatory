@@ -16,6 +16,7 @@ import { base64ToBytes } from './base64'
 import { capabilitiesOf, type Capture, type CaptureRecord, type CaptureFooter, type CaptureHeader } from './format'
 import { markRedacted, type RedactedCapture } from './redacted'
 import { SAFE_REQUEST_HEADERS, SECRET_PATTERNS, hasPlaceholder, isSensitiveName, looksLikeRandomToken } from './secrets'
+import { isCustomPolicy } from './policy'
 import { framesOf } from './streamText'
 
 export interface RedactionPolicy {
@@ -30,6 +31,8 @@ export interface RedactionPolicy {
 }
 
 export const REDACTION_POLICY_NAME = 'default'
+/** The name a capture carries when it was redacted with the person's own rules on top of the built-in ones. */
+export const CUSTOM_POLICY_NAME = 'custom'
 export const REDACTION_POLICY_VERSION = 1
 
 export interface ResidualHit {
@@ -268,6 +271,7 @@ function sameShape(before: Capture, after: Capture): void {
 export function redactCapture(capture: Capture, policy: RedactionPolicy = {}): RedactionResult {
     const redactor = new Redactor(policy)
     const partitions = policy.redactPartitions !== false
+    const policyName = isCustomPolicy(policy) ? CUSTOM_POLICY_NAME : REDACTION_POLICY_NAME
     const allow = new Set([...SAFE_REQUEST_HEADERS, ...(policy.keepHeaders ?? []).map((h) => h.toLowerCase())])
 
     const chunks = redactChunks(capture.records, redactor)
@@ -282,7 +286,7 @@ export function redactCapture(capture: Capture, policy: RedactionPolicy = {}): R
         kind: 'sanitized',
         request: request ? { ...request, url: redactUrl(request.url), headers: redactHeaders(request.headers, redactor, allow) } : undefined,
         profile: capture.header.profile ? (walk(capture.header.profile, 'profile', redactor, false) as CaptureHeader['profile']) : undefined,
-        redaction: { policy: REDACTION_POLICY_NAME, version: REDACTION_POLICY_VERSION, applied: [], placeholders: 0 },
+        redaction: { policy: policyName, version: REDACTION_POLICY_VERSION, applied: [], placeholders: 0 },
         capabilities: capture.header.capabilities.length ? capture.header.capabilities : capabilitiesOf(records),
     }
     if (header.request === undefined) delete header.request
@@ -295,7 +299,7 @@ export function redactCapture(capture: Capture, policy: RedactionPolicy = {}): R
     sameShape(capture, redacted)
 
     const byRule = { ...redactor.counts }
-    header.redaction = { policy: REDACTION_POLICY_NAME, version: REDACTION_POLICY_VERSION, applied: Object.keys(byRule).sort(), placeholders: redactor.size }
+    header.redaction = { policy: policyName, version: REDACTION_POLICY_VERSION, applied: Object.keys(byRule).sort(), placeholders: redactor.size }
     const brand = markRedacted(redacted)
     const secretIds = new Set(framesOf(capture).map((f) => f.id).filter((id) => id && looksLikeSecretId(id)))
     const idWarnings = [...secretIds].map((id, i) => (redactor.text(id) === id

@@ -10,7 +10,8 @@
 
 import { analyze } from '../core/diagnostics/engine'
 import type { EngineInput } from '../core/diagnostics/streamModel'
-import { redactCapture, scanResidual, RedactionError, type RedactionReport, type ResidualHit } from '../core/capture/redact'
+import { redactCapture, scanResidual, RedactionError, type RedactionPolicy, type RedactionReport, type ResidualHit } from '../core/capture/redact'
+import { describePolicy, isCustomPolicy } from '../core/capture/policy'
 import { captureEndT, serializeCapture, type Capture } from '../core/capture/format'
 import { buildReport } from '../core/capture/derived/report'
 import { toCurl, type CurlShell } from '../core/capture/derived/curl'
@@ -42,6 +43,8 @@ export interface ArtifactOptions {
     shell?: CurlShell
     /** For the smallest-capture choice: the finding key to keep reproducing. */
     findingKey?: string
+    /** The person's own redaction rules, on top of the built-in ones. */
+    policy?: RedactionPolicy | undefined
 }
 
 export interface Prepared {
@@ -75,8 +78,9 @@ export function prepare(kind: ArtifactKind, capture: Capture, options: ArtifactO
         source = result.capture
     }
 
-    const { capture: safe, report } = redactCapture(source)
-    const residual = scanResidual(safe)
+    const { capture: safe, report } = redactCapture(source, options.policy)
+    const residual = scanResidual(safe, options.policy)
+    if (isCustomPolicy(options.policy)) notes.push(`Redacted with the built-in rules plus your own: ${describePolicy(options.policy)}.`)
     const endT = captureEndT(safe)
     const analysis = () => analyze(safe.records as EngineInput[], { endT, ...(safe.header.profile ? { profile: safe.header.profile } : {}) })
     notes.push(...report.idWarnings)

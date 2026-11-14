@@ -5,7 +5,7 @@ type FlagKind = 'bool' | 'string' | 'multi'
 /** Every flag the CLI knows. A flag meant for one command is accepted by all; a command ignores what it does not use. */
 const FLAGS: Record<string, FlagKind> = {
     format: 'string', output: 'string', out: 'string', quiet: 'bool', verbose: 'bool', 'no-color': 'bool',
-    profile: 'string', 'fail-on': 'string', redact: 'bool', 'no-redact': 'bool', timeout: 'string',
+    profile: 'string', 'redact-policy': 'string', 'fail-on': 'string', redact: 'bool', 'no-redact': 'bool', timeout: 'string',
     duration: 'string', 'max-events': 'string', 'idle-timeout': 'string', 'max-mb': 'string',
     'auth-env': 'string', 'cookie-env': 'string', 'header-env': 'multi', 'query-env': 'multi', header: 'multi', 'allow-env': 'multi', 'allow-origin': 'string',
     fixtures: 'bool', port: 'string', speed: 'string', 'honor-last-event-id': 'bool', 'drop-after': 'string', 'skip-ids': 'string',

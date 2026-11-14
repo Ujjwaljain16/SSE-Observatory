@@ -39,6 +39,7 @@ Options:
   --output <file>                write to a file (report, redact)
   --fail-on <severity>           exit 1 when an open finding is at least this severe (default error)
   --profile <file.json>          a stream profile: sequence contract, delivery, expected cadence
+  --redact-policy <file.json>    your own redaction rules on top of the built-in ones (redact, report, curl, repro, probe --out)
   --quiet, --verbose, --no-color
 
 probe options:
