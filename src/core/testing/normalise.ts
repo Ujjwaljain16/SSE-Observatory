@@ -43,6 +43,9 @@ const MEASURED = /\b\d+(?:\.\d+)?\s?(?:ms|s|min|KiB|MiB|bytes?|B)\b/g
 /** Replaces a measured quantity with `#unit`. Plain numbers (counts, ids, ranges) stay. */
 export const maskMeasured = (text: string): string => text.replace(MEASURED, '#unit')
 
+/** A framing finding's evidence says which read a slip was noticed in ("chunk 3"). That number is how the bytes happened to be cut up, which differs between two reads of the same bytes, so it is masked. */
+const maskChunkIndex = (note: string): string => note.replace(/\bchunk \d+\b/g, 'chunk #')
+
 export function evidenceRefs(evidence: readonly Evidence[], records: readonly RecordLike[]): EvidenceRef[] {
     const bySeq = new Map<number, RecordLike & { ordinal: number }>()
     const seen = new Map<string, number>()
@@ -54,7 +57,7 @@ export function evidenceRefs(evidence: readonly Evidence[], records: readonly Re
     }
     return evidence.map((e) => {
         const r = bySeq.get(e.seq)
-        const note = e.note === undefined ? undefined : maskMeasured(e.note)
+        const note = e.note === undefined ? undefined : maskChunkIndex(maskMeasured(e.note))
         if (!r) return { kind: 'missing', conn: -1, ordinal: -1, ...(note !== undefined ? { note } : {}) }
         return { kind: r.kind, conn: r.conn, ordinal: r.ordinal, ...(r.kind === 'event' && typeof r.sseId === 'string' ? { sseId: r.sseId } : {}), ...(note !== undefined ? { note } : {}) }
     })
