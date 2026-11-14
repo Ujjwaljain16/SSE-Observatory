@@ -125,7 +125,10 @@ function describe(gap: GapInfo, v: Verdict, final: boolean): { facts: Fact[]; de
             summary = `Heartbeats are arriving but no event for ${measured}.`
             break
         default:
-            facts.push({ text: `No bytes arrived for ${measured}, after the last byte at t=${fmtMs(gap.startT)}.`, evidence })
+            // After a clock jump the silence is counted from the jump, which is not a byte: the text must not call it "the last byte".
+            facts.push({ text: gap.startKind === 'discontinuity'
+                ? `No bytes arrived for ${measured}, counted from t=${fmtMs(gap.startT)}, where a clock jump made the earlier silence unmeasurable.`
+                : `No bytes arrived for ${measured}, after the last byte at t=${fmtMs(gap.startT)}.`, evidence })
             statement = v.basis === 'cadence'
                 ? `Likely: the producer or a network hop stopped delivering; the silence is far beyond this stream's own rhythm.`
                 : 'Likely: the stream stalled, or the producer is idle and sends no heartbeat.'

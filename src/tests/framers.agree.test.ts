@@ -87,6 +87,45 @@ describe('the proxy only writes its own bytes where the tracker says an event ha
         )
     })
 
+    // The plan's B3, as written: at every chunk end, the proxy's framer and the client parser give the same answer to "does the output end exactly
+    // on an event boundary". They are allowed one documented difference, listed here so that any other is a failure.
+    it('at every chunk end, the proxy framer and the client parser agree on "ends exactly on an event boundary"', () => {
+        const disagreements = new Map<string, string>()
+        fc.assert(
+            fc.property(stream, fc.array(fc.nat({ max: 300 }), { maxLength: 8 }), (s, cuts) => {
+                const bytes = encoder.encode(s)
+                const tracker = new FrameTracker()
+                const parser = new SSEParser({ onMessage: () => {} })
+                for (const c of split(bytes, cuts)) {
+                    tracker.push(Buffer.from(c))
+                    parser.feed(c)
+                    if (tracker.atBoundary !== parser.atBoundary) disagreements.set(`tracker=${tracker.atBoundary} parser=${parser.atBoundary}`, JSON.stringify(s))
+                }
+            }),
+            { seed: 35, numRuns: 6000 },
+        )
+        expect([...disagreements]).toEqual([])
+    })
+
+    it('and on raw bytes that mostly look like the grammar (a byte order mark, invalid UTF-8, NUL), cut anywhere', () => {
+        const interesting = fc.constantFrom(0x0a, 0x0d, 0x3a, 0x20, 0x64, 0x61, 0x74, 0x69, 0x65, 0x72, 0x00, 0x31, 0xef, 0xbb, 0xbf, 0xc3, 0xa9, 0xf0, 0x9f, 0x98, 0x80, 0xff, 0xc0)
+        const disagreements = new Map<string, string>()
+        fc.assert(
+            fc.property(fc.array(interesting, { maxLength: 100 }), fc.array(fc.nat({ max: 120 }), { maxLength: 8 }), (raw, cuts) => {
+                const bytes = Uint8Array.from(raw)
+                const tracker = new FrameTracker()
+                const parser = new SSEParser({ onMessage: () => {} })
+                for (const c of split(bytes, cuts)) {
+                    tracker.push(Buffer.from(c))
+                    parser.feed(c)
+                    if (tracker.atBoundary !== parser.atBoundary) disagreements.set(`tracker=${tracker.atBoundary} parser=${parser.atBoundary}`, JSON.stringify(Buffer.from(bytes).toString('latin1')))
+                }
+            }),
+            { seed: 36, numRuns: 8000 },
+        )
+        expect([...disagreements]).toEqual([])
+    })
+
     it('is not so cautious that it never writes: a stream of complete events is at a boundary', () => {
         fc.assert(
             fc.property(fc.array(fc.tuple(fc.constantFrom('a', '{"x":1}'), eol), { minLength: 1, maxLength: 8 }), (events) => {

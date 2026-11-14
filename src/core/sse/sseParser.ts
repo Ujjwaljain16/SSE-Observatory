@@ -53,6 +53,8 @@ export class SSEParser {
     private buffer = ''
     private pendingCR = false
     private sawFirstChunk = false
+    /** The bytes of a character that has started but not finished: the decoder holds them, so the text buffer does not show them. */
+    private heldBytes: number[] = []
 
     private dataLines: string[] = []
     private eventName = ''
@@ -78,12 +80,12 @@ export class SSEParser {
 
     /** True when everything fed so far ended exactly at the end of an event (nothing is half-received). */
     get atBoundary(): boolean {
-        return this.buffer === '' && this.dataLines.length === 0 && this.rawLines.length === 0
+        return this.buffer === '' && this.dataLines.length === 0 && this.rawLines.length === 0 && this.heldBytes.length === 0
     }
 
     /** UTF-8 bytes of an event (or a line) that has started but not finished. 0 at a boundary. */
     get pendingBytes(): number {
-        let bytes = utf8Length(this.buffer)
+        let bytes = utf8Length(this.buffer) + this.heldBytes.length
         for (const line of this.rawLines) bytes += utf8Length(line) + 1
         return bytes
     }
@@ -96,6 +98,7 @@ export class SSEParser {
         this.currentChunk = chunkIndex ?? this.feedCount++
         // TextDecoder drops a leading byte order mark by itself, so for bytes it has to be noticed before decoding.
         const startsWithBom = typeof chunk !== 'string' && !this.sawFirstChunk && chunk.length >= 3 && chunk[0] === 0xef && chunk[1] === 0xbb && chunk[2] === 0xbf
+        if (typeof chunk !== 'string') this.noteHeldBytes(chunk)
         let text = typeof chunk === 'string' ? chunk : this.decoder.decode(chunk, { stream: true })
         if (!this.sawFirstChunk && (text.length > 0 || startsWithBom)) {
             this.sawFirstChunk = true
@@ -149,6 +152,21 @@ export class SSEParser {
         this.checkLimit()
     }
 
+    /** After `chunk`, how many of its last bytes (with any held before it) are the start of a character the rest of which has not arrived. */
+    private noteHeldBytes(chunk: Uint8Array): void {
+        const tail: number[] = []
+        for (let i = Math.max(0, chunk.length - 3); i < chunk.length; i++) tail.push(chunk[i]!)
+        // a short chunk may continue a character that was already held
+        const all = tail.length < 3 && this.heldBytes.length > 0 && chunk.length < 3 ? [...this.heldBytes, ...tail].slice(-3) : tail
+        let held = 0
+        for (let n = 1; n <= all.length; n++) {
+            const b = all[all.length - n]!
+            if (b >= 0xc0) { held = n < (b >= 0xf0 ? 4 : b >= 0xe0 ? 3 : 2) ? n : 0; break }
+            if (b < 0x80) break // an ASCII byte ends whatever came before it
+        }
+        this.heldBytes = held > 0 ? all.slice(all.length - held) : []
+    }
+
     private countEventChars(n: number): void {
         this.eventChars += n
         if (this.eventChars > this.maxBufferBytes) {
@@ -179,6 +197,7 @@ export class SSEParser {
         }
         this.buffer = ''
         this.pendingCR = false
+        this.heldBytes = []
         this.dataLines = []
         this.eventName = ''
         this.rawLines = []
