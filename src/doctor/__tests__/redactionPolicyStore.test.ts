@@ -75,7 +75,7 @@ describe('exports with the saved policy', () => {
 
     it('applies to every shareable kind, and never to the local capture', () => {
         const policy = { extraPatterns: [{ name: 'ticket', pattern: 'ACME-\\d{6}' }] }
-        for (const kind of ['capture-shared', 'report-md', 'report-html', 'report-json', 'scenario'] as const) {
+        for (const kind of ['capture-shared', 'report-md', 'report-issue', 'report-html', 'report-json', 'scenario'] as const) {
             expect(prepare(kind, capture(), { policy }).text, kind).not.toContain('ACME-123456')
         }
         const local = prepare('capture-local', capture(), { policy })

@@ -25,7 +25,7 @@ function leaky() {
     })
 }
 
-const SHARED: ArtifactKind[] = ['report-md', 'report-html', 'report-json', 'capture-shared', 'curl', 'scenario']
+const SHARED: ArtifactKind[] = ['report-md', 'report-issue', 'report-html', 'report-json', 'capture-shared', 'curl', 'scenario']
 
 describe('what the Doctor can export', () => {
     it('lists every choice once, and only the local capture is not shareable', () => {
