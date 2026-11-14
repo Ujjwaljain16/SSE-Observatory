@@ -77,10 +77,10 @@ describe('F5: what --format json prints matches its published schema', () => {
 })
 
 describe('F5: the schemas can fail', () => {
-    const good = async () => JSON.parse((await run(['analyze', 'x.sse-capture', '--format', 'json'], { 'x.sse-capture': lab('f04-silent') })).out) as Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any
+    const good = async () => JSON.parse((await run(['analyze', 'x.sse-capture', '--format', 'json'], { 'x.sse-capture': lab('f04-silent') })).out) as Record<string, any>
 
     it('rejects a document with a field removed, a wrong type, a value outside an enum, or a wrong version', async () => {
-        const damage: Array<[string, (j: Record<string, any>) => void]> = [ // eslint-disable-line @typescript-eslint/no-explicit-any
+        const damage: Array<[string, (j: Record<string, any>) => void]> = [
             ['no findings array', (j) => { delete j['findings'] }],
             ['no coverage array', (j) => { delete j['coverage'] }],
             ['findings is not an array', (j) => { j['findings'] = {} }],
@@ -104,7 +104,7 @@ describe('F5: the schemas can fail', () => {
 
     it('rejects a damaged test output', async () => {
         const file = 'scenarios/ci/pass/h01-steady.json'
-        const j = JSON.parse((await run(['test', file, '--format', 'json'], { [file]: fs.readFileSync(path.resolve(process.cwd(), file), 'utf8') })).out) as Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any
+        const j = JSON.parse((await run(['test', file, '--format', 'json'], { [file]: fs.readFileSync(path.resolve(process.cwd(), file), 'utf8') })).out) as Record<string, any>
         expect(validateTest(j)).toBe(true)
         const bad = structuredClone(j)
         bad['scenarios'][0].status = 'green'
