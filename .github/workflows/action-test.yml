@@ -29,6 +29,16 @@ jobs:
           test -s results.xml
           test "$(grep -c '<testsuite ' results.xml)" -eq "$(ls scenarios/ci/pass/*.json | wc -l)"
 
+      - name: Passing scenarios also give a Markdown summary
+        id: summarised
+        uses: ./
+        with:
+          scenarios: scenarios/ci/pass/*.json
+      - name: The summary file exists and names the run
+        run: |
+          test -s "${{ steps.summarised.outputs.summary-file }}"
+          grep -q 'sse-doctor scenarios' "${{ steps.summarised.outputs.summary-file }}"
+
       - name: A failing scenario fails the step
         id: failing
         uses: ./

@@ -12,7 +12,7 @@ import { fmtMs } from '../../diagnostics/rules/util'
 import type { RedactedCapture } from '../redacted'
 import { buildReportModel, likely, type ReportModel } from './reportModel'
 
-export type ReportFormat = 'md' | 'html' | 'json'
+export type ReportFormat = 'md' | 'html' | 'json' | 'issue'
 
 export interface ReportOptions { format?: ReportFormat | undefined }
 
@@ -112,6 +112,64 @@ function renderMarkdown(m: ReportModel): string {
     if (m.reproduce.variables.length > 0) out.push(m.reproduce.variables.map((v) => `- \`${v}\``).join('\n'), '')
     out.push('POSIX shell:', '', fenced(m.reproduce.posix, 'sh'), '', 'PowerShell:', '', fenced(m.reproduce.powershell, 'powershell'), '')
     return out.join('\n')
+}
+
+// ---------------------------------------------------------------- issue or pull request
+
+/** The marker the body ends with, so a tool that updates a comment in place can find its own. */
+export const ISSUE_MARKER = '<!-- sse-doctor:report -->'
+/** GitHub rejects a comment or issue body over 65,536 characters; this leaves room for the parts around the full report. */
+const ISSUE_LIMIT = 60_000
+
+/**
+ * A body for an issue, a pull request comment or a ticket: the verdict in a line, the findings in a table, what was observed for the
+ * worst few, how to reproduce, and the full report folded away. Written for someone who has not seen the capture; nothing is posted
+ * anywhere by this, the text is only made. Same wording policy as the full report (observations, then "Likely:" deductions).
+ */
+function renderIssue(m: ReportModel): string {
+    const out: string[] = []
+    const c = m.capture
+    const open = m.findings.filter((f) => f.status === 'open')
+    const worst = open.length > 0 ? open[0]!.severity : undefined
+    out.push(`## Stream check: ${open.length === 0 ? 'no findings' : `${open.length} finding${open.length === 1 ? '' : 's'}, worst ${worst}`}`, '')
+    out.push(c.url ? `**Stream:** \`${(c.method ?? 'GET')} ${c.url.replace(/`/g, "'")}\` · ${fmtMs(c.durationMs)}, recorded ${mdText(c.createdAt)} by ${mdText(`${c.tool.name} ${c.tool.version}`)}` : `**Recorded:** ${mdText(c.createdAt)} by ${mdText(`${c.tool.name} ${c.tool.version}`)}, ${fmtMs(c.durationMs)}`, '')
+
+    if (open.length === 0) {
+        out.push('No finding was raised by the checks that could run.')
+        if (m.notEvaluated.length > 0) out.push(`${m.notEvaluated.length} check${m.notEvaluated.length === 1 ? ' was' : 's were'} not evaluated, which says nothing about whether the stream is healthy for them: see the full report below.`)
+        out.push('')
+    } else {
+        out.push('| # | Severity | Finding | Seen |', '|---|---|---|---|')
+        open.forEach((f, i) => out.push(`| ${i + 1} | ${f.severity.toUpperCase()} | ${mdText(f.title)} | ${f.occurrences} ${f.occurrences === 1 ? 'time' : 'times'} |`))
+        out.push('')
+        out.push('### What was observed', '')
+        for (const f of open.slice(0, 3)) {
+            out.push(`**${mdText(f.title)}.** ${mdText(f.summary)}`, '')
+            for (const fact of f.facts.slice(0, 4)) out.push(`- ${mdText(fact.text)}`)
+            if (f.facts.length > 0) out.push('')
+            const d = f.deductions[0]
+            if (d) out.push(`${mdText(likely(d.statement))} (confidence: ${d.confidence}).${d.alternatives.length ? ` Other explanations: ${d.alternatives.map(mdText).join('; ')}` : ''}`, '')
+            if (f.nextCheck) out.push(`Next check: ${mdText(f.nextCheck.description)}${f.nextCheck.command ? ` \`${f.nextCheck.command.replace(/`/g, "'")}\`` : ''}`, '')
+        }
+        if (open.length > 3) out.push(`${open.length - 3} more in the full report.`, '')
+    }
+
+    out.push('### How to reproduce', '')
+    out.push('Attach the redacted capture to this issue, then:', '', fenced('sse-doctor analyze <the attached .sse-capture>', 'sh'), '')
+    out.push('To repeat the request itself (header and query values are not in it; set these environment variables first):', '')
+    if (m.reproduce.variables.length > 0) out.push(m.reproduce.variables.map((v) => `- \`${v}\``).join('\n'), '')
+    out.push(fenced(m.reproduce.posix, 'sh'), '')
+
+    const head = out.join('\n')
+    const tail = `\n${ISSUE_MARKER}\n`
+    let full = renderMarkdown(m)
+    const room = ISSUE_LIMIT - head.length - tail.length - 200
+    let note = ''
+    if (full.length > room) {
+        full = full.slice(0, Math.max(0, room))
+        note = `\n\n_The full report was cut here to fit the 65,536 character limit of an issue or comment. Run \`sse-doctor report <capture>\` for all of it._`
+    }
+    return `${head}\n<details>\n<summary>Full report</summary>\n\n${full}${note}\n\n</details>\n${tail}`
 }
 
 // ---------------------------------------------------------------- HTML
@@ -220,6 +278,7 @@ export function buildReport(capture: RedactedCapture, analysis: Analysis, opts: 
     const model = buildReportModel(capture, analysis)
     switch (opts.format ?? 'md') {
         case 'html': return renderHtml(model)
+        case 'issue': return renderIssue(model)
         case 'json': return JSON.stringify({ schemaVersion: 1, capture: model.capture, findings: model.findings, coverage: model.coverage }, null, 2) + '\n'
         default: return renderMarkdown(model)
     }

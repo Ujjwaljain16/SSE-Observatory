@@ -92,6 +92,22 @@ or by hand, which works without the action:
     STREAM_URL: ${{ secrets.STREAM_URL }}
 ```
 
+The action also adds a **Markdown summary to the job summary page** (`summary: 'true'`, the default) and gives back its path as the `summary-file` output. The job still fails with the scenarios' exit code (1 failed, 4 inconclusive): the summary and the comment are made first, then the code is returned.
+
+### A pull request comment
+
+```yaml
+permissions:
+  pull-requests: write
+steps:
+  - uses: Ujjwaljain16/SSE-Observatory@v2
+    with:
+      scenarios: scenarios/orders.json
+      comment: 'true'
+```
+
+With `comment: 'true'` on a `pull_request` run, the summary is posted as **one comment that later runs update**, found by a hidden marker in its text. It never edits "the last comment", which may belong to another workflow. The token (`token`, default `github.token`) needs `pull-requests: write`; a pull request from a fork gets a read-only token, and then the comment step fails without failing the job, because the verdict is the exit code and not the comment. Nothing is posted unless you set `comment`.
+
 The tool is not published to npm yet; building it from the repository is the supported path.
 
 ## Other commands

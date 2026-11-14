@@ -65,7 +65,7 @@ async function expandFiles(io: CliIo, patterns: string[]): Promise<string[]> {
 
 export async function testCommand(io: CliIo, args: ParsedArgs, secrets: SecretRegistry): Promise<number> {
     const patterns = args.positionals.slice(1)
-    if (patterns.length === 0) throw new CliError('Usage: sse-doctor test <scenario.json>... [--format human|json|md|junit] [--output file] [--allow-inconclusive]', EXIT.usage)
+    if (patterns.length === 0) throw new CliError('Usage: sse-doctor test <scenario.json>... [--format human|json|md|junit] [--output file] [--summary file.md] [--allow-inconclusive]', EXIT.usage)
     const fs = requireFiles(io)
     const files = await expandFiles(io, patterns)
     const runs: ScenarioRun[] = []
@@ -86,6 +86,9 @@ export async function testCommand(io: CliIo, args: ParsedArgs, secrets: SecretRe
     else if (format === 'md') text = renderMarkdown(runs)
     else if (format === 'human') text = renderHuman(runs)
     else throw new CliError(`--format must be human, json, md or junit, got "${format}".`, EXIT.usage)
+    // A Markdown summary whatever the format above is, for a job summary or a pull request comment.
+    const summary = stringFlag(args, 'summary')
+    if (summary) await fs.writeText(summary, renderMarkdown(runs))
     const out = stringFlag(args, 'output')
     if (out) { await fs.writeText(out, text); io.out(sanitizeText(renderHuman(runs))) } else io.out(sanitizeText(text))
     if (runs.some((r) => r.status === 'fail')) return EXIT.gateFailed

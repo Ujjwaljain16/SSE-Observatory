@@ -18,7 +18,7 @@ import { toCurl, type CurlShell } from '../core/capture/derived/curl'
 import { minimizeCapture } from '../core/capture/derived/minimize'
 import { serializeScenario, toScenario } from '../core/scenario/toScenario'
 
-export type ArtifactKind = 'capture-local' | 'capture-shared' | 'report-md' | 'report-html' | 'report-json' | 'curl' | 'scenario' | 'repro'
+export type ArtifactKind = 'capture-local' | 'capture-shared' | 'report-md' | 'report-issue' | 'report-html' | 'report-json' | 'curl' | 'scenario' | 'repro'
 
 export interface ArtifactChoice {
     kind: ArtifactKind
@@ -30,6 +30,7 @@ export interface ArtifactChoice {
 
 export const ARTIFACTS: ArtifactChoice[] = [
     { kind: 'report-md', label: 'Report (Markdown)', description: 'The findings, the evidence and what could not be determined, redacted, ready to paste into a ticket.', shareable: true },
+    { kind: 'report-issue', label: 'For an issue or pull request (Markdown)', description: 'A short body for a ticket or a pull request comment: the verdict, the findings, how to reproduce, and the full report folded away. Nothing is posted; you paste it.', shareable: true },
     { kind: 'report-html', label: 'Report (HTML)', description: 'The same report as one self-contained page that makes no outside requests.', shareable: true },
     { kind: 'report-json', label: 'Report (JSON)', description: 'The same report as data, for other tools.', shareable: true },
     { kind: 'capture-shared', label: 'Capture to share (.sse-capture)', description: 'The recording with secrets replaced by numbered placeholders. Opens in the CLI and can be replayed.', shareable: true },
@@ -93,6 +94,8 @@ export function prepare(kind: ArtifactKind, capture: Capture, options: ArtifactO
             return { kind, filename: `${base}.minimal.sse-capture`, mime: 'application/x-ndjson', text: serializeCapture(safe), ...shared, notes }
         case 'report-md':
             return { kind, filename: `${base}.report.md`, mime: 'text/markdown', text: buildReport(safe, analysis(), { format: 'md' }), ...shared, notes }
+        case 'report-issue':
+            return { kind, filename: `${base}.issue.md`, mime: 'text/markdown', text: buildReport(safe, analysis(), { format: 'issue' }), ...shared, notes }
         case 'report-html':
             return { kind, filename: `${base}.report.html`, mime: 'text/html', text: buildReport(safe, analysis(), { format: 'html' }), ...shared, notes }
         case 'report-json':

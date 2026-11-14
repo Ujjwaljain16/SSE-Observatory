@@ -16,6 +16,22 @@ inputs:
     description: 'Treat inconclusive scenarios (exit 4) as passing.'
     required: false
     default: 'false'
+  summary:
+    description: 'Add a Markdown summary of the run to the job summary page.'
+    required: false
+    default: 'true'
+  comment:
+    description: 'On a pull request, post the summary as a comment (one comment, updated by later runs). Needs "pull-requests: write" for the token; a token without it only produces a warning.'
+    required: false
+    default: 'false'
+  token:
+    description: 'Token used to post the comment.'
+    required: false
+    default: ${{ github.token }}
+outputs:
+  summary-file:
+    description: 'Path of the Markdown summary written by this run.'
+    value: ${{ steps.run.outputs.summary-file }}
 runs:
   using: 'composite'
   steps:
@@ -27,6 +43,7 @@ runs:
       working-directory: ${{ github.action_path }}
       run: npm ci --ignore-scripts && npm run build:cli
     - name: Run scenarios
+      id: run
       shell: bash
       env:
         SCENARIOS: ${{ inputs.scenarios }}
@@ -34,11 +51,50 @@ runs:
         OUTPUT: ${{ inputs.output }}
         ALLOW_INCONCLUSIVE: ${{ inputs.allow-inconclusive }}
       run: |
+        summary="$RUNNER_TEMP/sse-doctor-summary.md"
         args=(test)
         # Word splitting is intended: the input is a list of paths.
         # shellcheck disable=SC2206
         args+=($SCENARIOS)
-        args+=(--format "$FORMAT")
+        args+=(--format "$FORMAT" --summary "$summary")
         if [ -n "$OUTPUT" ]; then args+=(--output "$OUTPUT"); fi
         if [ "$ALLOW_INCONCLUSIVE" = "true" ]; then args+=(--allow-inconclusive); fi
+        # The summary and the comment are made even when the scenarios fail, so the exit code is kept and given back in the last step.
+        set +e
         node "${{ github.action_path }}/dist-cli/bin/sse-doctor.mjs" "${args[@]}"
+        code=$?
+        set -e
+        echo "code=$code" >> "$GITHUB_OUTPUT"
+        echo "summary-file=$summary" >> "$GITHUB_OUTPUT"
+    - name: Job summary
+      if: ${{ always() && inputs.summary == 'true' }}
+      shell: bash
+      env:
+        SUMMARY: ${{ steps.run.outputs.summary-file }}
+      run: |
+        if [ -s "$SUMMARY" ]; then cat "$SUMMARY" >> "$GITHUB_STEP_SUMMARY"; fi
+    - name: Pull request comment
+      if: ${{ always() && inputs.comment == 'true' && github.event_name == 'pull_request' }}
+      # A token that cannot write comments (a pull request from a fork) must not fail the run: the verdict is the exit code, not the comment.
+      continue-on-error: true
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        PR: ${{ github.event.pull_request.number }}
+        SUMMARY: ${{ steps.run.outputs.summary-file }}
+      run: |
+        marker='<!-- sse-doctor:scenarios -->'
+        body="$RUNNER_TEMP/sse-doctor-comment.md"
+        { cat "$SUMMARY"; printf '\n%s\n' "$marker"; } > "$body"
+        # Update this action's own comment, found by its marker. Never edit "the last comment": it may belong to another workflow.
+        id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate --jq ".[] | select(.body | contains(\"$marker\")) | .id" | head -n 1)
+        if [ -n "$id" ]; then
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -F body=@"$body" > /dev/null
+        else
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -F body=@"$body" > /dev/null
+        fi
+    - name: Result
+      shell: bash
+      env:
+        CODE: ${{ steps.run.outputs.code }}
+      run: exit "${CODE:-1}"

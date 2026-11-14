@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect } from 'vitest'
-import { buildReport } from '../report'
+import { buildReport, ISSUE_MARKER } from '../report'
 import { analyze, type Analysis, type RuleCoverage } from '../../../diagnostics'
 import type { Finding } from '../../../diagnostics/finding'
 import { newHeader } from '../../format'
@@ -181,5 +181,89 @@ describe('buildReport json', () => {
         expect(findings).toHaveLength(1)
         expect(findings[0]!.deductions[0]!.statement).toBe('Likely: plain guess')
         expect((json.coverage as RuleCoverage[]).map((c) => c.status)).toEqual(['not-evaluated', 'evaluated'])
+    })
+})
+
+describe('buildReport issue (a body for a ticket or pull request comment)', () => {
+    const cap = () => withRequest(captureOf(healthyStart().frame('tick', '1').silence(1000).frame('tick', '2')))
+    const three = () => [
+        finding({ key: 'a', severity: 'info', title: 'Quiet note' }),
+        finding({ key: 'b', severity: 'error', title: 'Loud problem', summary: 'It is loud.' }),
+        finding({ key: 'c', severity: 'warning', title: 'Middle issue' }),
+    ]
+
+    it('opens with the verdict, then a table of the findings worst first', () => {
+        const md = buildReport(cap(), analysisOf(three()), { format: 'issue' })
+        expect(md.startsWith('## Stream check: 3 findings, worst error\n')).toBe(true)
+        expect(md).toContain('**Stream:** `GET https://api.test/s?token=[redacted]`')
+        expect(md).toContain('| # | Severity | Finding | Seen |')
+        const rows = md.split('\n').filter((l) => /^\| \d /.test(l))
+        expect(rows.map((r) => r.split('|')[3]!.trim())).toEqual(['Loud problem', 'Middle issue', 'Quiet note'])
+    })
+
+    it('says what was observed for the worst few, with "Likely:" for a deduction and the next check', () => {
+        const md = buildReport(cap(), analysisOf(three()), { format: 'issue' })
+        expect(md).toContain('### What was observed')
+        expect(md).toContain('**Loud problem.** It is loud.')
+        expect(md).toContain('- A measured thing.')
+        expect(md).toContain('Likely: something upstream. (confidence: medium). Other explanations: another cause')
+        expect(md).toContain('Next check: Do the check. `curl -N x`')
+    })
+
+    it('says how many more there are when there are more than three, and does not detail them', () => {
+        const many = Array.from({ length: 5 }, (_, i) => finding({ key: `k${i}`, title: `Finding ${i}` }))
+        const md = buildReport(cap(), analysisOf(many), { format: 'issue' })
+        expect(md).toContain('5 findings, worst warning')
+        expect(md).toContain('2 more in the full report.')
+        const observed = md.split('### How to reproduce')[0]!
+        expect(observed).not.toContain('**Finding 3.**')
+    })
+
+    it('is honest when nothing was found: not proof of health, and what could not be checked', () => {
+        const md = buildReport(cap(), analysisOf([], [coverage({ status: 'not-evaluated', title: 'Resume', notes: ['no reconnect'] })]), { format: 'issue' })
+        expect(md.startsWith('## Stream check: no findings\n')).toBe(true)
+        expect(md).toContain('No finding was raised by the checks that could run.')
+        expect(md).toContain('1 check was not evaluated, which says nothing about whether the stream is healthy')
+        expect(md).not.toContain('| # | Severity')
+    })
+
+    it('tells how to reproduce with the environment variables, and folds the full report away', () => {
+        const md = buildReport(cap(), analysisOf(three()), { format: 'issue' })
+        expect(md).toContain('### How to reproduce')
+        expect(md).toContain('sse-doctor analyze <the attached .sse-capture>')
+        expect(md).toMatch(/<details>\n<summary>Full report<\/summary>\n\n# SSE Observatory report/)
+        expect(md).toContain('</details>')
+    })
+
+    it('ends with a marker that a tool updating a comment in place can find', () => {
+        const md = buildReport(cap(), analysisOf(three()), { format: 'issue' })
+        expect(md.trimEnd().endsWith(ISSUE_MARKER)).toBe(true)
+        expect(md.split(ISSUE_MARKER)).toHaveLength(2)
+    })
+
+    it('escapes what came from the capture, so a hostile title or summary cannot become markup', () => {
+        const md = buildReport(cap(), analysisOf([finding({ title: HOSTILE, summary: HOSTILE, facts: [{ text: HOSTILE, evidence: [] }] })]), { format: 'issue' })
+        const body = md.split('<details>')[0]!
+        expect(body).not.toContain('<script>')
+        expect(body).toContain(String.raw`\<script\>`)
+    })
+
+    it('stays within the size an issue or comment allows, and says the full report was cut', () => {
+        const big = Array.from({ length: 400 }, (_, i) => finding({ key: `k${i}`, title: `Finding ${i}`, facts: Array.from({ length: 30 }, (_, j) => ({ text: `fact ${j} ${'x'.repeat(120)}`, evidence: [] })) }))
+        const md = buildReport(cap(), analysisOf(big), { format: 'issue' })
+        expect(md.length).toBeLessThan(65_536)
+        expect(md).toContain('The full report was cut here')
+        expect(md.trimEnd().endsWith(ISSUE_MARKER)).toBe(true)
+        expect(md).toContain('</details>')
+    })
+
+    it('does not cut a report that fits', () => {
+        const md = buildReport(cap(), analysisOf(three()), { format: 'issue' })
+        expect(md).not.toContain('was cut here')
+    })
+
+    it('holds no secret that the capture was redacted of', () => {
+        const md = buildReport(cap(), analysisOf(three()), { format: 'issue' })
+        expect(md).not.toMatch(/Bearer|eyJ[A-Za-z0-9_-]{8,}/)
     })
 })

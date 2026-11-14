@@ -141,6 +141,7 @@ file is made in your browser and saved to your computer; nothing is uploaded.
 | Choice | What it is |
 |---|---|
 | Report (Markdown, HTML or JSON) | the findings, the evidence and what could not be determined, ready for a ticket |
+| For an issue or pull request | a short body to paste: the verdict, the findings in a table, what was observed for the worst few, how to reproduce, and the full report folded away. Nothing is posted; you paste it. [Details](/guide/cli#team-reports) |
 | Capture to share | the recording as an `.sse-capture` file with secrets replaced, which the [command line](/guide/cli) can analyse and replay |
 | curl command | repeats the request; header and query values are not in it, only the names of the environment variables to set |
 | Test scenario | a [scenario](/guide/cli-ci) made from this capture, so what you saw becomes a check that runs in CI |
