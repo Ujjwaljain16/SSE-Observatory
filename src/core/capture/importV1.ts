@@ -42,7 +42,10 @@ export function importV1(recording: unknown): Capture {
     const records: CaptureRecord[] = []
     let t = 0
     recording.events.forEach((e, i) => {
-        t += Math.max(0, Number(e.deltaMs) || 0)
+        if (typeof e !== 'object' || e === null) throw new V1ImportError(`events[${i}] is not an object`)
+        // a gap that is not a finite number (1e999 reads as Infinity) is unreadable like any other, and counts as none: a capture time must be a number a file can hold
+        const gap = Number(e.deltaMs)
+        t += Number.isFinite(gap) && gap > 0 ? Math.min(gap, Number.MAX_SAFE_INTEGER) : 0
         const data = typeof e.data === 'string' ? e.data : ''
         records.push({ seq: i, t, conn: 0, kind: 'event', event: e.type || 'message', sseId: e.sseId ?? '', dataBytes: utf8Length(data), data })
     })

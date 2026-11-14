@@ -32,7 +32,8 @@ export async function loadCapture(io: CliIo, path: string): Promise<{ capture: C
     try {
         if (text.trimStart().startsWith('{')) {
             let whole: unknown
-            try { whole = JSON.parse(text) } catch { whole = undefined }
+            // an editor or a PowerShell redirect may have put a byte order mark in front; JSON.parse does not accept one
+            try { whole = JSON.parse(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text) } catch { whole = undefined }
             if (isV1Recording(whole)) return { capture: importV1(whole), warnings: ['Imported an old .sse-record file: its timeline is rebuilt from event gaps, so rules that need chunks, headers or reconnects are not evaluated.'] }
         }
         const parsed = parseCapture(text)
