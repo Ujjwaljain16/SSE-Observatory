@@ -19,6 +19,8 @@ export type { FixtureRoute } from './kit'
 
 export const FIXTURE_ROUTES: FixtureRoute[] = [baseFamily, ...FAMILIES].flatMap((f) => f.routes)
 const SCRIPTS = Object.assign({}, baseFamily.scripts, ...FAMILIES.map((f) => f.scripts)) as Record<string, Script>
+/** Extra response headers per route path, declared by the families (a script runs after the headers are written, so it cannot set them). */
+const ROUTE_HEADERS = Object.assign({}, ...[baseFamily, ...FAMILIES].map((f) => f.headers ?? {})) as Record<string, Record<string, string>>
 export interface FixtureServerOptions {
     port?: number
     host?: string
@@ -133,7 +135,7 @@ export async function startFixtureServer(options: FixtureServerOptions = {}): Pr
 
         live.add(res)
         // the echo route also hands out a cookie of its own, so a Set-Cookie header can be searched for in every output
-        res.writeHead(200, path === '/f08/echo' ? { ...STREAM_HEADERS, 'Set-Cookie': `sid=${url.searchParams.get('sc') ?? 'echo-session'}` } : STREAM_HEADERS)
+        res.writeHead(200, path === '/f08/echo' ? { ...STREAM_HEADERS, ...ROUTE_HEADERS[path], 'Set-Cookie': `sid=${url.searchParams.get('sc') ?? 'echo-session'}` } : { ...STREAM_HEADERS, ...ROUTE_HEADERS[path] })
         res.flushHeaders()
         void script(ctx).then(() => { if (!closed) res.end() }, () => { if (!closed) res.destroy() })
     })

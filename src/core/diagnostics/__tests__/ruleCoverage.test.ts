@@ -29,11 +29,7 @@ const RULE_KEYS: Record<string, string[]> = {
 
 /** Rules no fixture route makes fire yet. Each reason names the work. */
 const NO_FIXTURE_YET: Record<string, string> = {
-    'proto.headers-hints': 'R03: no fixture serves a stream with the hints missing as its point (plan A3).',
-    'timing.first-event': 'R04: needs a slow-start fixture (plan A3, f11-slow-start).',
-    'seq.integrity': 'R09: f06-skips raises R08 instead and forbids seq.integrity:gap; a fixture that drops a number inside one connection is plan A3.',
-    'heartbeat.recognition': 'R10: needs a fixture whose heartbeat arrives late (plan A3).',
-    'proxy.masking': 'R13: f04-masked expects stall.silent:origin; the masking finding itself has no fixture (needs the proxy in the loop, plan A6).',
+    'proxy.masking': 'R13: f04-masked expects stall.silent:origin; no fixture ROUTE expects the masking finding itself: it needs the real proxy in front of a route, which proxyInTheLoop.test.ts does (R13 fires there on the real tags, plan A6) but a route of the fixture server cannot declare.',
     'clock.discontinuity': 'R15: a clock jump cannot be produced by a server; it is unit-tested only.',
 }
 

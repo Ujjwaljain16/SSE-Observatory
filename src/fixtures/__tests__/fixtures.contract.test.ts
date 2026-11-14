@@ -2,6 +2,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { FIXTURE_ROUTES, startFixtureServer, type FixtureServer } from '../server'
 import { frameLog, type LoggedConnection } from '../groundTruth'
+import { gunzipLog, isGzipped } from './gunzipLog'
 
 // Plan A4: what each fixture route sends, written down once and checked against the server's OWN log (groundTruth.ts), not against any client.
 //
@@ -34,8 +35,10 @@ interface Contract {
     ending: Ending
     /** A resuming client is expected to ask again: the stream ended with no `end` event and the failure was not a fatal one (401, 404, wrong content type). */
     reconnect: boolean
-    /** Exact bytes written, where nothing in the body varies from run to run. */
+    /** Exact bytes written, where nothing in the body varies from run to run. For a compressed route these are the PLAIN bytes (what a client reads after decoding). */
     bytes?: number
+    /** The Content-Encoding the route declares. The log is then decoded before it is read, and the wire must really be that encoding (gzip) and not plain bytes under a label. */
+    encoding?: 'gzip'
     /** The route's duration at scale 1 in the plan (section 5.2) and the number of timer wake-ups it takes: they set the ceiling at the scale used. */
     scale1Ms?: number
     wakeups?: number
@@ -101,6 +104,23 @@ export const CONTRACTS: Record<string, Contract> = {
 
     'f11-drift': ticks(34, { bytes: 2013, scale1Ms: 1700, wakeups: 34 }),
     'f11-steady': ticks(34, { bytes: 1943, scale1Ms: 1700, wakeups: 34 }),
+
+    // plan A3. One connection of f05-ignores is half of the events (3 of 6) and a close; the next one ignores its cursor (see the resume table below)
+    'f05-ignores': { status: 200, contentType: SSE, ids: range(1, 3), events: 3, comments: 0, unterminated: false, ending: 'closes', reconnect: true, bytes: 99, scale1Ms: 1350, wakeups: 3 },
+    // 3 events, the first at once and then one every 40 s
+    'h05-declared-idle': ticks(3, { bytes: 122, scale1Ms: 80_000, wakeups: 2 }),
+    // a comment a second from the first byte (4 of them: 14 bytes each), then the end event: the only event the stream has
+    'h06-comments-only': { status: 200, contentType: SSE, ids: [], events: 1, comments: 4, commentPattern: HEARTBEAT, unterminated: false, ending: 'end-event', reconnect: false, bytes: 4 * 14 + 23, scale1Ms: 4000, wakeups: 4 },
+    // an event, 4 heartbeats a second apart, 4 s of nothing, 2 more heartbeats a second apart, the end event
+    'f04-late-heartbeat': { status: 200, contentType: SSE, ids: ['1'], events: 2, comments: 6, commentPattern: HEARTBEAT, unterminated: false, ending: 'end-event', reconnect: false, bytes: 33 + 6 * 14 + 23, scale1Ms: 9000, wakeups: 6 },
+    // headers at once, a comment after 4 s, the first event 7 s later, two more a second apart, the end event a second after
+    'f11-slow-start': { status: 200, contentType: SSE, ids: range(1, 3), events: 4, comments: 1, commentPattern: /^warming up$/, unterminated: false, ending: 'end-event', reconnect: false, bytes: 14 + 3 * 33 + 23, scale1Ms: 14_000, wakeups: 5 },
+    // h01's 5 ticks and end event, gzip on the wire (188 bytes once decoded)
+    'f12-gzip-sync': ticks(5, { bytes: 188, encoding: 'gzip', scale1Ms: 5000, wakeups: 6 }),
+    // a comment behind a byte order mark, then ids 1 and 2, a frame whose id has a NUL (so no id), ids 4, 5 (CRLF) and 6, then the end event
+    'f15-malformed': { status: 200, contentType: SSE, ids: ['1', '2', '4', '5', '6'], events: 7, comments: 1, unterminated: false, ending: 'end-event', reconnect: false, bytes: 280, scale1Ms: 1200, wakeups: 6 },
+    // 1000 events at 500 a second, 10 to a write, each a data field of 100 bytes
+    'f16-rate': ticks(1000, { bytes: 127_916, scale1Ms: 2000, wakeups: 100 }),
 }
 
 /** Routes that need no contract beyond a status: f08-echo answers with whatever credentials it was sent, so there is nothing stable to pin. */
@@ -117,6 +137,8 @@ export function routesWithoutContract(routeIds: string[], table: Record<string, 
 interface Result {
     status: number
     contentType: string
+    /** The Content-Encoding header ('' when there is none). The client's fetch decodes the body and leaves the header. */
+    contentEncoding: string
     log: LoggedConnection
     durationMs: number
     /** True when the test cut the connection itself. */
@@ -155,13 +177,14 @@ async function fetchRoute(server: FixtureServer, id: string, expectedEvents: num
     const entry = server.groundTruth.of(id).at(-1)!
     // let the server notice that the client left
     for (let i = 0; i < 50 && entry.endedBy === 'open'; i++) await wait(10)
-    return { status: res.status, contentType: res.headers.get('content-type') ?? '', log: entry, durationMs, cut }
+    return { status: res.status, contentType: res.headers.get('content-type') ?? '', contentEncoding: res.headers.get('content-encoding') ?? '', log: entry, durationMs, cut }
 }
 
 /** What the server's log says about the connection, against what the contract says it must be. Empty when they agree. */
 export function violations(id: string, c: Contract, r: Result, server: FixtureServer): string[] {
     const bad: string[] = []
-    const log = r.log
+    // a compressed route is read in plain bytes, as a client reads it; the wire itself is checked just below
+    const log = c.encoding ? gunzipLog(r.log) : r.log
     const frames = frameLog(log)
     const events = frames.filter((f) => f.terminated && f.hasData)
     const commentFrames = frames.filter((f) => f.terminated && f.isComment)
@@ -171,6 +194,11 @@ export function violations(id: string, c: Contract, r: Result, server: FixtureSe
     if (r.status !== c.status) comment(`status ${r.status}, the contract says ${c.status}`)
     if (log.status !== c.status) comment(`the server's log records status ${log.status}, the contract says ${c.status}`)
     if (!r.contentType.startsWith(c.contentType)) comment(`Content-Type "${r.contentType}", the contract says it starts with "${c.contentType}"`)
+    if (r.contentEncoding !== (c.encoding ?? '')) comment(`Content-Encoding "${r.contentEncoding}", the contract says "${c.encoding ?? ''}"`)
+    if (c.encoding === 'gzip') {
+        if (!isGzipped(r.log)) comment('the contract says the body is gzip, but it does not start with the gzip magic number: it is plain bytes under a label')
+        else if (server.groundTruth.totals(r.log).bytes === server.groundTruth.totals(log).bytes) comment('the body is gzip but is exactly as long decoded as it was on the wire')
+    }
 
     const ids = frames.filter((f) => f.id !== null).map((f) => f.id)
     if (JSON.stringify(ids) !== JSON.stringify(c.ids)) comment(`ids on the wire ${JSON.stringify(ids.length > 6 ? [...ids.slice(0, 3), '...', ...ids.slice(-3)] : ids)}, the contract says ${JSON.stringify(c.ids.length > 6 ? [...c.ids.slice(0, 3), '...', ...c.ids.slice(-3)] : c.ids)}`)
@@ -266,13 +294,17 @@ describe('resuming: a route that honours Last-Event-ID continues after it, one t
         ['f05-resumes', '3', ['4', '5', '6'], 'the rest, and then the end'],
         ['f06-resumes', '4', ['5', '6', '7', '8'], 'continues right after the cursor'],
         ['f06-skips', '4', ['8'], 'jumps three ids past the cursor: the fault of this fixture'],
+        ['f05-ignores', '3', ['1', '2', '3', '4', '5', '6'], 'ignores the cursor, starts again from 1 and runs to the end: the fault of this fixture'],
+        ['h05-declared-idle', '1', ['2', '3'], 'continues after the cursor'],
+        ['f12-gzip-sync', '2', ['3', '4', '5'], 'continues after the cursor, through the gzip stream'],
+        ['f16-rate', '995', ['996', '997', '998', '999', '1000'], 'continues after the cursor, at the end of a run'],
     ]
     it.each(RESUME)('%s with Last-Event-ID %s sends ids %j (%s)', async (id, cursor, expected) => {
         const res = await fetch(server.urlFor(id, { scale: SCALE }), { headers: { 'Last-Event-ID': cursor } })
         await res.arrayBuffer()
         const entry = server.groundTruth.of(id).at(-1)!
         expect(entry.requestHeaders['last-event-id']).toBe(cursor)
-        expect(frameLog(entry).filter((f) => f.id !== null).map((f) => f.id)).toEqual(expected)
+        expect(frameLog(gunzipLog(entry)).filter((f) => f.id !== null).map((f) => f.id)).toEqual(expected)
     }, 15_000)
 
     it('f05-drops?ignore=1 ignores the cursor and starts again from 1 (the fixture of an unresumable server)', async () => {
@@ -305,6 +337,15 @@ describe('the contract check can fail (a check that cannot fail proves nothing)'
     it('a route that is too slow for its ceiling is reported', () => {
         const slow = { ...result, durationMs: 5000 }
         expect(violations('h01', { ...base, scale1Ms: 5000, wakeups: 6 }, slow, server).join(' | ')).toContain('took 5000 ms')
+    })
+    it('plain bytes under a gzip label, and a gzip body the contract does not declare, are reported', async () => {
+        expect(flaws({ ...base, encoding: 'gzip' })).toContain('Content-Encoding "", the contract says "gzip"')
+        expect(flaws({ ...base, encoding: 'gzip' })).toContain('plain bytes under a label')
+        const gz = await fetchRoute(server, 'f12-gzip-sync', 5, 'end-event')
+        const { encoding: _declared, ...undeclared } = CONTRACTS['f12-gzip-sync']!
+        void _declared
+        expect(violations('f12-gzip-sync', CONTRACTS['f12-gzip-sync']!, gz, server)).toEqual([])
+        expect(violations('f12-gzip-sync', undeclared, gz, server).join(' | ')).toContain('Content-Encoding "gzip", the contract says ""')
     })
     it('a route with no contract is reported by the check that keeps routes honest', () => {
         expect(routesWithoutContract(['h01', 'f99-new'], CONTRACTS)).toEqual(['f99-new'])

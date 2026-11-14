@@ -213,6 +213,9 @@ const MATRIX: RouteCase[] = [
     { id: 'f05-resumes', mustShow: [] },
     { id: 'f05-drops', mustShow: ['reconnect.loop'] },
     { id: 'f06-skips', mustShow: ['resume.last-event-id:skipped'] },
+    { id: 'f05-ignores', mustShow: ['resume.last-event-id:ignored', 'seq.integrity:replay'] },
+    { id: 'f15-malformed', mustShow: ['proto.framing:NUL_IN_ID', 'proto.framing:WRONG_CASE_FIELD', 'proto.framing:BOM_STRIPPED'] },
+    { id: 'f12-gzip-sync', mustShow: ['proto.headers-hints:content-encoding'] },
     { id: 'f03-buffered', scale: 0.15, thresholds: { stallNoCadenceMs: 5000, burstMinGapMs: 150, burstMinNominalGapMs: 10 }, profile: { timestampField: '$.ts' }, mustShow: ['delivery.bursty'] },
     { id: 'f09-buffered', mustShow: [] },
     { id: 'f04-silent', hold: 1500, mustShow: ['stall.silent:bytes'] },
@@ -222,7 +225,6 @@ const MATRIX: RouteCase[] = [
 
 // Routes of the plan's matrix that cannot be part of this round trip, and why. Printed, never silent.
 const SKIPPED: Array<{ id: string; reason: string }> = [
-    { id: 'f05-ignores', reason: 'the fixture does not exist yet (plan A3); f05-drops?ignore=1 restarts from 1 on every connection and never ends' },
     { id: 'f02-closed', reason: 'the server closes every connection after "data: x" and the client reconnects for ever (about 5000 records in 15 s), so there is no end to capture; a capture cut at an arbitrary moment would replay with a different number of connections each time' },
     { id: 'f01-text-html', reason: 'the client stops at the response, before any byte is read, so the capture holds no payload and the mock refuses it; a replay is in any case always served as 200 text/event-stream' },
 ]
