@@ -99,6 +99,20 @@ export function selftestChecks(): SelftestCheck[] {
             },
         },
         { name: 'R15 records a clock jump and does not read the time asleep as a stall', run: () => { const keys = keysOf(steady(3).silence(35_000).discontinuity(35_000, 'resume').silence(5000).frame()); return expectKey(keys, 'clock.discontinuity') ?? (keys.some((k) => k.startsWith('stall.silent')) ? 'the time across the jump was read as a stall' : null) } },
+        {
+            name: 'R16 notices a payload whose fields changed, and is silent for one that did not',
+            run() {
+                const shaped = (n: number, shapeAt: (i: number) => string) => {
+                    const b = healthyStart()
+                    for (let i = 0; i < n; i++) b.silence(100).frame('order', String(i + 1))
+                    let i = 0
+                    return { b, records: b.build().map((r) => (r.kind === 'event' ? { ...r, extracted: { shape: shapeAt(i++) } } : r)) as EngineInput[] }
+                }
+                const keys = (x: { b: CaptureBuilder; records: EngineInput[] }) => analyze(x.records, { endT: x.b.now }).findings.map((f) => f.key)
+                const changed = shaped(34, (i) => (i < 20 ? '$:o|id:n|price:n|qty:n' : '$:o|currency:s|id:n|qty:n'))
+                return expectKey(keys(changed), 'schema.drift') ?? expectNone(keys(shaped(34, () => '$:o|id:n|price:n|qty:n')))
+            },
+        },
         { name: 'R01 flags a failing status', run: () => expectKey(keysOf(build().connect().response({ status: 502, contentType: 'text/plain' })), 'http.status') },
         { name: 'R05 flags a stream that goes silent', run: () => expectKey(keysOf(steady(12).silence(90_000)), 'stall.silent') },
         {

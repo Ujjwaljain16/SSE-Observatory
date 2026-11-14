@@ -30,6 +30,8 @@ export interface Extracted {
     ts?: number | undefined
     partition?: string | undefined
     isHeartbeat?: boolean | undefined
+    /** The structure of a JSON payload (field paths and kinds, never values). See payloadShape.ts. */
+    shape?: string | undefined
 }
 
 export type ObservationBody =

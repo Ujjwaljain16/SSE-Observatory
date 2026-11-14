@@ -37,6 +37,7 @@ Without a contract the checks do not run. The coverage list says continuity coul
 | R11 `consumer.slow`, `consumer.queue-overflow` | the page processing events late, or dropping them; "receipt healthy, processing late" | page consumer records |
 | R12 `security.credentials-in-metadata` | credential-like names in the request URL; never prints a value | connect |
 | R13 `proxy.masking`, `proxy.upstream-mismatch` | the proxy alive while the upstream is silent; status or content type differing from what the proxy reported | proxy tags |
+| R16 `schema.drift` | the structure of an event's JSON payload changed and stayed changed: fields gone, new, or of another kind (gone or changed is a warning, new alone is a note). Needs 20 events of a name as a baseline; one odd event is not a change | events with a payload shape |
 | R15 `clock.discontinuity` | a clock jump (a laptop woke up); silences that span it are not judged | |
 
 R14 compares two captures instead of reading one: `compareCaptures` aligns events (by id, then payload text, then sequence number) and compares status, headers, time to first byte, heartbeat cadence, chunk sizes and delivery latency. If a layer between the two captures buffers, it says "Likely: a layer between A and B buffers", never which layer.
@@ -57,4 +58,4 @@ A deduction is only upgraded by comparative evidence: another capture, a bypasse
 - Silence is only called a stall relative to the stream's own rhythm. With no known cadence the rule waits 30 s and says it cannot tell a stall from legitimate idle.
 - A cross-origin browser sees only CORS-safelisted response headers, so rules that need others report "not evaluated". Same-origin proxy diagnostics headers are visible.
 - The worker-to-page hop is approximate in consumer-lag measurements.
-- Rules never read raw payload text. They read the few values a stream profile asks the recorder to extract (sequence, timestamp, partition, heartbeat flag).
+- Rules never read raw payload text. They read the few values a stream profile asks the recorder to extract (sequence, timestamp, partition, heartbeat flag) and, for every JSON payload of 4 KB or less, its **shape**: the field names and kinds (`id:n|user:o|user.name:s`), never a value. That is what `schema.drift` compares. Arrays are described by their first element, only three levels and 40 fields are described, and a payload that is not JSON or is longer is not described. Turn it off with `"shapes": false` in the profile (or in the Privacy panel).

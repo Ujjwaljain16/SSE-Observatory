@@ -8,6 +8,7 @@
  */
 
 import { getJsonPath } from './jsonPath'
+import { shapeOfText, shapeOfValue, SHAPE_MAX_CHARS } from './payloadShape'
 import type { Extracted } from './observation'
 
 export interface PayloadProbeConfig {
@@ -21,6 +22,8 @@ export interface PayloadProbeConfig {
     heartbeat?: { events?: string[] | undefined; dataPattern?: string | undefined } | undefined
     /** Payloads longer than this many characters are not parsed (default 65,536) and are marked truncated. */
     maxChars?: number | undefined
+    /** Record the structure of JSON payloads, so a change of format can be found later (default on; `false` turns it off). */
+    shape?: boolean | undefined
 }
 
 export interface ProbeInput {
@@ -110,6 +113,11 @@ export class PayloadProbe {
         }
         if (config.heartbeat) {
             out.isHeartbeat = (config.heartbeat.events?.includes(input.event) ?? false) || (this.pattern?.test(input.data) ?? false)
+        }
+        if (config.shape !== false && !truncated && input.data.length <= SHAPE_MAX_CHARS) {
+            // The payload was already parsed above when a profile field needed it; otherwise the shape parses it once.
+            const shape = parsed ? shapeOfValue(payload) : shapeOfText(input.data)
+            if (shape !== undefined) out.shape = shape
         }
         return Object.keys(out).length > 0 ? out : undefined
     }

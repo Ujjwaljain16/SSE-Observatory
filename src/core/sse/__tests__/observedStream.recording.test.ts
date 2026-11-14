@@ -84,7 +84,7 @@ describe('recording on', () => {
     it('runs the payload probe for each event: a salted hash and only the profile\'s fields', () => {
         const { client } = build({ recording: { profile: { sequence: { field: '$.seq' } } } })
         const described = client.opts.describeEvent!({ event: 'tick', data: '{"seq":7,"secret":"hunter2"}', id: '', raw: '' })
-        expect(described.extracted).toEqual({ seq: 7 })
+        expect(described.extracted).toEqual({ seq: 7, shape: '$:o|secret:s|seq:n' }) // the shape holds names and kinds, never a value
         expect(described.dataHash).toMatch(/^[0-9a-f]+$/)
         expect(JSON.stringify(described)).not.toContain('hunter2')
     })

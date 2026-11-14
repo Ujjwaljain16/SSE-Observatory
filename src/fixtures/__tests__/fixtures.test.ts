@@ -170,7 +170,8 @@ describe('failing fixtures produce the documented finding', () => {
 
 // Rules that need something a plain socket run does not provide: a declared sequence contract, page-side consumer
 // records, proxy tags. They say "not evaluated" there, which is the right answer and not a failure of the stream.
-const NEEDS_MORE_THAN_A_SOCKET = new Set(['seq.integrity', 'consumer.slow', 'proxy.masking'])
+// schema.drift needs a baseline of 20 events of one name before it can compare anything, and these twins are short on purpose.
+const NEEDS_MORE_THAN_A_SOCKET = new Set(['seq.integrity', 'consumer.slow', 'proxy.masking', 'schema.drift'])
 
 describe('healthy twins produce zero findings, with every rule evaluated', () => {
     for (const [id, query] of [['h01', { scale: 0.02, n: 6 }], ['h02', { scale: 0.03, n: 3 }], ['h03', { scale: 0.05 }], ['h04', { scale: 0.02, n: 6 }]] as const) {

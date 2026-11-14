@@ -157,7 +157,7 @@ preview and it is safe to share; the matches are listed by where they are, never
 guarantee: read the preview of anything you are about to send.
 
 What is recorded in the app is metadata (timings, sizes, comment text, response headers' names and values the browser
-exposes), not the body of your events, so there is no event data in these files.
+exposes) and the *shape* of each JSON payload (its field names and kinds, never a value), not the body of your events, so there is no event data in these files. Switch the shapes off in the Privacy panel if field names are sensitive.
 
 A stream that is still open has not ended at its last record. The export says when it stopped (`endT` in the capture's
 footer), so a silence at the end, the thing a stall finding is about, is part of the file and reproduces when the
@@ -168,7 +168,7 @@ capture is analysed again or reduced to its smallest form.
 - **Download.** The diagnostics (the engine and all of its rules, with their explanations) are a separate file fetched the
   first time a stream has records: about 28 KB with Brotli (32 KB gzip), including the panel. The main bundle grew by about 2.5 KB gzip.
   Nothing is fetched if you never connect.
-- **CPU.** Feeding a record takes about 13 microseconds. After the first catch-up, a refresh with 100 new records on 50,000 held
+- **CPU.** Feeding a record takes about 13 microseconds. Keeping the shape of each JSON payload (for the schema drift check) costs the recorder, per event, about 2 microseconds for a small payload, 8 for 700 bytes and 19 for 2 KB (parsing and describing it; Node micro-benchmark, not measured in a browser), and 4 KB is the limit, so at 500 events a second the worst case is about 2% of one core, in the worker. The check itself adds under 1 microsecond per record. After the first catch-up, a refresh with 100 new records on 50,000 held
   takes about 2 ms, and the once-a-second update about 1 ms.
 - **Memory.** The recording that feeds it is capped at 8 MB per stream.
 

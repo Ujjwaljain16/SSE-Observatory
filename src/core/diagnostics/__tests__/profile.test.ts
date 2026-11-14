@@ -107,3 +107,24 @@ describe('the display mapping', () => {
         expect(describeProfile({ display: { type: '$.kind', summary: '$.text' } })).toBe('display type/summary')
     })
 })
+
+describe('the shapes switch', () => {
+    it('accepts false (do not keep payload shapes), and leaves true as the default it is', () => {
+        expect(parseProfile({ shapes: false })).toEqual({ ok: true, profile: { shapes: false } })
+        expect(parseProfile({ shapes: true })).toEqual({ ok: true, profile: {} })
+        const bad = parseProfile({ shapes: 'no' })
+        expect(bad.ok).toBe(false)
+        if (!bad.ok) expect(bad.errors[0]).toBe('"shapes" must be true or false.')
+    })
+
+    it('reaches the recorder, so turning it off needs a new connection', () => {
+        expect(probeConfigOf({ shapes: false })).toEqual({ shape: false })
+        expect(probeConfigOf({})).toEqual({})
+        expect(sameProbe({ shapes: false }, {})).toBe(false)
+        expect(sameProbe({ shapes: false }, { shapes: false })).toBe(true)
+    })
+
+    it('is named in the one-line description', () => {
+        expect(describeProfile({ shapes: false })).toBe('payload shapes not kept')
+    })
+})
