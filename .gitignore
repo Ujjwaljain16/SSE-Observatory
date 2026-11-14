@@ -42,6 +42,8 @@ playwright/.cache/
 
 # SSE Observatory Data
 *.sse-record
+# ...except the v1 samples the importer is tested against
+!src/core/capture/__tests__/v1Samples/*.sse-record
 
 # Technical Artifacts
 coverage/
