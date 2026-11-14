@@ -91,6 +91,23 @@ describe('E5: a secret typed into the URL never comes back out', () => {
         noCanary(r, 'userinfo, live')
     }, 30_000)
 
+    // The checks above pass for two reasons: the registry knows the values typed in the URL, AND the shape redaction of the capture removes a URL's
+    // userinfo and query by itself. With --no-redact the capture is written as recorded, so only the registry stands between the URL's secrets and
+    // the file: this is the case that fails if `requestFor` stops registering what the URL carries (shown by removing those lines, see the report).
+    it('--no-redact (the capture is written as recorded): the registry alone still keeps the URL\'s user name, password and query values out of every sink', async () => {
+        const seen: Seen[] = []
+        const { port } = await serve(seen)
+        const closed = await closedPort()
+        for (const base of [`127.0.0.1:${closed}`, `127.0.0.1:${port}`]) {
+            const url = `http://${CANARY}:${CANARY2}@${base}/s?token=${CANARY2}`
+            const r = await probe(url, ['--no-redact', '--out', 'raw.sse-capture'])
+            const file = r.h.written['raw.sse-capture']!
+            expect(file, 'the capture was written as recorded: the URL and the platform\'s error message are in it').toMatch(/"url":"http:\/\/.*@?127\.0\.0\.1/)
+            expect(file).toContain('[REDACTED]') // the registry's mask is where the values were
+            noCanary(r, `--no-redact ${base}`)
+        }
+    }, 40_000)
+
     it('CANARY as the user name alone, percent-encoded in the password, and in the query: all stay out', async () => {
         const port = await closedPort()
         const urls = [
