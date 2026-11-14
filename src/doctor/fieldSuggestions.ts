@@ -59,3 +59,14 @@ export function suggestFields(payloads: readonly unknown[]): FieldSuggestion[] {
     const rank = { counter: 0, timestamp: 1, number: 2, other: 3 } as const
     return out.sort((a, b) => rank[a.kind] - rank[b.kind] || a.path.localeCompare(b.path))
 }
+
+/** Every field path of any kind (text, number, true/false) in the latest payloads, so a field can be picked for following. Oldest payload first in, sorted out. */
+export function listFieldPaths(payloads: readonly unknown[]): string[] {
+    const paths = new Set<string>()
+    for (const payload of payloads.slice(-30)) {
+        const found = new Map<string, unknown>()
+        leaves(payload, '$', 0, found)
+        for (const path of found.keys()) if (path !== '$') paths.add(path)
+    }
+    return [...paths].sort()
+}

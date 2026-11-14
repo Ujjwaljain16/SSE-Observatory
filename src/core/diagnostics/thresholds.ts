@@ -115,6 +115,15 @@ export interface SequenceContract {
     partitionBy?: string | undefined
 }
 
+export interface DisplayMapping {
+    /** JSON path of the value to show as the event's type (instead of the SSE event name or a `type` field). */
+    type?: string | undefined
+    /** JSON path of the value to show as a one-line summary above the payload. */
+    summary?: string | undefined
+    /** JSON path of the value to show as the event's id (instead of the generated one). */
+    id?: string | undefined
+}
+
 export type DeliverySemantics = 'at_least_once' | 'exactly_once' | 'at_most_once'
 
 export interface StreamProfile {
@@ -123,6 +132,11 @@ export interface StreamProfile {
     delivery?: DeliverySemantics | undefined
     /** JSON path of a producer timestamp, for judging delivery spacing. */
     timestampField?: string | undefined
+    /**
+     * How to show this stream's events in the app's list: JSON paths that map a custom format onto a common view (a type badge, a one-line
+     * summary, an id). Only the app reads it, when events are drawn; no check depends on it.
+     */
+    display?: DisplayMapping | undefined
     expected?: {
         /** Time to the first event, replaces `firstByteToEventMs`. */
         firstEventMs?: number | undefined

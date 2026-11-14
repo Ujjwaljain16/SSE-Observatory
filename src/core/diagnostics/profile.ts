@@ -10,7 +10,8 @@ import type { DeliverySemantics, SequenceContract, StreamProfile } from './thres
 
 const POLICIES: SequenceContract['policy'][] = ['consecutive', 'monotonic']
 const DELIVERIES: DeliverySemantics[] = ['at_least_once', 'exactly_once', 'at_most_once']
-const TOP_KEYS = ['sequence', 'delivery', 'timestampField', 'expected', '$schema']
+const TOP_KEYS = ['sequence', 'delivery', 'timestampField', 'display', 'expected', '$schema']
+const DISPLAY_KEYS = ['type', 'summary', 'id'] as const
 
 /** The fields the recorder reads out of each payload as it is recorded. The rest of a profile is read when events are analysed. */
 export function probeConfigOf(profile: StreamProfile | undefined): PayloadProbeConfig {
@@ -29,13 +30,14 @@ export const sameProbe = (a: StreamProfile | undefined, b: StreamProfile | undef
 export type ProfileCheck = { ok: true; profile: StreamProfile } | { ok: false; errors: string[] }
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
+export const isJsonPath = (v: unknown): v is string => isPath(v)
 const isPath = (v: unknown): v is string => typeof v === 'string' && /^(\$\.?|)[A-Za-z0-9_-]+(\[\d+\]|\.[A-Za-z0-9_-]+)*$/.test(v.trim())
 
 /** Checks a value read from JSON and returns it as a profile, or says what is wrong in plain words. Nothing is guessed. */
 export function parseProfile(value: unknown): ProfileCheck {
     if (!isObject(value)) return { ok: false, errors: ['A profile is a JSON object.'] }
     const errors: string[] = []
-    for (const key of Object.keys(value)) if (!TOP_KEYS.includes(key)) errors.push(`Unknown field "${key}". A profile has: sequence, delivery, timestampField, expected.`)
+    for (const key of Object.keys(value)) if (!TOP_KEYS.includes(key)) errors.push(`Unknown field "${key}". A profile has: sequence, delivery, timestampField, display, expected.`)
     const profile: StreamProfile = {}
 
     const seq = value['sequence']
@@ -76,6 +78,20 @@ export function parseProfile(value: unknown): ProfileCheck {
         else profile.timestampField = ts.trim()
     }
 
+    const display = value['display']
+    if (display !== undefined) {
+        if (!isObject(display)) errors.push('"display" must be an object with type, summary and id paths.')
+        else {
+            const out: NonNullable<StreamProfile['display']> = {}
+            for (const [key, v] of Object.entries(display)) {
+                if (!(DISPLAY_KEYS as readonly string[]).includes(key)) errors.push(`Unknown field "display.${key}". The fields are type, summary and id.`)
+                else if (!isPath(v)) errors.push(`"display.${key}" must be a JSON path such as $.kind or $.choices[0].delta.content.`)
+                else out[key as (typeof DISPLAY_KEYS)[number]] = v.trim()
+            }
+            if (Object.keys(out).length > 0) profile.display = out
+        }
+    }
+
     const expected = value['expected']
     if (expected !== undefined) {
         if (!isObject(expected)) errors.push('"expected" must be an object.')
@@ -101,6 +117,7 @@ export function describeProfile(profile: StreamProfile | undefined): string {
     if (s) parts.push(`sequence ${s.useSseId ? 'in the SSE id' : s.field ?? '?'} (${s.policy}${s.partitionBy ? `, per ${s.partitionBy}` : ''})`)
     if (profile.delivery) parts.push(profile.delivery.replace(/_/g, ' '))
     if (profile.timestampField) parts.push(`timestamp ${profile.timestampField}`)
+    if (profile.display) parts.push(`display ${Object.keys(profile.display).join('/')}`)
     if (profile.expected) parts.push('expected timings')
     return parts.length > 0 ? parts.join(', ') : 'empty profile'
 }

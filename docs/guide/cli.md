@@ -63,4 +63,6 @@ A profile tells the tool what the stream promises. Continuity checks (gaps, dupl
 { "sequence": { "useSseId": true, "policy": "consecutive" }, "delivery": "at_least_once", "expected": { "heartbeatMs": 15000 } }
 ```
 
+A profile may also carry a `display` mapping (`type`, `summary` and `id` JSON paths) for the app's event list. The command line checks it like the rest of the file and otherwise ignores it: no check depends on how events are shown.
+
 See [Diagnostics](/technical/diagnostics) for the rules, and [Capture format](/technical/capture-format) for the files. This build runs on Node 20 or newer; Node's fetch decodes compressed responses itself and chunks reads differently from a browser, and captures record which client produced them.

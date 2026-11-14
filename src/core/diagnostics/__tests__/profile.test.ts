@@ -76,3 +76,34 @@ describe('describeProfile', () => {
         expect(describeProfile({ sequence: { useSseId: true, policy: 'monotonic' } })).toBe('sequence in the SSE id (monotonic)')
     })
 })
+
+describe('the display mapping', () => {
+    it('reads type, summary and id paths, and trims them', () => {
+        const r = parseProfile({ display: { type: ' $.object ', summary: '$.choices[0].delta.content', id: 'msg.id' } })
+        expect(r).toEqual({ ok: true, profile: { display: { type: '$.object', summary: '$.choices[0].delta.content', id: 'msg.id' } } })
+    })
+
+    it('says what is wrong with each part, all at once', () => {
+        const r = parseProfile({ display: { type: 5, summary: 'not a path!', nope: '$.x' } })
+        expect(r.ok).toBe(false)
+        if (!r.ok) {
+            expect(r.errors).toHaveLength(3)
+            expect(r.errors.join('\n')).toContain('"display.type" must be a JSON path')
+            expect(r.errors.join('\n')).toContain('"display.summary" must be a JSON path')
+            expect(r.errors.join('\n')).toContain('Unknown field "display.nope"')
+        }
+        const notObject = parseProfile({ display: ['$.x'] })
+        expect(notObject.ok).toBe(false)
+    })
+
+    it('leaves an empty display out, and does not make the recorder read anything more', () => {
+        expect(parseProfile({ display: {} })).toEqual({ ok: true, profile: {} })
+        const withDisplay = { sequence: { useSseId: true as const, policy: 'consecutive' as const }, display: { summary: '$.text' } }
+        expect(sameProbe(withDisplay, { sequence: withDisplay.sequence })).toBe(true) // display is read when events are drawn, so no new connection is needed
+        expect(probeConfigOf(withDisplay)).toEqual(probeConfigOf({ sequence: withDisplay.sequence }))
+    })
+
+    it('says in the one-line description that a mapping is declared', () => {
+        expect(describeProfile({ display: { type: '$.kind', summary: '$.text' } })).toBe('display type/summary')
+    })
+})

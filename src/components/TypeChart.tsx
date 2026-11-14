@@ -1,10 +1,12 @@
 import type { EventMessage, Theme } from '../types'
+import type { DisplayMapping } from '../core/diagnostics/thresholds'
+import { typeShown } from '../doctor/displayMapping'
 import { typeShares } from '../utils/eventStats'
 
 /** Event types as horizontal bars: the name and the count in text (that is the data), the bar a quick comparison. */
-export function TypeChart({ events, theme }: { events: readonly EventMessage[]; theme: Theme }) {
+export function TypeChart({ events, theme, display }: { events: readonly EventMessage[]; theme: Theme; display?: DisplayMapping | undefined }) {
     const dark = theme === 'dark'
-    const shares = typeShares(events)
+    const shares = typeShares(events, 8, display?.type ? (e) => typeShown(e, display) : undefined)
     if (shares.length === 0) return null
     return (
         <div data-testid="type-chart">

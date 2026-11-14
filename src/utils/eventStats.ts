@@ -38,11 +38,11 @@ export interface TypeShare {
 }
 
 /** Every event type with its count and share, largest first; the tail beyond `limit` is folded into one "other" row. */
-export function typeShares(events: readonly EventMessage[], limit = 8): TypeShare[] {
+export function typeShares(events: readonly EventMessage[], limit = 8, typeOf: (e: EventMessage) => string = (e) => e.parsedType || e.type): TypeShare[] {
     // a Map: an event named __proto__ or constructor is an ordinary key
     const counts = new Map<string, number>()
     for (const e of events) {
-        const type = e.parsedType || e.type
+        const type = typeOf(e)
         counts.set(type, (counts.get(type) ?? 0) + 1)
     }
     const total = events.length

@@ -1,4 +1,4 @@
-import { memo, useState, useRef, useEffect, useMemo } from 'react'
+import { memo, useState, useRef, useEffect, useMemo, useSyncExternalStore } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import type { Theme, EventMessage, CustomFilter } from '../types'
 import type { TraceEntry } from '../hooks/useCorrelationTracker'
@@ -10,6 +10,8 @@ import { prettyPayload, diffPayload } from '../utils/displayData'
 import { getParsedData } from '../utils/eventUtils'
 import { formatRate, toRows, type EventRow } from '../utils/eventStats'
 import { shapeOf } from '../utils/jsonView'
+import { shownFor } from '../doctor/displayMapping'
+import { getProfile, subscribeProfile } from '../doctor/profileStore'
 
 type PayloadView = 'json' | 'tree' | 'raw'
 const COLLAPSE_KEY = 'sse.collapseRepeats'
@@ -89,6 +91,7 @@ export const EventsList = memo(function EventsList({
     const scrollContainerRef = useRef<HTMLDivElement>(null)
     const wrapperRef = useRef<HTMLDivElement>(null)
     const [highlightId, setHighlightId] = useState<string | null>(null)
+    const display = useSyncExternalStore(subscribeProfile, getProfile, () => undefined)?.display
     const [collapse, setCollapse] = useState(readCollapse)
     const [views, setViews] = useState<Record<string, PayloadView>>({})
     const rows = useMemo(() => toRows(filteredEvents, collapse), [filteredEvents, collapse])
@@ -240,6 +243,7 @@ export const EventsList = memo(function EventsList({
                             const isDiffActive = diffEventId === key
                             const trace = getTraceForEvent ? getTraceForEvent(event) : null
                             const parsed = getParsedData(event)
+                            const shown = shownFor(event, display)
                             const canTree = shapeOf(parsed) === 'object' || shapeOf(parsed) === 'array'
                             const view: PayloadView = (views[key] === 'tree' && !canTree) ? 'json' : (views[key] ?? 'json')
 
@@ -321,7 +325,17 @@ export const EventsList = memo(function EventsList({
                                                         {event.timestamp}
                                                     </span>
 
-                                                    {event.parsedType && (
+                                                    {shown.id && (
+                                                        <span data-testid="mapped-id" title="The id from this stream's display mapping" className={`inline-flex items-center gap-1 text-xs font-mono px-2.5 py-1 rounded-lg font-semibold ${isDark ? 'bg-slate-800/80 text-slate-200 border border-slate-700/50' : 'bg-slate-100 text-slate-800'}`}>
+                                                            {shown.id}
+                                                        </span>
+                                                    )}
+
+                                                    {shown.type ? (
+                                                        <span data-testid="mapped-type" title="The type from this stream's display mapping" className="text-xs px-2.5 py-1 rounded-lg font-bold uppercase tracking-wide bg-gradient-to-r from-teal-600 to-emerald-600 text-white shadow-sm">
+                                                            {shown.type}
+                                                        </span>
+                                                    ) : event.parsedType && (
                                                         <span className={`
                                                             text-xs px-2.5 py-1 rounded-lg font-bold uppercase tracking-wide
                                                             bg-gradient-to-r from-sky-500 to-blue-500 text-white
@@ -397,6 +411,12 @@ export const EventsList = memo(function EventsList({
                                                     </button>
                                                 </div>
                                             </div>
+
+                                            {shown.summary && (
+                                                <p data-testid="mapped-summary" className={`mb-2 text-sm font-semibold break-words ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                                                    {shown.summary}
+                                                </p>
+                                            )}
 
                                             <div className={`
                                                 rounded-xl p-4 font-mono text-sm overflow-x-auto
