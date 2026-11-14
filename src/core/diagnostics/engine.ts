@@ -49,7 +49,9 @@ const byImportance = (a: Finding, b: Finding): number =>
 
 export function createEngine(options: EngineOptions = {}): Engine {
     const thresholds = resolveThresholds(options.thresholds)
-    const profile = options.profile ?? {}
+    // The profile parser refuses an expected timing that is not above zero; an engine given a profile some other way gets the same treatment,
+    // so a number that is not usable is left out and the check falls back to what it measures, instead of printing it as its limit.
+    const profile = withUsableExpectations(options.profile ?? {})
     const model = new StreamModel(thresholds)
     // A rule listed twice (the default set plus the same rule added by hand) runs once.
     const rules = [...new Map((options.rules ?? defaultRules).map((rule) => [rule.id, rule])).values()]
@@ -144,4 +146,15 @@ export function analyze(observations: Iterable<EngineInput>, options: AnalyzeOpt
     }
     engine.end(options.endT ?? last)
     return { findings: engine.findings(), coverage: engine.coverage(), model: engine.model }
+}
+
+function withUsableExpectations(profile: StreamProfile): StreamProfile {
+    if (!profile.expected) return profile
+    const kept: NonNullable<StreamProfile['expected']> = {}
+    for (const key of ['firstEventMs', 'maxSilenceMs', 'heartbeatMs'] as const) {
+        const v = profile.expected[key]
+        if (typeof v === 'number' && Number.isFinite(v) && v > 0) kept[key] = v
+    }
+    const { expected: _dropped, ...rest } = profile
+    return Object.keys(kept).length > 0 ? { ...rest, expected: kept } : rest
 }

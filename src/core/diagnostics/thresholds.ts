@@ -110,7 +110,19 @@ export const DEFAULT_THRESHOLDS: Thresholds = {
     credentialParamNames: ['token', 'access_token', 'auth', 'key', 'api_key', 'jwt', 'password', 'secret', 'sig'],
 }
 
-export const resolveThresholds = (overrides?: Partial<Thresholds>): Thresholds => ({ ...DEFAULT_THRESHOLDS, ...overrides })
+/**
+ * The defaults with the overrides on top. An override that is not a number of at least zero (NaN, a negative, minus infinity, a string) is
+ * ignored and the default stays: a check cannot compare against it, and the finding would print "NaN s" as the limit it used. Zero and
+ * infinity are kept (a limit of 0 flags everything; infinity never fires), so a program that sets them gets what it asked for.
+ */
+export function resolveThresholds(overrides?: Partial<Thresholds>): Thresholds {
+    const out: Record<string, unknown> = { ...DEFAULT_THRESHOLDS }
+    for (const [key, value] of Object.entries(overrides ?? {})) {
+        if (value === undefined) continue
+        if (typeof DEFAULT_THRESHOLDS[key as keyof Thresholds] === 'number') { if (typeof value === 'number' && Number.isFinite(value) && value >= 0) out[key] = value } else out[key] = value
+    }
+    return out as unknown as Thresholds
+}
 
 /** What the author of a stream says to expect. Only the parts the rules in this batch use. */
 /**

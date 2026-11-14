@@ -3,6 +3,7 @@ import { getProfile, setProfile, subscribeProfile } from '../profileStore'
 import { DoctorStore } from '../doctorStore'
 import { ObservationRegistry } from '../observationRegistry'
 import { capture } from '../../core/testing/captureBuilder'
+import { analyze } from '../../core/diagnostics/engine'
 import type { StreamProfile } from '../../core/diagnostics/thresholds'
 
 afterEach(() => { setProfile(undefined); localStorage.clear() })
@@ -85,6 +86,32 @@ describe('the Doctor with a profile', () => {
         const view = h.store.getViews().get('main')!
         expect(view.profile?.sequence?.field).toBe('$.seq')
         expect(view.findings.some((f) => f.key === 'seq.integrity:gap')).toBe(true)
+        h.stop()
+    })
+
+    // Campaign C2: declaring, clearing and declaring again re-judges the same records each time. At every step the Doctor shows what a fresh
+    // analysis of those records under that profile shows, with one finding per key, never a leftover from the profile before.
+    it('re-judges the same records at every change of profile: what a fresh analysis gives, one finding per key, nothing left over', async () => {
+        const profile: { current: StreamProfile | undefined } = { current: undefined }
+        const h = setup(profile)
+        const records = numbered()
+        h.registry.receive('main', { captureId: 'c', batch: records })
+        await h.store.refresh()
+        h.advance(5000)
+
+        const sequenceKeys = (): string[] => h.store.getViews().get('main')!.findings.map((f) => f.key).filter((k) => k.startsWith('seq.')).sort()
+        const fresh = (p: StreamProfile | undefined): string[] => analyze(records as never, { ...(p ? { profile: p } : {}), endT: 5000 }).findings.map((f) => f.key).filter((k) => k.startsWith('seq.')).sort()
+        const consecutive: StreamProfile = { sequence: { field: '$.seq', policy: 'consecutive' } }
+        const monotonic: StreamProfile = { sequence: { field: '$.seq', policy: 'monotonic' } }
+
+        for (const next of [consecutive, undefined, monotonic, consecutive, consecutive, undefined]) {
+            h.change(next)
+            await h.store.refresh()
+            await h.store.refresh()
+            const keys = h.store.getViews().get('main')!.findings.map((f) => f.key)
+            expect(new Set(keys).size, 'one finding per key').toBe(keys.length)
+            expect(sequenceKeys(), `after switching to ${next ? next.sequence?.policy : 'no profile'}`).toEqual(fresh(next))
+        }
         h.stop()
     })
 })
