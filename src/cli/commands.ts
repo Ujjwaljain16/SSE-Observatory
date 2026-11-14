@@ -5,6 +5,7 @@ import { parseCapture, serializeCapture, newHeader, captureEndT, CaptureFormatEr
 import { importV1, isV1Recording, V1ImportError } from '../core/capture/importV1'
 import { redactCapture, RedactionError, type RedactionPolicy, type RedactionReport } from '../core/capture/redact'
 import { describePolicy, isCustomPolicy, parseRedactionPolicy } from '../core/capture/policy'
+import { isSensitiveName } from '../core/capture/secrets'
 import type { RedactedCapture } from '../core/capture/redacted'
 import { buildReport } from '../core/capture/derived/report'
 import { compareCaptures } from '../core/capture/derived/compare'
@@ -184,6 +185,19 @@ function resolveEnv(io: CliIo, name: string, secrets: SecretRegistry, what: stri
 
 const safeDecode = (text: string): string => { try { return decodeURIComponent(text) } catch { return text } }
 
+/**
+ * Whether a value typed into the URL's query is registered as a secret, which means every output has it replaced wherever it appears. A query value
+ * is a secret when its NAME says so (`token`, `api_key`, `password`...) or when its shape does (long, letters and digits mixed). Registering
+ * all of them was a defect: `?scale=0.05`, `?limit=1000` or `?debug=true` made every `0.05`, `1000` or `true` in the output a placeholder, which cut
+ * into the numbers of a JSON result and the records of the saved capture and left files that could not be read.
+ */
+export function isSecretQueryValue(name: string, value: string): boolean {
+    if (value === '') return false
+    if (isSensitiveName(name)) return true
+    // by shape: long, with both letters and digits (a token, an id), not a word or a number
+    return value.length >= 12 && /[A-Za-z]/.test(value) && /\d/.test(value) && !/^\d{4}-\d{2}-\d{2}/.test(value)
+}
+
 function requestFor(io: CliIo, args: ParsedArgs, url: string, secrets: SecretRegistry): { url: string; headers: Record<string, string>; sentNames: string[] } {
     const headers: Record<string, string> = { Accept: 'text/event-stream', 'Cache-Control': 'no-cache' }
     // Secrets typed into the URL itself (user:password@, ?token=) are secrets too: registered, so no message can echo them. A URL the
@@ -192,7 +206,7 @@ function requestFor(io: CliIo, args: ParsedArgs, url: string, secrets: SecretReg
     try { parsed = new URL(url) } catch { throw new CliError(`"${redactUrl(url)}" is not a valid URL.`, EXIT.usage) }
     secrets.register(safeDecode(parsed.username))
     secrets.register(safeDecode(parsed.password))
-    for (const value of parsed.searchParams.values()) secrets.register(value)
+    for (const [name, value] of parsed.searchParams) if (isSecretQueryValue(name, value)) secrets.register(value)
     const authEnv = stringFlag(args, 'auth-env')
     if (authEnv) headers['Authorization'] = `Bearer ${resolveEnv(io, authEnv, secrets, '--auth-env')}`
     const cookieEnv = stringFlag(args, 'cookie-env')
@@ -310,7 +324,9 @@ export async function observe(io: CliIo, args: ParsedArgs, target: string, secre
 /** Writes a capture: redacted unless --no-redact, so secrets never reach the disk. */
 export async function saveObserved(io: CliIo, args: ParsedArgs, capture: Capture, out: string): Promise<void> {
     const files = requireFiles(io)
-    if (args.flags['no-redact'] === true) await files.writeText(out, serializeCapture(capture))
+    // --no-redact is the recording as it is. The scrub of registered secrets that protects every other output is not applied to this one file:
+    // the secrets are in the base64 of the wire bytes, and replacing part of a base64 string leaves a capture that cannot be read back.
+    if (args.flags['no-redact'] === true) await (io.writeRawText ?? files.writeText)(out, serializeCapture(capture))
     else {
         const result = redactCapture(capture, await loadRedactionPolicy(io, args)) // secrets never reach the disk
         warnAboutRedaction(io, result.report)

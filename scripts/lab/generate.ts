@@ -64,6 +64,11 @@ const skipped: Skipped[] = []
 
 for (const route of FIXTURE_ROUTES) {
     if (only && !only.includes(route.id)) continue
+    if (route.testOnly) {
+        skipped.push({ id: route.id, family: route.family, title: route.title, reason: route.testOnly })
+        console.log(`skipped ${route.id.padEnd(22)} ${route.testOnly}`)
+        continue
+    }
     let reason = ''
     let kept = false
     for (const scale of SCALES) {

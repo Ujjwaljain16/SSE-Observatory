@@ -127,3 +127,37 @@ describe('S08: a hostile severity in a capture file', () => {
         expect(buildReport(safe, analysis, { format: 'md' })).not.toContain('evil.example')
     })
 })
+
+// Campaign E1: found by the canary sweep. A sensitive key inside an object or a list under a harmless name was kept, because the scan for
+// "name": value pairs matched the whole inner object as the value of "user" and went on after it.
+describe('E1: a secret key nested inside other objects and lists', () => {
+    it.each([
+        [`{"user":{"name":"ada","password":"${S}"}}`],
+        [`{"items":[{"token":"${S}","n":1}]}`],
+        [`{"a":{"b":{"c":{"api_key":"${S}"}}}}`],
+        [`{"rows":[{"id":1},{"id":2,"secret":"${S}"}]}`],
+        [`{"outer":{"list":[{"inner":{"authorization":"Bearer ${S}"}}]}}`],
+        [`{"user":{"name":"ada"},"password":"${S}"}`],
+        [`[{"x":{"clientSecret":"${S}"}}]`],
+    ])('does not keep it: %s', (text) => expect(leaks(text)).toBe(false))
+
+    it('keeps what is not secret, and the JSON stays valid', () => {
+        const b = healthyStart()
+        b.frame('tick', '1').comment(`{"user":{"name":"ada","password":"${S}"},"items":[{"n":1}]}`)
+        const c = localCapture(b.observations() as CaptureRecord[], { source: { kind: 'browser-app' }, request: { url: 'https://stream.test/e' } })
+        const text = serializeCapture(redactCapture(c).capture)
+        const comment = text.split('\n').map((l) => { try { return JSON.parse(l) as { kind?: string; text?: string } } catch { return {} } }).find((r) => r.kind === 'comment')!
+        const parsed = JSON.parse(comment.text!.trim()) as { user: { name: string; password: string }; items: Array<{ n: number }> }
+        expect(parsed.user.name).toBe('ada')
+        expect(parsed.user.password).toMatch(/^\[REDACTED_\d+\]$/)
+        expect(parsed.items).toEqual([{ n: 1 }])
+    })
+
+    it('stays fast on a large payload of nested objects and lists under harmless names', () => {
+        const row = `{"a":{"b":[{"c":{"d":"x"}},{"e":[1,2,3]}]},"f":"y"}`
+        const big = `[${Array.from({ length: 4000 }, () => row).join(',')}]` // about 200 KB
+        const start = performance.now()
+        expect(leaks(big)).toBe(false)
+        expect(performance.now() - start).toBeLessThan(3000)
+    })
+})

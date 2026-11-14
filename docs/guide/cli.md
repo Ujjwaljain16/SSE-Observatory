@@ -52,7 +52,7 @@ sse-doctor probe https://api.example.com/stream --header-env X-Api-Key=API_KEY -
 
 - `--auth-env VAR` sends `Authorization: Bearer $VAR`; `--header-env Name=VAR`, `--cookie-env VAR` and `--query-env param=VAR` do the same for a header, a cookie and a query parameter. A literal `--header "Name: value"` works but warns.
 - Every value the tool resolves is registered, and every output (screen, errors, files) is scrubbed of it, including URL-encoded and Base64 forms. Values shorter than 4 characters cannot be scrubbed safely and trigger a warning.
-- `probe --out` writes a **redacted** capture, so secrets never reach the disk. `--no-redact` writes the raw capture (with the wire bytes, for byte-exact replay) and warns; do not share it.
+- `probe --out` writes a **redacted** capture, so secrets never reach the disk. `--no-redact` writes the raw capture (with the wire bytes, for byte-exact replay) and warns; do not share it. It is the one file the command line writes **without** the scrub of the secrets you gave it (a scrub would cut into the base64 of the wire bytes and leave a file that cannot be read back), so the values of `--auth-env` and the other secret options may be in it.
 - `report` and `curl` accept only a redacted capture. Give them one made by `redact`, or add `--redact`.
 - `--redact-policy <file.json>` adds your own rules to the built-in ones for `redact`, `report`, `curl`, `repro` and `probe --out`: more payload key names, more patterns, and request headers whose value may stay. See [Redaction policy](/guide/redaction-policy). A policy with any problem stops the command with exit code 2 and a list of every problem, and nothing is written.
 

@@ -414,6 +414,12 @@
       "family": "F07",
       "title": "Flood of tiny events",
       "reason": "the capture is 382 KB, over the 40 KB a static lab ships"
+    },
+    {
+      "id": "f08-echo",
+      "family": "F08",
+      "title": "Echoes the credentials it was sent",
+      "reason": "it exists to test redaction: it echoes whatever credentials the request carries, so a capture of it would be a capture of the request."
     }
   ]
 }

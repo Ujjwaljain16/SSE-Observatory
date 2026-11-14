@@ -132,7 +132,8 @@ export async function startFixtureServer(options: FixtureServerOptions = {}): Pr
         }
 
         live.add(res)
-        res.writeHead(200, STREAM_HEADERS)
+        // the echo route also hands out a cookie of its own, so a Set-Cookie header can be searched for in every output
+        res.writeHead(200, path === '/f08/echo' ? { ...STREAM_HEADERS, 'Set-Cookie': `sid=${url.searchParams.get('sc') ?? 'echo-session'}` } : STREAM_HEADERS)
         res.flushHeaders()
         void script(ctx).then(() => { if (!closed) res.end() }, () => { if (!closed) res.destroy() })
     })

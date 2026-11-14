@@ -52,6 +52,6 @@ export function scrubbedIo(io: CliIo, secrets: SecretRegistry): CliIo {
         ...io,
         out: (text) => io.out(secrets.scrub(text)),
         err: (text) => io.err(secrets.scrub(text)),
-        ...(io.writeText ? { writeText: (path: string, text: string) => io.writeText!(path, secrets.scrub(text)) } : {}),
+        ...(io.writeText ? { writeText: (path: string, text: string) => io.writeText!(path, secrets.scrub(text)), writeRawText: (path: string, text: string) => io.writeText!(path, text) } : {}),
     }
 }

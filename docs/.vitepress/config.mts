@@ -50,6 +50,7 @@ export default defineConfig({
                         { text: 'Diagnostics', link: '/technical/diagnostics' },
                         { text: 'Capture Format', link: '/technical/capture-format' },
                         { text: 'Known Limitations', link: '/technical/limitations' },
+                        { text: 'Testing Campaign', link: '/technical/testing-campaign' },
                         { text: 'Security Review', link: '/technical/security' },
                         { text: 'Later Track', link: '/technical/roadmap-later' },
                         { text: 'Publishing sse-doctor', link: '/technical/publishing' }
