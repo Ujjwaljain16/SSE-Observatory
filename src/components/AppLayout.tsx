@@ -193,7 +193,7 @@ export function AppLayout() {
                         </div>
                         {showDoctor && (
                             <Suspense fallback={<DoctorLoading dark={theme === 'dark'} />}>
-                                <DoctorLanes theme={theme} streams={streams} />
+                                <DoctorLanes theme={theme} streams={streams} ratePerSecond={multiRate} />
                             </Suspense>
                         )}
                         <EventsList

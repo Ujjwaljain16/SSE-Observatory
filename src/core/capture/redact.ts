@@ -78,7 +78,8 @@ const SINGLE_QUOTE_PAIR = new RegExp(/'([^'\\\r\n]{1,64})'\s*:\s*'([^'\\\r\n]*)'
  * (a number, a uuid) matches no pattern and stays readable for sequence analysis, but an id that is a token is replaced,
  * the same way it is in the stream text.
  */
-const KEEP_KEYS = new Set(['kind', 'seq', 't', 'conn', 'domain', 'dataHash', 'b64', 'captureId'])
+// `shape` is the structure of a payload: field names and kinds, never a value (see payloadShape.ts). A field named `password` is a name, not a secret, and the redactor would otherwise read `password:s` as a pair and break the shape.
+const KEEP_KEYS = new Set(['kind', 'seq', 't', 'conn', 'domain', 'dataHash', 'b64', 'captureId', 'shape'])
 
 class Redactor {
     private readonly values = new Map<string, string>()

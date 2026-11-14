@@ -10,7 +10,7 @@ import type { DeliverySemantics, SequenceContract, StreamProfile } from './thres
 
 const POLICIES: SequenceContract['policy'][] = ['consecutive', 'monotonic']
 const DELIVERIES: DeliverySemantics[] = ['at_least_once', 'exactly_once', 'at_most_once']
-const TOP_KEYS = ['sequence', 'delivery', 'timestampField', 'display', 'expected', '$schema']
+const TOP_KEYS = ['sequence', 'delivery', 'timestampField', 'display', 'shapes', 'expected', '$schema']
 const DISPLAY_KEYS = ['type', 'summary', 'id'] as const
 
 /** The fields the recorder reads out of each payload as it is recorded. The rest of a profile is read when events are analysed. */
@@ -21,6 +21,7 @@ export function probeConfigOf(profile: StreamProfile | undefined): PayloadProbeC
         if (profile.sequence.partitionBy) config.partitionBy = profile.sequence.partitionBy
     }
     if (profile?.timestampField) config.timestampField = profile.timestampField
+    if (profile?.shapes === false) config.shape = false
     return config
 }
 
@@ -37,7 +38,7 @@ const isPath = (v: unknown): v is string => typeof v === 'string' && /^(\$\.?|)[
 export function parseProfile(value: unknown): ProfileCheck {
     if (!isObject(value)) return { ok: false, errors: ['A profile is a JSON object.'] }
     const errors: string[] = []
-    for (const key of Object.keys(value)) if (!TOP_KEYS.includes(key)) errors.push(`Unknown field "${key}". A profile has: sequence, delivery, timestampField, display, expected.`)
+    for (const key of Object.keys(value)) if (!TOP_KEYS.includes(key)) errors.push(`Unknown field "${key}". A profile has: sequence, delivery, timestampField, display, shapes, expected.`)
     const profile: StreamProfile = {}
 
     const seq = value['sequence']
@@ -76,6 +77,12 @@ export function parseProfile(value: unknown): ProfileCheck {
     if (ts !== undefined) {
         if (!isPath(ts)) errors.push('"timestampField" must be a JSON path such as $.ts.')
         else profile.timestampField = ts.trim()
+    }
+
+    const shapes = value['shapes']
+    if (shapes !== undefined) {
+        if (typeof shapes !== 'boolean') errors.push('"shapes" must be true or false.')
+        else if (shapes === false) profile.shapes = false
     }
 
     const display = value['display']
@@ -118,6 +125,7 @@ export function describeProfile(profile: StreamProfile | undefined): string {
     if (profile.delivery) parts.push(profile.delivery.replace(/_/g, ' '))
     if (profile.timestampField) parts.push(`timestamp ${profile.timestampField}`)
     if (profile.display) parts.push(`display ${Object.keys(profile.display).join('/')}`)
+    if (profile.shapes === false) parts.push('payload shapes not kept')
     if (profile.expected) parts.push('expected timings')
     return parts.length > 0 ? parts.join(', ') : 'empty profile'
 }

@@ -63,6 +63,7 @@ export function asProbeConfig(value: unknown): PayloadProbeConfig | undefined {
     }
     if (text(v['timestampField'])) out.timestampField = v['timestampField']
     if (text(v['partitionBy'])) out.partitionBy = v['partitionBy']
+    if (v['shape'] === false) out.shape = false
     return Object.keys(out).length > 0 ? out : undefined
 }
 

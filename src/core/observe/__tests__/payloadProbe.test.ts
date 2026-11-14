@@ -40,55 +40,55 @@ describe('PayloadProbe', () => {
     const ev = (data: string, over: Partial<{ event: string; id: string }> = {}) => ({ event: 'message', id: '', data, ...over })
 
     it('with no profile, only hashes: nothing is extracted from the payload', () => {
-        const r = new PayloadProbe({}, SALT).probe(ev('{"seq":1}'))
+        const r = new PayloadProbe({ shape: false }, SALT).probe(ev('{"seq":1}'))
         expect(Object.keys(r).sort()).toEqual(['dataHash'])
     })
 
     it('extracts the declared sequence, timestamp and partition from the payload', () => {
-        const probe = new PayloadProbe({ sequence: { field: '$.seq' }, timestampField: 'meta.ts', partitionBy: 'shard' }, SALT)
+        const probe = new PayloadProbe({ shape: false, sequence: { field: '$.seq' }, timestampField: 'meta.ts', partitionBy: 'shard' }, SALT)
         const r = probe.probe(ev('{"seq":42,"meta":{"ts":1700000000000},"shard":"eu"}'))
         expect(r.extracted).toEqual({ seq: 42, ts: 1700000000000, partition: 'eu' })
     })
 
     it('reads an ISO timestamp, a string sequence and a numeric partition', () => {
-        const probe = new PayloadProbe({ sequence: { field: 'id' }, timestampField: 'at', partitionBy: 'p' }, SALT)
+        const probe = new PayloadProbe({ shape: false, sequence: { field: 'id' }, timestampField: 'at', partitionBy: 'p' }, SALT)
         expect(probe.probe(ev('{"id":"evt-9","at":"2025-01-01T00:00:00Z","p":3}')).extracted)
             .toEqual({ seq: 'evt-9', ts: Date.parse('2025-01-01T00:00:00Z'), partition: '3' })
     })
 
     it('can use the SSE id as the sequence (numeric ids become numbers), and the event name as the partition', () => {
-        const probe = new PayloadProbe({ sequence: { useSseId: true }, partitionBy: '$event' }, SALT)
+        const probe = new PayloadProbe({ shape: false, sequence: { useSseId: true }, partitionBy: '$event' }, SALT)
         expect(probe.probe(ev('x', { id: '104', event: 'order' })).extracted).toEqual({ seq: 104, partition: 'order' })
         expect(probe.probe(ev('x', { id: 'abc-1', event: 'order' })).extracted).toEqual({ seq: 'abc-1', partition: 'order' })
         expect(probe.probe(ev('x', { id: '', event: 'order' })).extracted).toEqual({ partition: 'order' }) // no id, no seq
     })
 
     it('ignores values of the wrong type instead of guessing', () => {
-        const probe = new PayloadProbe({ sequence: { field: 'seq' }, timestampField: 'ts' }, SALT)
+        const probe = new PayloadProbe({ shape: false, sequence: { field: 'seq' }, timestampField: 'ts' }, SALT)
         expect(probe.probe(ev('{"seq":{"a":1},"ts":"not a date"}')).extracted).toBeUndefined()
         expect(probe.probe(ev('{"seq":null,"ts":true}')).extracted).toBeUndefined()
     })
 
     it('does nothing for a non-JSON payload, but still hashes it', () => {
-        const r = new PayloadProbe({ sequence: { field: 'seq' } }, SALT).probe(ev('plain text, not json'))
+        const r = new PayloadProbe({ shape: false, sequence: { field: 'seq' } }, SALT).probe(ev('plain text, not json'))
         expect(r.extracted).toBeUndefined()
         expect(r.dataHash).toMatch(/^[0-9a-f]+$/)
     })
 
     it('recognises heartbeats by event name or by a data pattern', () => {
-        const probe = new PayloadProbe({ heartbeat: { events: ['ping'], dataPattern: '^\\{\\}$' } }, SALT)
+        const probe = new PayloadProbe({ shape: false, heartbeat: { events: ['ping'], dataPattern: '^\\{\\}$' } }, SALT)
         expect(probe.probe(ev('anything', { event: 'ping' })).extracted).toEqual({ isHeartbeat: true })
         expect(probe.probe(ev('{}')).extracted).toEqual({ isHeartbeat: true })
         expect(probe.probe(ev('{"real":1}')).extracted).toEqual({ isHeartbeat: false })
     })
 
     it('survives an invalid heartbeat pattern', () => {
-        const probe = new PayloadProbe({ heartbeat: { dataPattern: '([' } }, SALT)
+        const probe = new PayloadProbe({ shape: false, heartbeat: { dataPattern: '([' } }, SALT)
         expect(probe.probe(ev('x')).extracted).toEqual({ isHeartbeat: false })
     })
 
     it('does not parse an oversized payload: marks it truncated and extracts nothing from it', () => {
-        const probe = new PayloadProbe({ sequence: { field: 'seq' }, maxChars: 50 }, SALT)
+        const probe = new PayloadProbe({ shape: false, sequence: { field: 'seq' }, maxChars: 50 }, SALT)
         const big = JSON.stringify({ seq: 1, pad: 'x'.repeat(200) })
         const r = probe.probe(ev(big))
         expect(r.payloadTruncated).toBe(true)

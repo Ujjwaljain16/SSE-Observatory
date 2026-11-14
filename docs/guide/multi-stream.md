@@ -21,3 +21,9 @@ A stream that sends `event: end` is treated as finished and the lane stops. A st
 ## Correlating across streams
 
 If events in different lanes carry the same correlation id in their payload, they are grouped into one trace in the Trace panel. The fields checked, at the top level and one level down, are `traceId`, `requestId`, `correlationId` and `transactionId` (and their `snake_case`, `kebab-case` and `x-` header variants). `spanId`, `userId` and `sessionId` are intentionally not used: they identify a single span or group unrelated activity.
+
+## The fleet strip
+
+With two or more lanes, opening the Doctor shows a **Fleet** strip above the lane cards: how many lanes there are and in what state, the events so far and the rate across the lanes, the open findings added up (and the worst), which open lane has gone longest without an event, which lane's page processing is slowest, the reconnects, and the recording held. **Per lane** is the same in a table, one row a lane.
+
+It is only a sum of what each lane's Doctor already shows, so it says nothing a lane's card does not; its job is to tell you which card to open first. "Longest since an event" is not a verdict: a lane may be quiet by design. **Save summary (JSON)** writes the figures and the lane names to a file (counts and names only: no URLs, no payloads) to attach to a ticket or compare with a later run.

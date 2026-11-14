@@ -13,11 +13,12 @@ import { resumeLastEventId } from './r08ResumeLastEventId'
 import { sequenceIntegrity } from './r09SequenceIntegrity'
 import { consumerSlow } from './r11ConsumerSlow'
 import { proxyMasking } from './r13ProxyMasking'
+import { schemaDrift } from './r16SchemaDrift'
 
-export { contentTypeAndStatus, framing, headersHints, firstEvent, stallSilent, heartbeat, credentialsInMetadata, clockDiscontinuity, deliveryBursty, reconnectLoop, resumeLastEventId, sequenceIntegrity, consumerSlow, proxyMasking }
+export { contentTypeAndStatus, framing, headersHints, firstEvent, stallSilent, heartbeat, credentialsInMetadata, clockDiscontinuity, deliveryBursty, reconnectLoop, resumeLastEventId, sequenceIntegrity, consumerSlow, proxyMasking, schemaDrift }
 
-/** Every rule shipped: R01-R13 and R15 (R14, comparing two captures, is `compareCaptures`). */
+/** Every rule shipped: R01-R13, R15 and R16 (R14, comparing two captures, is `compareCaptures`). */
 export const defaultRules: Rule[] = [
     contentTypeAndStatus, framing, headersHints, firstEvent, stallSilent, deliveryBursty, reconnectLoop, resumeLastEventId, sequenceIntegrity,
-    heartbeat, consumerSlow, credentialsInMetadata, proxyMasking, clockDiscontinuity,
+    heartbeat, consumerSlow, credentialsInMetadata, proxyMasking, clockDiscontinuity, schemaDrift,
 ]

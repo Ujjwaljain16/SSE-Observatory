@@ -33,7 +33,7 @@ Every record has `seq` (strictly +1 per capture, a total order even when two rec
 | `heartbeatSeries`, `truncated` | what the recorder folded or dropped to stay within its memory cap. Nothing is dropped silently |
 | `consumer` | page-side samples of how long events waited between arriving and being processed |
 
-Event records carry metadata, not payload text. Rules read the extracted values, never raw payloads. Payload text exists only where a capture keeps the wire bytes, or (for an imported v1 recording) in the event's `data`.
+Event records carry metadata, not payload text. Rules read the extracted values, never raw payloads. `extracted.shape` is the structure of a JSON payload: field paths and kinds, sorted, such as `$:o|id:n|price:n` (never a value). It is kept as it is when a capture is redacted, because a field named `password` is a name and not a secret. Payload text exists only where a capture keeps the wire bytes, or (for an imported v1 recording) in the event's `data`.
 
 ## Two kinds of capture
 

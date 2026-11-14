@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Theme } from '../../types'
 import { deleteAllCaptures, pruneOlderThan } from '../../doctor/captureLibrary'
+import { getProfile, setProfile } from '../../doctor/profileStore'
 import { RETENTION_CHOICES, libraryRetentionDays, recordingEnabled, setLibraryRetentionDays, setRecordingEnabled } from '../../doctor/recordingConfig'
 
 interface Props {
@@ -23,6 +24,7 @@ export default function PrivacySettings({ theme, count, onChanged }: Props) {
 
     const [recording, setRecording] = useState(recordingEnabled)
     const [days, setDays] = useState(libraryRetentionDays)
+    const [shapes, setShapes] = useState(() => getProfile()?.shapes !== false)
     const [confirming, setConfirming] = useState(false)
     const [notice, setNotice] = useState('')
 
@@ -59,6 +61,28 @@ export default function PrivacySettings({ theme, count, onChanged }: Props) {
                 <span>
                     Record what the Doctor reads
                     <span className={`block text-xs ${muted}`}>Turn off to keep nothing for diagnosis: the viewer works as before, and the Doctor shows nothing. It applies to streams started after the change.</span>
+                </span>
+            </label>
+
+            <label className={`flex items-start gap-2 text-sm ${strong}`}>
+                <input
+                    type="checkbox"
+                    checked={shapes}
+                    data-testid="privacy-shapes"
+                    className="mt-1"
+                    onChange={(e) => {
+                        setShapes(e.target.checked)
+                        // kept in the profile, so the command line reads the same switch; false is the only value stored
+                        const current = getProfile() ?? {}
+                        const { shapes: _drop, ...rest } = current
+                        void _drop
+                        const next = e.target.checked ? rest : { ...rest, shapes: false as const }
+                        setProfile(Object.keys(next).length > 0 ? next : undefined)
+                    }}
+                />
+                <span>
+                    Record the structure of JSON payloads
+                    <span className={`block text-xs ${muted}`}>Field names and kinds (never values), so the Doctor can see a producer change its format. Turn off to keep no payload structure at all. It applies to streams started after the change.</span>
                 </span>
             </label>
 

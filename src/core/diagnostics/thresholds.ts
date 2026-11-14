@@ -61,6 +61,14 @@ export interface Thresholds {
     consumerWindowMs: number
     /** R11: the ingest queue limit; reaching it drops events. */
     consumerQueueCap: number
+    /** R16: events of one name that make up its baseline shape. */
+    driftBaselineEvents: number
+    /** R16: the recent events of one name that are compared with the baseline. */
+    driftWindowEvents: number
+    /** R16: the share of the window that must have the same new shape for it to count as a change, not a stray event. */
+    driftWindowShare: number
+    /** R16: a field is part of the baseline when this share of the baseline events had it. */
+    driftCoreShare: number
     /** R12: query parameter names that look like credentials (compared case-insensitively, `-` and `_` alike). */
     credentialParamNames: readonly string[]
 }
@@ -95,6 +103,10 @@ export const DEFAULT_THRESHOLDS: Thresholds = {
     consumerQueueGrowth: 1000,
     consumerWindowMs: 5000,
     consumerQueueCap: 20_000,
+    driftBaselineEvents: 20,
+    driftWindowEvents: 10,
+    driftWindowShare: 0.8,
+    driftCoreShare: 0.9,
     credentialParamNames: ['token', 'access_token', 'auth', 'key', 'api_key', 'jwt', 'password', 'secret', 'sig'],
 }
 
@@ -137,6 +149,8 @@ export interface StreamProfile {
      * summary, an id). Only the app reads it, when events are drawn; no check depends on it.
      */
     display?: DisplayMapping | undefined
+    /** `false` stops the recorder keeping the structure (field names and kinds) of JSON payloads, which the schema drift check needs. Default: kept. */
+    shapes?: boolean | undefined
     expected?: {
         /** Time to the first event, replaces `firstByteToEventMs`. */
         firstEventMs?: number | undefined
