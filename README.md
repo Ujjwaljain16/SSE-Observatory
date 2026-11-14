@@ -62,7 +62,7 @@ Export a report, a shareable capture, a curl command or a test scenario. Redacti
 - **Mock server and replay:** export a session, replay it from a private URL at adjustable speed; finished replays send `event: end`.
 - **Secure proxy:** `/api/sse` relays streams for sites without CORS. It is closed by default in production, blocks private and metadata addresses after DNS resolution, pins the connection to the validated IP and keeps tokens out of URLs.
 - **Resilient transport:** one connection per URL shared across tabs through a SharedWorker; if the worker is missing or dies, the tab notices and carries on in the page.
-- **Stream Doctor:** fourteen rules over what the client observed (status and content type, framing, first-event timing, silences, bursts, reconnect loops, resume with `Last-Event-ID`, sequence gaps and duplicates, heartbeats, slow consumers, credentials in the request, proxy masking), each shown as facts, deductions and limits, with the records behind them.
+- **Stream Doctor:** fifteen rules over what the client observed (status and content type, framing, first-event timing, silences, bursts, reconnect loops, resume with `Last-Event-ID`, sequence gaps and duplicates, heartbeats, slow consumers, credentials in the request, proxy masking, clock jumps, payload format changes), each shown as facts, deductions and limits, with the records behind them.
 - **Capture, redact, replay, test:** `.sse-capture` files with redaction by numbered placeholders, a `sse-doctor` command line, and scenarios that turn a captured failure into a CI check.
 
 ### The Stream Doctor
