@@ -12,6 +12,7 @@ import { Tabs } from './Tabs'
 import SequenceView from './SequenceView'
 import TimelineView from './TimelineView'
 import RequestView from './RequestView'
+import FlowView from './FlowView'
 import ProfileEditor from './ProfileEditor'
 
 interface Props {
@@ -129,6 +130,7 @@ export default function DoctorPanel({ theme, streamId, title = 'Stream Doctor', 
                         tabs={[
                             { id: 'findings', label: 'Findings', badge: open.length > 0 ? String(open.length) : undefined },
                             { id: 'request', label: 'Request' },
+                            { id: 'flow', label: 'Flow' },
                             { id: 'timeline', label: 'Timeline', badge: view.health.reconnects > 0 ? `${view.health.reconnects + 1} attempts` : undefined },
                             { id: 'sequence', label: 'Sequence', badge: declared ? 'declared' : undefined },
                             ...(ownsProfile ? [{ id: 'captures', label: 'Captures' }, { id: 'profile', label: 'Profile' }] : []),
@@ -179,6 +181,7 @@ export default function DoctorPanel({ theme, streamId, title = 'Stream Doctor', 
                             </div>
                         )}
                         {tab === 'request' && <RequestView theme={theme} streamId={streamId} view={view} sectionHeading={sectionHeading} />}
+                        {tab === 'flow' && <FlowView theme={theme} streamId={streamId} view={view} />}
                         {tab === 'timeline' && <TimelineView theme={theme} streamId={streamId} view={view} />}
                         {tab === 'sequence' && <SequenceView theme={theme} streamId={streamId} view={view} {...(ownsProfile ? { onDeclare: () => setTab('profile') } : {})} />}
                         {tab === 'captures' && ownsProfile && (

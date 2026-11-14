@@ -1,0 +1,23 @@
+{"format":"sse-capture","version":"2.0","createdAt":"2026-11-14T18:44:38.512Z","tool":{"name":"sse-observatory","version":"dev"},"clock":{"origin":"monotonic"},"capabilities":["connect","response","chunks","comments","violations","events","phases","reconnects","payload"],"kind":"sanitized","source":{"kind":"fixture","client":"node-undici"},"request":{"url":"https://lab.example/f06-skips","method":"GET","headers":{}},"profile":{"sequence":{"useSseId":true,"policy":"consecutive"}},"redaction":{"policy":"default","version":1,"applied":[],"placeholders":0}}
+{"seq":0,"t":0.035799999997834675,"conn":0,"domain":"transport","kind":"phase","phase":"connecting","info":{"attempt":0}}
+{"seq":1,"t":0.11849999999685679,"conn":0,"domain":"transport","kind":"connect","attempt":0,"url":"http://127.0.0.1:59246/f06/skips?scale=[redacted]","method":"GET","headerNames":["accept","cache-control"],"sentLastEventId":""}
+{"seq":2,"t":0.8911999999982072,"conn":0,"domain":"transport","kind":"response","status":200,"contentType":"text/event-stream; charset=utf-8","redirected":false,"headers":{"content-type":"text/event-stream; charset=utf-8","cache-control":"no-cache","transfer-encoding":"chunked","x-accel-buffering":"no"},"ttfbMs":1}
+{"seq":3,"t":0.9002999999938766,"conn":0,"domain":"transport","kind":"phase","phase":"open","info":{"attempt":0}}
+{"seq":4,"t":81.60439999999653,"conn":0,"domain":"transport","kind":"chunk","bytes":33}
+{"seq":5,"t":81.92329999999492,"conn":0,"domain":"transport","kind":"event","event":"tick","sseId":"1","dataBytes":7,"dataHash":"1f87650e964abc","extracted":{"seq":1,"shape":"$:o|n:n"}}
+{"seq":6,"t":156.62790000000678,"conn":0,"domain":"transport","kind":"chunk","bytes":33}
+{"seq":7,"t":156.7213000000047,"conn":0,"domain":"transport","kind":"event","event":"tick","sseId":"2","dataBytes":7,"dataHash":"cc47645bcacf0","extracted":{"seq":2,"shape":"$:o|n:n"}}
+{"seq":8,"t":235.21210000000428,"conn":0,"domain":"transport","kind":"chunk","bytes":33}
+{"seq":9,"t":235.306700000001,"conn":0,"domain":"transport","kind":"event","event":"tick","sseId":"3","dataBytes":7,"dataHash":"15c80f1601a791","extracted":{"seq":3,"shape":"$:o|n:n"}}
+{"seq":10,"t":321.25530000000435,"conn":0,"domain":"transport","kind":"chunk","bytes":33}
+{"seq":11,"t":321.3133999999991,"conn":0,"domain":"transport","kind":"event","event":"tick","sseId":"4","dataBytes":7,"dataHash":"d193e505cc939","extracted":{"seq":4,"shape":"$:o|n:n"}}
+{"seq":12,"t":321.39010000000417,"conn":0,"domain":"transport","kind":"reconnect","attempt":1,"delayMs":20,"reason":"Stream closed by server","lastEventIdSent":"4"}
+{"seq":13,"t":321.3945999999996,"conn":0,"domain":"transport","kind":"phase","phase":"reconnecting","info":{"attempt":1,"delayMs":20,"reason":"Stream closed by server"}}
+{"seq":14,"t":344.3793000000005,"conn":1,"domain":"transport","kind":"connect","attempt":1,"url":"http://127.0.0.1:59246/f06/skips?scale=[redacted]","method":"GET","headerNames":["accept","cache-control","last-event-id"],"sentLastEventId":"4"}
+{"seq":15,"t":345.5301000000036,"conn":1,"domain":"transport","kind":"response","status":200,"contentType":"text/event-stream; charset=utf-8","redirected":false,"headers":{"content-type":"text/event-stream; charset=utf-8","cache-control":"no-cache","transfer-encoding":"chunked","x-accel-buffering":"no"},"ttfbMs":1}
+{"seq":16,"t":345.5430000000051,"conn":1,"domain":"transport","kind":"phase","phase":"open","info":{"attempt":0}}
+{"seq":17,"t":434.5555000000022,"conn":1,"domain":"transport","kind":"chunk","bytes":56}
+{"seq":18,"t":434.6337000000058,"conn":1,"domain":"transport","kind":"event","event":"tick","sseId":"8","dataBytes":7,"dataHash":"1dca155e090f7a","extracted":{"seq":8,"shape":"$:o|n:n"}}
+{"seq":19,"t":434.6432999999961,"conn":1,"domain":"transport","kind":"event","event":"end","sseId":"8","dataBytes":4,"dataHash":"cd5510e45fc6a"}
+{"seq":20,"t":434.70470000000205,"conn":1,"domain":"transport","kind":"phase","phase":"ended","info":{"attempt":0,"reason":"The server ended the stream"}}
+{"footer":{"endReason":"stopped","counts":{"phase":5,"connect":2,"response":2,"chunk":5,"event":6,"reconnect":1},"endT":434.70470000000205,"integrity":{"algorithm":"sha256","value":"d1dc31eb1573d502d4eca4f0891d86181dececd98938089cfb6e9d74f4cd8ac8"}}}

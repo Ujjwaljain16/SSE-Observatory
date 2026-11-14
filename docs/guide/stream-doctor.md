@@ -45,7 +45,7 @@ In Multi-Stream each lane gets its own card in the lane's colour, the lane with 
 
 ## Sections
 
-The panel has six tabs. **Findings** is described above. **Request**, **Timeline** and **Captures** are about the connection and about recordings you keep. **Sequence** and **Profile** are about the numbers in your events.
+The panel has seven tabs. **Findings** is described above. **Request**, **Flow**, **Timeline** and **Captures** are about the connection and about recordings you keep. **Sequence** and **Profile** are about the numbers in your events.
 
 ### Request
 
@@ -54,6 +54,19 @@ One entry per connection attempt, newest first, each with what was asked and wha
 - **Request**: the method and the URL as recorded (credentials and query values are already replaced), the names of the request headers that were sent, and the `Last-Event-ID` the attempt resumed from. Header *values* are never recorded, only names.
 - **Response**: the status, the content type, whether there was a redirect, and the response headers the Doctor keeps (the ones that explain buffering, caching and proxy behaviour: `Cache-Control`, `Content-Encoding`, `Via`, `X-Accel-Buffering`, the proxy's own `X-SSE-*` tags and a few more). A cross-origin response only shows the headers its server exposes with CORS, so a short list can mean that.
 - **Timing**: until the response headers, until the first bytes, until the first event, and how long the attempt lasted (so far, if it is still open), as differences of record times, the same figures the checks use.
+
+### Flow
+
+The newest 200 events as they arrived, and how long the page took to process them, drawn on one time axis in the recording's own clock:
+
+- **Arrived**: a tick for each event reaching the client from the network.
+- **Page**: a bar for each stretch of the page's own processing, from when the oldest event of that batch arrived until it was handled. A teal bar waited 250 ms or less; an amber one with an outline waited longer.
+- **Queued**: how many events were still waiting after each batch.
+- A dashed red line marks where the connection was made again.
+
+Under the drawing, **Where the time went** says in plain sentences what was measured: how many events, how fast, the time between them (middle, slowest 5%, worst), how many processing batches, how long the oldest event of a batch waited (the same three figures), the share of slow batches, and, only when the wait is well over the usual time between events, that the page is processing more slowly than events arrive. A table lists the five slowest batches.
+
+**What this does not show**, and says so on the page: when the producer created or wrote each event, how long one sat in a proxy, and how long *parsing* took. The page reports its processing in batches, so a batch's wait is the wait of its oldest event, an upper bound for the rest; and parsing is part of that wait, not separated from it (the `npm run bench` script measures the cost of the engine and the recorder on their own).
 
 ### Timeline
 
@@ -97,6 +110,14 @@ At the bottom of the Captures tab: what is kept where (the live recording in thi
 - **Record what the Doctor reads**: turn it off to keep nothing for diagnosis. The viewer works as before and the Doctor says recording is off. It applies to streams started after the change.
 - **Delete saved captures after** never, 1, 7, 30 or 90 days, counted from when a capture was saved. It is checked when the app starts and when you change it, and a capture's bookmarks go with it.
 - **Delete all saved captures** asks first, then removes every saved capture and bookmark.
+
+### Failure lab
+
+At the bottom of the Captures tab, **Failure lab** holds the built-in test streams: each a known fault (a wrong content type, a stream that goes silent, one that buffers, a reconnect that skips events, a payload that changes format) with its healthy twin. **Run the Doctor** reads the stream's recording with the app's own thresholds and shows what it found next to what the stream's author said it must: each expected finding with a tick or a cross, and each "must not appear" the same way. **Show its healthy twin** does the same for the stream that behaves, and **Save to my captures** puts the recording in your library so you can compare it with another.
+
+It needs no server: the recordings are static files that ship with the app (`public/lab`), fetched when you open the lab. A test (`labCaptures.test.ts`) re-reads every one with the current rules and fails if any no longer shows what it should, so the lab cannot drift from what the Doctor does; if a rule changes, rebuild it with `npm run lab:build` (about two minutes: it records each fixture, mostly at a quarter of real speed and the detectors that need real-time gaps at full speed, and keeps a capture only when the Doctor meets the fixture's expectations under the default thresholds).
+
+Some fixtures are **not** in the lab, and the lab lists them with the reason: the ones that need something a plain recording does not have (the slow page consumer needs the page's own samples, one fault needs a token in the request, one needs a stall to be judged without a rhythm to compare with) and the ones too large to ship (the flood of 2,000 events, the cap test). Nothing is shown as working that does not.
 
 ### Saved filters
 
