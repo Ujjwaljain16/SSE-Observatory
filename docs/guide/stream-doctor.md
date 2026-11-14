@@ -112,9 +112,10 @@ nothing (a server may legitimately send 104 and then 111). The profile is where 
   counted separately per `$.shard` or per event name (`$event`).
 - **Delivery**: at least once (a replay after a reconnect is expected), exactly once (a repeat is an error), at most once.
 - **Producer timestamp** and the timings you expect (time to the first event, longest silence, heartbeat interval).
+- **How to show the events** (optional): a [display mapping](/guide/viewing-events#display-mapping) that puts a stream's own format into the list.
 
 **Fields in recent events** lists the numeric fields of the latest events (a counter that goes up by one is listed first,
-then things that look like times), each with *Use as sequence* and *Use as timestamp*; the star pins a field to the top.
+then things that look like times), each with *Use as sequence* and *Use as timestamp*; the star pins a field to the top of the list and [follows it in Stats](/guide/viewing-events#followed-fields).
 Picking one only fills the form. **Edit as JSON** shows the same profile as the file the command line reads with
 `--profile`; a profile that cannot be used is refused with a plain message for every problem in it.
 

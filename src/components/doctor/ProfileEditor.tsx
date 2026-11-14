@@ -5,8 +5,9 @@ import { useStreamContext } from '../../context/StreamContext'
 import { describeProfile, parseProfile, sameProbe } from '../../core/diagnostics/profile'
 import type { StreamProfile } from '../../core/diagnostics/thresholds'
 import { suggestFields } from '../../doctor/fieldSuggestions'
-import { getPins, setPins } from '../../doctor/pins'
+import { getPins, setPins, subscribePins } from '../../doctor/pins'
 import { getProfile, setProfile, subscribeProfile } from '../../doctor/profileStore'
+import { shownFor } from '../../doctor/displayMapping'
 
 interface Props {
     theme: Theme
@@ -25,6 +26,9 @@ function formFrom(p: StreamProfile | undefined) {
         partitionBy: s?.partitionBy ?? '',
         delivery: p?.delivery ?? '',
         timestampField: p?.timestampField ?? '',
+        displayType: p?.display?.type ?? '',
+        displaySummary: p?.display?.summary ?? '',
+        displayId: p?.display?.id ?? '',
         firstEventMs: p?.expected?.firstEventMs?.toString() ?? '',
         maxSilenceMs: p?.expected?.maxSilenceMs?.toString() ?? '',
         heartbeatMs: p?.expected?.heartbeatMs?.toString() ?? '',
@@ -36,10 +40,15 @@ function profileFrom(f: ReturnType<typeof formFrom>): unknown {
     for (const [key, text] of [['firstEventMs', f.firstEventMs], ['maxSilenceMs', f.maxSilenceMs], ['heartbeatMs', f.heartbeatMs]] as const) {
         if (text.trim() !== '') expected[key] = Number(text)
     }
+    const display: Record<string, string> = {}
+    for (const [key, text] of [['type', f.displayType], ['summary', f.displaySummary], ['id', f.displayId]] as const) {
+        if (text.trim() !== '') display[key] = text.trim()
+    }
     return {
         ...(f.mode !== 'none' ? { sequence: { policy: f.policy, ...(f.mode === 'sse-id' ? { useSseId: true } : { field: f.field.trim() }), ...(f.partitionBy.trim() ? { partitionBy: f.partitionBy.trim() } : {}) } } : {}),
         ...(f.delivery ? { delivery: f.delivery } : {}),
         ...(f.timestampField.trim() ? { timestampField: f.timestampField.trim() } : {}),
+        ...(Object.keys(display).length > 0 ? { display } : {}),
         ...(Object.keys(expected).length > 0 ? { expected } : {}),
     }
 }
@@ -52,7 +61,7 @@ export default function ProfileEditor({ theme }: Props) {
     const [jsonText, setJsonText] = useState<string | null>(null)
     const [errors, setErrors] = useState<string[]>([])
     const [message, setMessage] = useState('')
-    const [pins, setPinsState] = useState(getPins)
+    const pins = useSyncExternalStore(subscribePins, getPins, () => [])
 
     const muted = dark ? 'text-slate-300' : 'text-slate-700'
     const strong = dark ? 'text-white' : 'text-slate-900'
@@ -69,6 +78,14 @@ export default function ProfileEditor({ theme }: Props) {
         const found = suggestFields(payloads)
         return [...found.filter((f) => pins.includes(f.path)), ...found.filter((f) => !pins.includes(f.path))]
     }, [allEvents, mergedEvents, pins])
+
+    // What the display mapping in the form would show for the newest event, so a path can be checked before it is saved.
+    const preview = useMemo(() => {
+        const newest = (allEvents.length > 0 ? allEvents : mergedEvents)[0]
+        if (!newest) return null
+        const checked = parseProfile(profileFrom(form))
+        return checked.ok ? shownFor(newest, checked.profile.display) : null
+    }, [allEvents, mergedEvents, form])
 
     const save = (candidate: unknown) => {
         const checked = parseProfile(candidate)
@@ -87,7 +104,6 @@ export default function ProfileEditor({ theme }: Props) {
     const togglePin = (path: string) => {
         const next = pins.includes(path) ? pins.filter((p) => p !== path) : [...pins, path]
         setPins(next)
-        setPinsState(next)
     }
 
     return (
@@ -140,6 +156,26 @@ export default function ProfileEditor({ theme }: Props) {
                 <label className={`block text-sm ${strong}`}>Producer timestamp (optional)
                     <input value={form.timestampField} onChange={(e) => set('timestampField', e.target.value)} placeholder="$.ts" className={`${field} block mt-1 w-full max-w-xs`} data-testid="profile-timestamp" />
                 </label>
+
+                <fieldset className="space-y-2" data-testid="profile-display">
+                    <legend className={`text-sm font-semibold ${strong}`}>How to show the events (optional)</legend>
+                    <p className={`text-xs ${muted}`}>
+                        Map this stream's own format onto the list: the value at each path is shown as the event's type, as a one-line summary above the payload, or as its id.
+                        A path that finds nothing in an event leaves that part as it is. Nothing here changes what the checks do.
+                    </p>
+                    <div className="flex flex-wrap gap-3">
+                        {([['displayType', 'Type', '$.object'], ['displaySummary', 'Summary', '$.choices[0].delta.content'], ['displayId', 'Id', '$.id']] as const).map(([key, label, example]) => (
+                            <label key={key} className={`text-sm ${strong}`}>{label}
+                                <input value={form[key]} onChange={(e) => set(key, e.target.value)} placeholder={example} className={`${field} block mt-1 w-56`} data-testid={`profile-${key}`} />
+                            </label>
+                        ))}
+                    </div>
+                    {preview && Object.keys(preview).length > 0 && (
+                        <p className={`text-xs ${muted}`} data-testid="profile-display-preview">
+                            Newest event would show: {Object.entries(preview).map(([k, v]) => `${k} "${v}"`).join(', ')}.
+                        </p>
+                    )}
+                </fieldset>
 
                 <fieldset className="space-y-2">
                     <legend className={`text-sm font-semibold ${strong}`}>What to expect (optional, in milliseconds)</legend>

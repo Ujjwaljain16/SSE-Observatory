@@ -1,7 +1,7 @@
 // pure layout component reading state exclusively from context
 // keeps render cycles separate from complex stream orchestration logic
 
-import { lazy, Suspense, useMemo, useState, useEffect } from 'react'
+import { lazy, Suspense, useMemo, useState, useEffect, useSyncExternalStore } from 'react'
 import { useThemeContext } from '../context/ThemeContext'
 import { useUIContext } from '../context/UIContext'
 import { useStreamContext } from '../context/StreamContext'
@@ -30,6 +30,8 @@ import { DoctorToggle } from './doctor/DoctorToggle'
 import { exportEvents, getEventStats } from '../utils/exportUtils'
 import { useEventRate } from '../hooks/useEventRate'
 import { TypeChart } from './TypeChart'
+import { FollowedFields } from './FollowedFields'
+import { getProfile, subscribeProfile } from '../doctor/profileStore'
 
 import {
     Activity, Server, Search, BarChart2, Dna, Download, Circle, Layers, Zap, GitBranch, AlertTriangle
@@ -101,6 +103,7 @@ export function AppLayout() {
     const { schema, isAnalyzing } = useSchemaInference(allEvents)
 
     const stats = useMemo(() => getEventStats(allEvents), [allEvents])
+    const profile = useSyncExternalStore(subscribeProfile, getProfile, () => undefined)
     const monitorRate = useEventRate(allEvents, connected)
     const multiConnected = streams.some((s) => s.connected)
     const multiRate = useEventRate(mergedEvents, multiConnected)
@@ -393,7 +396,8 @@ export function AppLayout() {
                                             </div>
                                         ))}
                                     </div>
-                                    <TypeChart events={allEvents} theme={theme} />
+                                    <TypeChart events={allEvents} theme={theme} display={profile?.display} />
+                                    <div className="mt-6"><FollowedFields theme={theme} events={allEvents} loadHistory={idbAvailable ? loadHistory : undefined} /></div>
                                 </div>
                             )}
 
