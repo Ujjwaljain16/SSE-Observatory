@@ -195,7 +195,8 @@ class Redactor {
 
 /** Decoded text of each chunk of one connection, in order. Pieces split inside a character are carried over by the decoder. */
 function chunkPieces(chunks: Array<{ b64?: string; text?: string }>): string[] | null {
-    const decoder = new TextDecoder('utf-8')
+    // ignoreBOM keeps a byte order mark at the start of the stream as the character it is: the sanitized capture must be the same stream with the secrets taken out, not one that has lost its first three bytes
+    const decoder = new TextDecoder('utf-8', { ignoreBOM: true })
     const pieces: string[] = []
     let any = false
     for (const c of chunks) {

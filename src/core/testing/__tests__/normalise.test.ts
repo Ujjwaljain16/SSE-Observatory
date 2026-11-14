@@ -44,6 +44,14 @@ describe('normalised findings', () => {
         expect(normaliseFindings([moved], shifted)).toEqual(normaliseFindings([plain], records))
     })
 
+    it('mask the number of the read a framing slip was noticed in (how the bytes were cut up), but not any other note', () => {
+        const at = (note: string) => normaliseFindings([finding({ facts: [{ text: 'f', evidence: [{ seq: 12, t: 1, note }] }] })], records)
+        expect(at('chunk 3')).toEqual(at('chunk 17'))
+        expect(at('chunk 3')[0]!.evidence[0]!.note).toBe('chunk #')
+        expect(at('chunk 3')).not.toEqual(at('first body byte'))
+        expect(at('first body byte')[0]!.evidence[0]!.note).toBe('first body byte')
+    })
+
     it('say so when evidence points at a record that is not in the capture, instead of throwing', () => {
         const [n] = normaliseFindings([finding({ facts: [{ text: 'f', evidence: [{ seq: 999, t: 0 }] }] })], records)
         expect(n!.evidence).toEqual([{ kind: 'missing', conn: -1, ordinal: -1 }])

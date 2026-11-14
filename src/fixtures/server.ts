@@ -14,16 +14,24 @@ import { baseFamily } from './base'
 import { FAMILIES } from './families'
 import { STREAM_HEADERS, type Ctx, type FixtureRoute, type Script } from './kit'
 import { GroundTruth } from './groundTruth'
+import { ManualClock } from './manualClock'
 
 export type { FixtureRoute } from './kit'
 
 export const FIXTURE_ROUTES: FixtureRoute[] = [baseFamily, ...FAMILIES].flatMap((f) => f.routes)
 const SCRIPTS = Object.assign({}, baseFamily.scripts, ...FAMILIES.map((f) => f.scripts)) as Record<string, Script>
+/** Extra response headers per route path, declared by the families (a script runs after the headers are written, so it cannot set them). */
+const ROUTE_HEADERS = Object.assign({}, ...[baseFamily, ...FAMILIES].map((f) => f.headers ?? {})) as Record<string, Record<string, string>>
 export interface FixtureServerOptions {
     port?: number
     host?: string
     /** Record what the server does (every request, write and end) in `groundTruth`. On by default; it costs a few array pushes. */
     log?: boolean
+    /**
+     * `'manual'` makes `ctx.sleep` wait on a virtual clock that only `advance` moves (see manualClock.ts); `'real'` (the default) waits in real
+     * time. One request can choose for itself with `?clock=manual` or `?clock=real`.
+     */
+    clock?: 'real' | 'manual'
 }
 
 export interface FixtureServer {
@@ -33,6 +41,10 @@ export interface FixtureServer {
     routes: FixtureRoute[]
     /** What this server did, as the server itself saw it (see groundTruth.ts). Empty when started with `log: false`. */
     groundTruth: GroundTruth
+    /** The virtual clock that requests made with `clock: 'manual'` (or `?clock=manual`) sleep on. */
+    clock: ManualClock
+    /** Moves the virtual clock forward `ms` and releases the sleeps that fall due, in order; resolves when every woken script has written and gone back to sleep. */
+    advance(ms: number): Promise<void>
     /** Full URL of a route by id, with optional query parameters. */
     urlFor(id: string, query?: Record<string, string | number>): string
     close(): Promise<void>
@@ -61,6 +73,7 @@ export async function startFixtureServer(options: FixtureServerOptions = {}): Pr
     const live = new Set<http.ServerResponse>()
     const groundTruth = new GroundTruth()
     const logging = options.log !== false
+    const clock = new ManualClock()
 
     const server = http.createServer((req, res) => {
         const url = new URL(req.url ?? '/', 'http://fixture.local')
@@ -116,14 +129,17 @@ export async function startFixtureServer(options: FixtureServerOptions = {}): Pr
         let closed = false
         const timers = new Set<NodeJS.Timeout>()
         const wake = new Set<() => void>()
-        res.on('close', () => { closed = true; live.delete(res); timers.forEach(clearTimeout); wake.forEach((w) => w()) })
+        // on the stepped clock this request's sleeps are registered with the virtual clock instead of with setTimeout
+        const clockChoice = url.searchParams.get('clock')
+        const session = (clockChoice === 'manual' || (clockChoice !== 'real' && options.clock === 'manual')) ? clock.session() : undefined
+        res.on('close', () => { closed = true; live.delete(res); timers.forEach(clearTimeout); wake.forEach((w) => w()); session?.end() })
 
         const ctx: Ctx = {
             req, res, query: url.searchParams, scale: factor, lastEventId: String(Array.isArray(lastEventId) ? lastEventId[0] : lastEventId ?? ''), n: Number.isFinite(n) ? n : defaultN,
             from: resumeIndex(Array.isArray(lastEventId) ? lastEventId[0] : lastEventId),
             write: (chunk) => { if (!closed) res.write(chunk) },
             closed: () => closed,
-            sleep: (ms) => new Promise<boolean>((resolve) => {
+            sleep: (ms) => session ? session.sleep(Math.max(0, ms * factor)).then((woken) => woken && !closed) : new Promise<boolean>((resolve) => {
                 if (closed) return resolve(false)
                 const done = () => { wake.delete(done); resolve(!closed) }
                 wake.add(done)
@@ -133,9 +149,9 @@ export async function startFixtureServer(options: FixtureServerOptions = {}): Pr
 
         live.add(res)
         // the echo route also hands out a cookie of its own, so a Set-Cookie header can be searched for in every output
-        res.writeHead(200, path === '/f08/echo' ? { ...STREAM_HEADERS, 'Set-Cookie': `sid=${url.searchParams.get('sc') ?? 'echo-session'}` } : STREAM_HEADERS)
+        res.writeHead(200, path === '/f08/echo' ? { ...STREAM_HEADERS, ...ROUTE_HEADERS[path], 'Set-Cookie': `sid=${url.searchParams.get('sc') ?? 'echo-session'}` } : { ...STREAM_HEADERS, ...ROUTE_HEADERS[path] })
         res.flushHeaders()
-        void script(ctx).then(() => { if (!closed) res.end() }, () => { if (!closed) res.destroy() })
+        void script(ctx).then(() => { session?.end(); if (!closed) res.end() }, () => { session?.end(); if (!closed) res.destroy() })
     })
 
     await new Promise<void>((resolve, reject) => {
@@ -150,6 +166,8 @@ export async function startFixtureServer(options: FixtureServerOptions = {}): Pr
         port,
         routes: FIXTURE_ROUTES,
         groundTruth,
+        clock,
+        advance: (ms) => clock.advance(ms),
         urlFor(id, query = {}) {
             const route = FIXTURE_ROUTES.find((r) => r.id === id)
             if (!route) throw new Error(`unknown fixture "${id}"`)

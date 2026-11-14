@@ -77,4 +77,6 @@ export const lead = (ctx: Ctx, n: number, intervalMs: number) => (async () => {
 export interface FixtureFamily {
     routes: FixtureRoute[]
     scripts: Record<string, Script>
+    /** Extra response headers by route path, sent with the stream's own (for example `Content-Encoding`). The server writes the headers before a script runs, so a script cannot add them. */
+    headers?: Record<string, Record<string, string>>
 }

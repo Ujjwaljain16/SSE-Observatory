@@ -5,6 +5,7 @@ import { startFixtureServer, type FixtureServer } from '../server'
 import { observeFixture } from './observeFixture'
 import { compareFourWay, type Mismatch } from './fourWay'
 import type { LoggedConnection } from '../groundTruth'
+import { gunzipLog } from './gunzipLog'
 
 // Plan A5: the same stream at four places (the server's own log, the transport records, the parsed events, the findings), each checked against the
 // one before. If the pipeline loses, adds or reorders anything, or a finding quotes a number the server did not produce, a mismatch names the
@@ -19,7 +20,8 @@ async function run(id: string, query: Record<string, string | number> = {}) {
     const observed = await observeFixture(server, defaultRules, id, query, true, { captureBytes: true })
     // let the server note a connection the client closed last
     await new Promise((r) => setTimeout(r, 30))
-    const log = server.groundTruth.connections.slice(before).filter((c) => c.route === id)
+    // a compressed route is logged as the bytes on the wire; the client reads them decoded, so the comparison is made in plain bytes (a no-op for any other route)
+    const log = server.groundTruth.connections.slice(before).filter((c) => c.route === id).map(gunzipLog)
     return { log, observed }
 }
 
@@ -37,6 +39,10 @@ const ROUTES: Array<{ id: string; query?: Record<string, string | number>; note:
     { id: 'f07-flood', note: '2000 frames as fast as it can' },
     { id: 'f09-buffered', note: 'writes of exactly 4096 bytes' },
     { id: 'f09-healthy', note: 'one write per event' },
+    { id: 'f05-ignores', note: 'a drop, then a server that ignores the cursor and starts again from 1 (ids 1,2,3,1,2,3,4,5,6)' },
+    { id: 'f15-malformed', note: 'a byte order mark, unknown and wrong-case fields, a NUL id, a bad retry, CRLF in an LF stream' },
+    { id: 'f12-gzip-sync', note: 'gzip on the wire with a flush per event: the log is decoded to what the client reads' },
+    { id: 'h06-comments-only', note: 'comments from byte 0 and no event until the end' },
 ]
 
 describe('the pipeline loses nothing and adds nothing, on every route that ends', () => {
@@ -110,4 +116,16 @@ describe('the harness can fail: a good run, damaged one way at a time, is caught
         const m = damaged((_, __, log) => ({ log: log.slice(0, 2) }))
         expect(m.length).toBeGreaterThan(0)
     })
+})
+
+describe('a compressed route can only be compared in plain bytes', () => {
+    it('against the raw wire log the bytes do not add up (I1), and decoded they do: the decoding is what makes the comparison true, not a way round it', async () => {
+        const before = server.groundTruth.connections.length
+        const observed = await observeFixture(server, defaultRules, 'f12-gzip-sync', {}, true, { captureBytes: true })
+        await new Promise((r) => setTimeout(r, 30))
+        const raw = server.groundTruth.connections.slice(before).filter((c) => c.route === 'f12-gzip-sync')
+        const against = (log: LoggedConnection[]) => compareFourWay({ log, records: observed.observations, messages: observed.messages, findings: observed.findings })
+        expect(against(raw).map((x) => `${x.boundary} ${x.invariant}`)).toContain('server->transport I1 bytes')
+        expect(show(against(raw.map(gunzipLog)))).toBe('')
+    }, 40_000)
 })
