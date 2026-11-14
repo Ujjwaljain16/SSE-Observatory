@@ -103,7 +103,9 @@ describe('E5: a secret typed into the URL never comes back out', () => {
             const r = await probe(url, ['--no-redact', '--out', 'raw.sse-capture'])
             const file = r.h.written['raw.sse-capture']!
             expect(file, 'the capture was written as recorded: the URL and the platform\'s error message are in it').toMatch(/"url":"http:\/\/.*@?127\.0\.0\.1/)
-            expect(file).toContain('[REDACTED]') // the registry's mask is where the values were
+            // a mask is where the values were: the registry's "[REDACTED]", or the client's own "[redacted]" (a URL quoted in a browser or fetch error
+            // message is now masked where it is stored, a second layer in front of the registry)
+            expect(file).toMatch(/\[REDACTED\]|\[redacted\]/)
             noCanary(r, `--no-redact ${base}`)
         }
     }, 40_000)
