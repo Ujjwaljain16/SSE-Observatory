@@ -29,6 +29,7 @@ import { PerfOverlay } from './PerfOverlay'
 import { DoctorToggle } from './doctor/DoctorToggle'
 import { exportEvents, getEventStats } from '../utils/exportUtils'
 import { useEventRate } from '../hooks/useEventRate'
+import { useFlightRecorder } from '../doctor/flightSetting'
 import { TypeChart } from './TypeChart'
 import { FollowedFields } from './FollowedFields'
 import { getProfile, subscribeProfile } from '../doctor/profileStore'
@@ -104,6 +105,7 @@ export function AppLayout() {
 
     const stats = useMemo(() => getEventStats(allEvents), [allEvents])
     const profile = useSyncExternalStore(subscribeProfile, getProfile, () => undefined)
+    useFlightRecorder() // keeps a copy of the recording when an error is first found, if the person switched that on
     const monitorRate = useEventRate(allEvents, connected)
     const multiConnected = streams.some((s) => s.connected)
     const multiRate = useEventRate(mergedEvents, multiConnected)

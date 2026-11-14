@@ -5,6 +5,7 @@ import type { DoctorView } from '../../doctor/doctorSession'
 import { observationRegistry } from '../../doctor/observationRegistry'
 import { buildTimeline } from '../../doctor/timeline'
 import { addBookmark, deleteBookmark, listBookmarks, type Bookmark } from '../../doctor/captureLibrary'
+import { keepOnMark } from '../../doctor/flightRecorder'
 import { fmtDuration } from './format'
 
 interface Props {
@@ -39,7 +40,9 @@ export default function TimelineView({ theme, streamId, view }: Props) {
     const mark = async () => {
         setProblem('')
         try {
-            await addBookmark({ captureId, label: label || `At ${fmtDuration(view.nowT)}`, t: view.nowT })
+            const text = label || `At ${fmtDuration(view.nowT)}`
+            await addBookmark({ captureId, label: text, t: view.nowT })
+            keepOnMark(streamId, view, text) // a copy of the recording at this moment, if the flight recorder is on
             setLabel('')
             await reload()
         } catch (err) { setProblem(err instanceof Error ? err.message : String(err)) }

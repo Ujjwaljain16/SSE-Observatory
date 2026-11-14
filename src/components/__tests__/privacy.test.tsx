@@ -124,3 +124,18 @@ describe('PrivacySettings', () => {
         expect(onChanged).toHaveBeenCalled()
     })
 })
+
+describe('the flight recorder switch in the Privacy panel', () => {
+    it('is off by default, turns on and off, and says why it is off by default', async () => {
+        const { flightRecorderEnabled, setFlightRecorderEnabled } = await import('../../doctor/flightSetting')
+        setFlightRecorderEnabled(false)
+        render(<PrivacySettings theme="dark" count={0} onChanged={() => {}} />)
+        const box = screen.getByTestId('privacy-flight')
+        expect(box).not.toBeChecked()
+        expect(screen.getByText(/Off unless you turn it on, because the copies are saved in this browser and are not redacted/)).toBeInTheDocument()
+        await userEvent.click(box)
+        expect(flightRecorderEnabled()).toBe(true)
+        await userEvent.click(box)
+        expect(flightRecorderEnabled()).toBe(false)
+    })
+})

@@ -3,6 +3,7 @@ import { Share2, Stethoscope } from 'lucide-react'
 import type { Theme } from '../../types'
 import { useDoctorView } from '../../doctor/useDoctor'
 import { useUIContext } from '../../context/UIContext'
+import { clearFlightNotices, useFlightNotices } from '../../doctor/flightSetting'
 import { useStreamContext } from '../../context/StreamContext'
 import { isMockStreamUrl } from '../../doctor/mockReplay'
 import { recordingEnabled } from '../../doctor/recordingConfig'
@@ -56,6 +57,8 @@ export default function DoctorPanel({ theme, streamId, title = 'Stream Doctor', 
     const errors = view ? view.open.error + view.open.critical : 0
     const warnings = view?.open.warning ?? 0
     const announcement = useAnnouncement(view?.health.phase, errors, warnings)
+    const flightNotices = useFlightNotices()
+    const lastFlight = ownsProfile ? flightNotices[flightNotices.length - 1] : undefined
     const muted = dark ? 'text-slate-300' : 'text-slate-700'
 
     const open = view?.findings.filter((f) => f.status === 'open') ?? []
@@ -93,6 +96,12 @@ export default function DoctorPanel({ theme, streamId, title = 'Stream Doctor', 
                 )}
             </div>
             <div role="status" aria-live="polite" className="sr-only">{announcement}</div>
+            {lastFlight && (
+                <p role="status" data-testid="flight-notice" className={`text-sm rounded-lg p-3 flex items-start gap-3 ${lastFlight.ok ? (dark ? 'bg-slate-800 text-slate-100' : 'bg-slate-100 text-slate-900') : (dark ? 'bg-amber-900/40 text-amber-100' : 'bg-amber-50 text-amber-900')}`}>
+                    <span className="flex-1">{lastFlight.text}</span>
+                    <button type="button" onClick={clearFlightNotices} className="underline text-sm shrink-0">Dismiss</button>
+                </p>
+            )}
             {replaying && (
                 <p className={`text-sm rounded-lg p-3 ${dark ? 'bg-slate-800 text-slate-100' : 'bg-slate-100 text-slate-900'}`} data-testid="replay-banner">
                     This stream is a replay of a recording, served by the mock server. The timings, ids and event names are the recording's, but the bodies are placeholders and the timings are played back, not measured on a network, so what these checks say describes the recording, not a live server.
