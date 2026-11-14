@@ -59,11 +59,8 @@ describe('the resume cursor moves when an event is dispatched, not when its id l
         expect(parser.lastId).toBe('41')
     })
 
-    it('however the bytes are cut, the cursor after "event 1, then half of event 2" is 1', () => {
+    it('however the bytes are cut into two reads, the cursor after "event 1, then half of event 2" is 1', () => {
         const stream = 'id: 1\ndata: a\n\nid: 2\ndata: b'
-        for (let cut = 0; cut <= stream.length; cut++) {
-            const parser = feed([stream.slice(0, cut), stream.slice(cut)])
-            expect(parser.lastId, `cut at ${cut}`).toBe(cut >= 'id: 1\ndata: a\n\n'.length ? '1' : cut >= stream.length ? '1' : '')
-        }
+        for (let cut = 0; cut <= stream.length; cut++) expect(feed([stream.slice(0, cut), stream.slice(cut)]).lastId, `cut at ${cut}`).toBe('1')
     })
 })

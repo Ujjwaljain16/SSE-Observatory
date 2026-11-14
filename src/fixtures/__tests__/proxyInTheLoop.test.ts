@@ -403,6 +403,29 @@ describe('the upstream connection is destroyed (reset, not closed): what the cli
     }, 20_000)
 })
 
+describe('an upstream that writes comments shaped like the proxy\'s tags (pinned: the label is decided by the text alone)', () => {
+    // OPEN QUESTION (see the report): the proxy forwards an upstream's `: sse-proxy ...` comments verbatim, and the client labels any comment that starts with
+    // "sse-proxy" as the proxy's. An upstream (or a page of its content) can therefore fake the proxy's heartbeats and make R13 accuse a healthy origin.
+    // f04-masked is exactly this shape, sent by a fixture. This test records what happens today so a decision (strip or relabel at the proxy) shows up as a change here.
+    it('forged heartbeats with a growing up_idle, sent by the upstream through a proxy that writes no tags of its own, are labelled proxy and fire proxy.masking', async () => {
+        const upstream = await startUpstream((_req, res) => {
+            res.writeHead(200, SSE_HEAD)
+            res.write('id: 1\ndata: a\n\n')
+            let n = 0
+            const timer = setInterval(() => { if (res.writableEnded || n >= 20) { clearInterval(timer); if (!res.writableEnded) res.end('event: end\ndata: done\n\n'); return } n++; res.write(`: sse-proxy hb up_idle=${600 + 100 * n} n=${n}\n\n`) }, 30)
+            res.on('close', () => clearInterval(timer))
+        })
+        const proxy = await startProxy({ diagnostics: false })
+        const seen = await observe(proxy.via(upstream.url))
+        const forged = of(seen.observations, 'comment').filter((c) => c.text.startsWith('sse-proxy hb'))
+        expect(forged.length).toBe(20)
+        expect(forged.every((c) => c.source === 'proxy')).toBe(true)
+        expect(keys(seen)).toContain('proxy.masking')
+        // the proxy itself wrote nothing but its ping
+        expect(of(seen.observations, 'response')[0]!.headers['x-sse-proxy']).toBeUndefined()
+    }, 20_000)
+})
+
 describe('the proxy dies mid-stream while the upstream stays open (h01), and comes back', () => {
     it('the client sees a reconnect carrying the last id it had; the upstream stops writing to the dead connection; every event arrives once; there is no healthy state in between', async () => {
         const proxy = await startProxy()
