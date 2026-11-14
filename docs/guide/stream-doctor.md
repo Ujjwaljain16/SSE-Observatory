@@ -45,7 +45,15 @@ In Multi-Stream each lane gets its own card in the lane's colour, the lane with 
 
 ## Sections
 
-The panel has five tabs. **Findings** is described above. **Timeline** and **Captures** are about the connection and about recordings you keep. **Sequence** and **Profile** are about the numbers in your events.
+The panel has six tabs. **Findings** is described above. **Request**, **Timeline** and **Captures** are about the connection and about recordings you keep. **Sequence** and **Profile** are about the numbers in your events.
+
+### Request
+
+One entry per connection attempt, newest first, each with what was asked and what came back:
+
+- **Request**: the method and the URL as recorded (credentials and query values are already replaced), the names of the request headers that were sent, and the `Last-Event-ID` the attempt resumed from. Header *values* are never recorded, only names.
+- **Response**: the status, the content type, whether there was a redirect, and the response headers the Doctor keeps (the ones that explain buffering, caching and proxy behaviour: `Cache-Control`, `Content-Encoding`, `Via`, `X-Accel-Buffering`, the proxy's own `X-SSE-*` tags and a few more). A cross-origin response only shows the headers its server exposes with CORS, so a short list can mean that.
+- **Timing**: until the response headers, until the first bytes, until the first event, and how long the attempt lasted (so far, if it is still open), as differences of record times, the same figures the checks use.
 
 ### Timeline
 
