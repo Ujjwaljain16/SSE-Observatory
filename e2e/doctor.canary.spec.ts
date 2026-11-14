@@ -217,6 +217,10 @@ test.describe('G6: what Copy puts on the clipboard', () => {
         await openDoctor(page)
         const finding = page.locator('[data-finding-key="stall.silent:bytes"]')
         await expect(finding).toBeVisible({ timeout: 30_000 })
+        // Only the worst finding starts open; a warning about the credential in the URL can be listed before this one.
+        const header = finding.getByRole('button').first()
+        if ((await header.getAttribute('aria-expanded')) !== 'true') await header.click()
+        await expect(header).toHaveAttribute('aria-expanded', 'true')
         const shown = await finding.locator('code').innerText()
         expect(shown).toBe('curl -N -H "Accept: text/event-stream" "$URL"')
         await finding.getByRole('button', { name: 'Copy', exact: true }).click()
