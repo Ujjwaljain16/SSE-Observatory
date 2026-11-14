@@ -122,6 +122,17 @@ Pinned as known gaps in `src/cli/__tests__/security.encodings.test.ts` (each is 
 - R07's coefficient-of-variation edge of exactly 0.03 cannot be built from whole-millisecond lifetimes, so `<` against `<=` there is untestable; it is pinned to within 1 ms.
 - E1 covers the Doctor's exports (each shareable kind, both curl shells) and every command and format of the command line, with the planted secrets in these places: Authorization, Cookie, API-key and Proxy-Authorization headers, a Set-Cookie response header, URL userinfo, `?token=` and `?api_key=` query values, a JWT in a payload and in an event id, a nested `password` key, a `token` inside a list, an `api_key=` in a comment, and a JWT split across two chunks. It does **not** yet cover the browser (the export dialog and clipboard in a real page), the v1 app's own JSON/CSV exports (never redacted, plan question Q2), or secrets that no rule can recognise: a random token in free text is flagged and kept, and a low-entropy secret sentence is neither removed nor flagged (both pinned by tests).
 
+## Manual checks (what automation cannot judge)
+
+None of these has been done yet. Record the outcome of each in the results report under "manual".
+
+1. Start `sse-doctor fixtures serve` and the app, and connect to `f04-silent?scale=0.25&n=12`. Without opening any help, can you say what is wrong in one sentence from the finding card alone? Which part of the card is observation, which is guess? Is the confidence word believable? Does the "check next" help you tell the origin from a proxy?
+2. Repeat with `f04-heartbeats`, `f04-masked` and `f03-buffered`. The cards must read differently from one another and must not name a vendor.
+3. Keyboard only: reach the Doctor toggle, open it, expand a finding, open its evidence, export, and leave with Escape. With a screen reader (NVDA on Windows or VoiceOver): does the live region announce state changes only? Are severities read as words?
+4. Export a report from a stream that echoed a secret into a free-text field (`f08-echo`). Do you understand from the dialog what was and was not replaced? Would you paste the report into a ticket?
+5. Bookmark an event, export, import the capture in the Captures tab and compare it with a healthy capture.
+6. Resize to 360 px and 200% zoom; try reduced motion, and the dark and light themes.
+
 ## Reproduce
 
 ```sh
