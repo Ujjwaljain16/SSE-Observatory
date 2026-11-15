@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url'
 
 // The public npm name is NOT claimed or checked yet; it is decided when you choose to publish.
 const PACKAGE_NAME = 'sse-doctor'
-const VERSION = '2.0.0-dev.0'
+const VERSION = '2.0.0'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const out = path.join(root, 'dist-cli')

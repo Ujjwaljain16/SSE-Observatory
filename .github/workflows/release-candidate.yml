@@ -4,6 +4,7 @@ name: Release candidate
 # otherwise nightly (the healthy twins in real time, each fixture failing without its rule, the same findings at every time scale, the replay timing),
 # the built command line's checks, the packed package, the dependency audit, the documented limits, and a results report. It changes nothing: it does
 # not publish, tag or deploy. A green run is the evidence for the release checklist in docs/technical/testing-campaign.md.
+# The run on the pull request that set the version to 2.0.0 is the run of the exact commit that ships as v2.0.0.
 on:
   workflow_dispatch:
     inputs:

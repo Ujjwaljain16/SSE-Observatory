@@ -57,7 +57,7 @@ Assessed 2026-11-15 on `phase-15-campaign`, which holds everything that would sh
 1. Merge pull request 50 into `v2` once its checks are green.
 2. Run the release-candidate workflow by hand on `v2` (Actions, "Release candidate") and read its summary; it publishes and deploys nothing.
 3. Smoke-test the Vercel preview of the release pull request: open the app, connect to a stream, open the Doctor, export a report; check `/docs/` and that the mock API is off.
-4. Decide the version: `package.json` says 0.0.1 and the command line says 2.0.0-dev.0; the tag would be `v2.0.0`.
+4. Version: decided and set to 2.0.0 (`package.json`, `package-lock.json`, the command line's `VERSION` in `scripts/build-cli.mjs`, the app's footer); the tag is `v2.0.0`.
 5. Decide which open questions to settle first. None is a release blocker by itself: each is pinned by a test and described above. The ones with the most effect on users are Q14 (what `--no-redact` writes) and Q6 (a silent redirect).
 6. Open the pull request from `v2` to `main`, merge it, tag it, and write the release notes. Say in the notes what is **not** covered (the section "Not covered" below) and that the "under 2% CPU at 500 events/s" target is not demonstrated.
 
