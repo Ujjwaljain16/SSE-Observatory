@@ -14,17 +14,22 @@ permissions:
 
 jobs:
   verify:
-    name: Lint, typecheck, test, build (${{ matrix.os }})
+    name: Lint, typecheck, test, build (${{ matrix.os }}${{ matrix.node == 20 && ', Node 20' || '' }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
+        node: [22]
+        include:
+          # the oldest Node the command line supports, once, on Linux
+          - os: ubuntu-latest
+            node: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
       - run: npm run lint
@@ -34,11 +39,15 @@ jobs:
       # The CLI package: build it, run the built bundle, then install the packed tarball into a clean directory.
       - run: npm run build:cli
       - run: npm run doctor:selftest
+      # What the published command line holds: no machine path, no source map, no source path in its types; it runs from an empty directory.
+      - run: npm run doctor:buildcheck
       - run: npm run cli:check
       # Scenario files against the built-in fixture streams: passing ones pass, failing ones fail, unprovable ones are inconclusive (exit 4).
       - run: npm run doctor:scenarios
+      # The built command line as a process: exit codes, a clean stdout, no stack traces, and that it always stops (Windows and Linux).
+      - run: npm run doctor:contract
       - name: Upload scenario results (JUnit)
-        if: always() && matrix.os == 'ubuntu-latest'
+        if: always() && matrix.os == 'ubuntu-latest' && matrix.node == 22
         uses: actions/upload-artifact@v4
         with:
           name: scenario-results-junit

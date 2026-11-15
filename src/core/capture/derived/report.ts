@@ -11,6 +11,7 @@ import type { Evidence, Finding } from '../../diagnostics/finding'
 import { fmtMs } from '../../diagnostics/rules/util'
 import type { RedactedCapture } from '../redacted'
 import { buildReportModel, likely, type ReportModel } from './reportModel'
+import { sanitizeText } from '../../sanitize'
 
 export type ReportFormat = 'md' | 'html' | 'json' | 'issue'
 
@@ -276,7 +277,13 @@ const SEVERITY_CLASSES = new Set<string>(['info', 'warning', 'error', 'critical'
 
 export function buildReport(capture: RedactedCapture, analysis: Analysis, opts: ReportOptions = {}): string {
     const model = buildReportModel(capture, analysis)
-    switch (opts.format ?? 'md') {
+    // Text in a finding comes from the stream (a content type, a field name, an id). A report is read in a terminal, pasted into an issue,
+    // opened as HTML: whatever the server put in it must come out as visible text, never as a control character that does something.
+    return sanitizeText(renderFormat(model, opts.format ?? 'md'))
+}
+
+function renderFormat(model: ReportModel, format: ReportFormat): string {
+    switch (format) {
         case 'html': return renderHtml(model)
         case 'issue': return renderIssue(model)
         case 'json': return JSON.stringify({ schemaVersion: 1, capture: model.capture, findings: model.findings, coverage: model.coverage }, null, 2) + '\n'

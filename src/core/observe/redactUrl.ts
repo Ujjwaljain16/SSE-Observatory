@@ -16,6 +16,18 @@ export function looksLikeTokenSegment(segment: string): boolean {
     return segment.length >= 20 && /^[A-Za-z0-9_~-]+$/.test(segment) && /[A-Za-z]/.test(segment) && /\d/.test(segment)
 }
 
+/**
+ * Free text with every http(s) URL in it made safe, for the messages a platform writes about a failed request ("Failed to execute 'fetch'
+ * ...: Request cannot be constructed from a URL that includes credentials: http://user:pw@host/p?token=...") and that go into a recording.
+ * A URL that was recorded with its query values replaced must not come back, whole, in the reason a request failed.
+ */
+export function redactUrlsInText(text: string): string {
+    return text.replace(/https?:\/\/[^\s'"<>`]+/gi, (match) => {
+        const tail = /[).,;:\]}]+$/.exec(match)?.[0] ?? ''
+        return redactUrl(tail ? match.slice(0, -tail.length) : match) + tail
+    })
+}
+
 export function redactUrl(raw: string): string {
     const hasScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(raw)
     let url: URL

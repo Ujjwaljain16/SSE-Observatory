@@ -40,6 +40,15 @@ A full (not redacted) capture served by `replay` is not readable by web pages un
 | 4 | inconclusive: no check failed, but a scenario check could not be decided |
 | 130 | interrupted |
 
+## JSON output
+
+`--format json` prints a document a script can read, and its shape is a published contract:
+
+- `analyze`, `probe`, `compare` and the other commands that report findings print [`sse-cli-output-1.json`](/schemas/sse-cli-output-1.json): `schemaVersion`, `command`, `subject`, `findings` (each with its `facts`, `deductions`, `limits` and `status`), `coverage` (one entry per check, `evaluated` or `not-evaluated`) and `notes`.
+- `test` prints [`sse-test-output-1.json`](/schemas/sse-test-output-1.json): one entry per scenario file with its `status` (`pass`, `fail` or `inconclusive`) and its `checks`.
+
+Within version 1 fields may be added; a field is never removed, and its meaning never changed, without a new `schemaVersion` and a new file. The tests validate what the real commands print against these files.
+
 ## Secrets
 
 Put secrets in environment variables, never on the command line (where they end up in shell history and process lists):
@@ -52,7 +61,7 @@ sse-doctor probe https://api.example.com/stream --header-env X-Api-Key=API_KEY -
 
 - `--auth-env VAR` sends `Authorization: Bearer $VAR`; `--header-env Name=VAR`, `--cookie-env VAR` and `--query-env param=VAR` do the same for a header, a cookie and a query parameter. A literal `--header "Name: value"` works but warns.
 - Every value the tool resolves is registered, and every output (screen, errors, files) is scrubbed of it, including URL-encoded and Base64 forms. Values shorter than 4 characters cannot be scrubbed safely and trigger a warning.
-- `probe --out` writes a **redacted** capture, so secrets never reach the disk. `--no-redact` writes the raw capture (with the wire bytes, for byte-exact replay) and warns; do not share it.
+- `probe --out` writes a **redacted** capture, so secrets never reach the disk. `--no-redact` writes the raw capture (with the wire bytes, for byte-exact replay) and warns; do not share it. The secrets you gave the command are replaced in its text fields, but the wire bytes are kept exactly as they were (a scrub of base64 would leave a file that cannot be read back), so what a server echoed back may be in them.
 - `report` and `curl` accept only a redacted capture. Give them one made by `redact`, or add `--redact`.
 - `--redact-policy <file.json>` adds your own rules to the built-in ones for `redact`, `report`, `curl`, `repro` and `probe --out`: more payload key names, more patterns, and request headers whose value may stay. See [Redaction policy](/guide/redaction-policy). A policy with any problem stops the command with exit code 2 and a list of every problem, and nothing is written.
 

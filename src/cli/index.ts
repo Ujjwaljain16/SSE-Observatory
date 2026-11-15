@@ -9,6 +9,7 @@ import { fixturesCommand, replayCommand, testCommand } from './commandsScenario'
 import { CliError, EXIT, type CliIo } from './io'
 import { SecretRegistry, scrubbedIo } from './secretRegistry'
 import { selftestChecks } from './selftest'
+import { sanitizeText } from './sanitize'
 
 export { EXIT } from './io'
 export type { CliIo } from './io'
@@ -95,12 +96,13 @@ export async function main(argv: string[], rawIo: CliIo): Promise<number> {
             case 'replay': return await replayCommand(io, args)
             case 'fixtures': return await fixturesCommand(io, args)
             default:
-                io.err(`Unknown command: ${command}\nRun "sse-doctor --help" for usage.\n`)
+                io.err(`${sanitizeText(`Unknown command: ${command}`)}\nRun "sse-doctor --help" for usage.\n`)
                 return EXIT.usage
         }
     } catch (error) {
-        if (error instanceof CliError) { io.err(`${error.message}\n`); return error.exit }
-        io.err(`sse-doctor could not finish: ${error instanceof Error ? error.message : String(error)}\n`)
+        // a message may quote text that came from argv or from a file (a URL, an option, a path, a scenario field): it must not drive the terminal
+        if (error instanceof CliError) { io.err(`${sanitizeText(error.message)}\n`); return error.exit }
+        io.err(`sse-doctor could not finish: ${sanitizeText(error instanceof Error ? error.message : String(error))}\n`)
         return EXIT.couldNotRun
     }
 }

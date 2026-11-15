@@ -150,3 +150,31 @@ describe('observation records the store ignores', () => {
         expect(h.view()).toBeDefined()
     })
 })
+
+// Found by the browser tests (campaign G1): while records keep arriving, an open silence dropped out of the live view. Feeding a record clears the
+// engine's provisional findings (the ones that are only true "so far"), and the tick that puts them back ran only once a second, while the store
+// synced and published every 250 ms. With a heartbeat every 250 ms, most views had no stall finding in them and the finding flickered.
+describe('an open silence stays in the view while records keep arriving', () => {
+    it('shows the "heartbeats but no events" stall in every view once it has begun, not only in the views a tick made', async () => {
+        vi.useFakeTimers()
+        const h = start()
+        const b = steady(12) // twelve events a second apart: the stream's own rhythm
+        h.feed(b)
+        await h.store.refresh()
+        const missing: string[] = []
+        let ticks = 0
+        for (let step = 1; step <= 48; step++) {
+            b.silence(250).beat() // from now on only heartbeats
+            h.advance(250)
+            h.feed(b)
+            await vi.advanceTimersByTimeAsync(250) // the store syncs (and, every fourth step, ticks)
+            if (step * 250 >= 6000) {
+                const keys = h.view()!.findings.filter((f) => f.status === 'open').map((f) => f.key)
+                if (!keys.includes('stall.silent:events')) missing.push(`after ${step * 250} ms of heartbeats the view held: ${keys.join(', ') || 'no open finding'}`)
+                if (step % 4 === 0) ticks++
+            }
+        }
+        expect(ticks, 'the run included the views a tick made, and the others').toBeGreaterThan(3)
+        expect(missing).toEqual([])
+    })
+})

@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sse-observatory.vercel.app/docs/schemas/sse-test-output-1.json",
+  "title": "sse-doctor test output",
+  "description": "What `sse-doctor test` prints with --format json: one entry per scenario file. Fields may be added within version 1; a field is never removed or changed in meaning without a new version.",
+  "type": "object",
+  "required": ["schemaVersion", "scenarios"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "scenarios": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "file", "status", "checks", "findings", "coverage", "events", "durationMs"],
+        "properties": {
+          "name": { "type": "string" },
+          "file": { "type": "string" },
+          "status": { "enum": ["pass", "fail", "inconclusive"], "description": "fail makes the command exit 1, inconclusive exits 4 unless --allow-inconclusive." },
+          "checks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["name", "status", "message"],
+              "properties": { "name": { "type": "string" }, "status": { "enum": ["pass", "fail", "inconclusive"] }, "message": { "type": "string" } }
+            }
+          },
+          "findings": { "type": "array", "items": { "type": "object", "required": ["key", "severity", "status"], "properties": { "key": { "type": "string" }, "severity": { "enum": ["info", "warning", "error", "critical"] }, "status": { "enum": ["open", "resolved"] } } }, "description": "Each is a finding as described in sse-cli-output-1.json." },
+          "coverage": { "type": "array", "items": { "type": "object", "required": ["ruleId", "status"], "properties": { "ruleId": { "type": "string" }, "status": { "enum": ["evaluated", "not-evaluated"] } } } },
+          "events": { "type": "number", "minimum": 0 },
+          "durationMs": { "type": "number", "minimum": 0 }
+        }
+      }
+    }
+  }
+}

@@ -14,7 +14,7 @@ says what it measured separately from what it deduces. See [Diagnostics](/techni
 | Left out | Why |
 |---|---|
 | A public `fault-proxy` command and general fault injection | The fixtures and the `replay` test aids (`--honor-last-event-id`, `--drop-after`, `--skip-ids`) prove the rules. A fault proxy is a product of its own. |
-| `env-diff` and live multi-environment probing | v2 compares two **saved** captures. Probing several environments at once needs a design for credentials and for what "the same request" means. |
+| Probing more than two environments at once, or on a schedule | `env-diff` reads **two** paths to one stream at the same time, and `compare` compares two saved captures. A matrix of environments needs a design for credentials and for what "the same request" means. |
 | Naming the layer that caused a problem from one browser capture | A browser sees that bytes stopped arriving, not which hop stopped them. Findings say "likely" and list the alternatives. |
 | Gap detection on opaque ids | Ids that merely look sequential prove nothing; only a declared sequence is judged. |
 | AI explanations | Findings must first be reproducible, evidence-backed and identical across the browser, the CLI and tests. |
@@ -26,7 +26,7 @@ says what it measured separately from what it deduces. See [Diagnostics](/techni
 ## Extension points
 
 - **Fault laboratory and environment comparison.** The `replay` test aids and the scenario `target` shape are the
-  extension points. A fault-proxy rule schema and `env-diff` can be added without changing the capture format. For faults
+  extension points. A fault-proxy rule schema can be added without changing the capture format. For faults
   below HTTP (packet loss, TLS), use an external tool such as toxiproxy or `tc netem` in front of a fixture.
 - **Server SDK.** The observation record is the wire contract. A server could emit `: sse-obs {json}` comments (the same
   family as the proxy's `: sse-proxy` tags) or an `X-SSE-Obs` header; the record kinds `server-emit` and `queue-depth` are

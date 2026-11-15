@@ -117,8 +117,14 @@ class Redactor {
                 else if (group > 0 && m[0].length > 0) add(m.index, m.index + m[0].length, name) // the pattern had no group: the whole match
             }
         }
-        for (const m of text.matchAll(JSON_PAIR)) {
-            if (!isSensitiveName(m[1]!, this.policy.extraKeys)) continue
+        // A pair whose name is harmless ("user": {...}, "items": [...]) can hold a pair that is not, so after a miss on an object or a list the
+        // search goes on from inside its value instead of past it. (Found by the canary sweep: a "password" inside any other object was kept.)
+        const jsonPair = new RegExp(JSON_PAIR.source, JSON_PAIR.flags)
+        for (let m = jsonPair.exec(text); m !== null; m = jsonPair.exec(text)) {
+            if (!isSensitiveName(m[1]!, this.policy.extraKeys)) {
+                if (m[2]!.startsWith('{') || m[2]!.startsWith('[')) jsonPair.lastIndex = (m as RegExpMatchArray & { indices: Array<[number, number]> }).indices[2]![0] + 1
+                continue
+            }
             const indices = (m as RegExpMatchArray & { indices: Array<[number, number]> }).indices[2]!
             const raw = m[2]!
             if (raw.startsWith('"')) add(indices[0] + 1, indices[1] - 1, 'secret-key') // inside the quotes, so the JSON stays valid
@@ -189,7 +195,8 @@ class Redactor {
 
 /** Decoded text of each chunk of one connection, in order. Pieces split inside a character are carried over by the decoder. */
 function chunkPieces(chunks: Array<{ b64?: string; text?: string }>): string[] | null {
-    const decoder = new TextDecoder('utf-8')
+    // ignoreBOM keeps a byte order mark at the start of the stream as the character it is: the sanitized capture must be the same stream with the secrets taken out, not one that has lost its first three bytes
+    const decoder = new TextDecoder('utf-8', { ignoreBOM: true })
     const pieces: string[] = []
     let any = false
     for (const c of chunks) {

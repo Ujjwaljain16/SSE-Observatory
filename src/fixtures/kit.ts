@@ -18,6 +18,8 @@ export interface FixtureRoute {
     defaultN?: number
     /** The stream profile a user would declare for this route (for example its sequence contract); the checks run with it. */
     profile?: StreamProfile
+    /** Set for a route that exists to test something about the tool, not to show a fault: the lab does not make a capture of it, and says why. */
+    testOnly?: string
 }
 
 const FINDINGS_NEVER_ON_HEALTHY = ['*']
@@ -75,4 +77,6 @@ export const lead = (ctx: Ctx, n: number, intervalMs: number) => (async () => {
 export interface FixtureFamily {
     routes: FixtureRoute[]
     scripts: Record<string, Script>
+    /** Extra response headers by route path, sent with the stream's own (for example `Content-Encoding`). The server writes the headers before a script runs, so a script cannot add them. */
+    headers?: Record<string, Record<string, string>>
 }

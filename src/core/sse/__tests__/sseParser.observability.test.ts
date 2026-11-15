@@ -85,6 +85,28 @@ describe('SSEParser observability: what the spec ignores is still visible', () =
         expect(r.violations.map((v) => [v.code, v.chunk])).toEqual([['UNKNOWN_FIELD', 1], ['UNKNOWN_FIELD', 2], ['FRAME_WITHOUT_DATA', 2]])
     })
 
+    it('a character that is only half received is not "nothing pending": at a boundary only once it is whole, and an end inside it is reported', () => {
+        const bytes = new TextEncoder().encode('data: a\n\n日')
+        const parser = new SSEParser({ onMessage: () => {}, onViolation: () => {} })
+        parser.feed(bytes.slice(0, 10)) // the event, then the first byte of the character
+        expect(parser.atBoundary).toBe(false)
+        expect(parser.pendingBytes).toBe(1)
+        parser.feed(bytes.slice(10, 11)) // two of its three bytes
+        expect(parser.atBoundary).toBe(false)
+        expect(parser.pendingBytes).toBe(2)
+        // and a stream cut here is an unterminated frame, not a clean end
+        const r = observe([bytes.slice(0, 11)], { end: true })
+        expect(r.violations.map((v) => v.code)).toContain('UNTERMINATED_FRAME')
+        // a lone first byte of a four-byte character, from nothing
+        const fresh = new SSEParser({ onMessage: () => {} })
+        fresh.feed(Uint8Array.from([0xf0]))
+        expect(fresh.atBoundary).toBe(false)
+        fresh.feed(Uint8Array.from([0x9f, 0x98]))
+        expect(fresh.atBoundary).toBe(false)
+        fresh.feed(Uint8Array.from([0x80, 0x0a, 0x0a]))
+        expect(fresh.atBoundary).toBe(true)
+    })
+
     it('exposes atBoundary and pendingBytes so a stuck partial frame can be told from silence', () => {
         const parser = new SSEParser({ onMessage: () => {}, onViolation: () => {} })
         expect(parser.atBoundary).toBe(true)

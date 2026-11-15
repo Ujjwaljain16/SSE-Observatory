@@ -414,6 +414,60 @@
       "family": "F07",
       "title": "Flood of tiny events",
       "reason": "the capture is 382 KB, over the 40 KB a static lab ships"
+    },
+    {
+      "id": "f08-echo",
+      "family": "F08",
+      "title": "Echoes the credentials it was sent",
+      "reason": "it exists to test redaction: it echoes whatever credentials the request carries, so a capture of it would be a capture of the request."
+    },
+    {
+      "id": "f05-ignores",
+      "family": "F05",
+      "title": "The server ignores Last-Event-ID after a drop",
+      "reason": "added after the lab was made; the lab is regenerated with npm run lab:build, which also changes every shipped capture"
+    },
+    {
+      "id": "h05-declared-idle",
+      "family": "H05",
+      "title": "Healthy: idle for 40 s between events, and said to be",
+      "reason": "added after the lab was made; the lab is regenerated with npm run lab:build, which also changes every shipped capture"
+    },
+    {
+      "id": "h06-comments-only",
+      "family": "H06",
+      "title": "Healthy: comments only, then the end",
+      "reason": "added after the lab was made; the lab is regenerated with npm run lab:build, which also changes every shipped capture"
+    },
+    {
+      "id": "f04-late-heartbeat",
+      "family": "F04",
+      "title": "A heartbeat arrives late",
+      "reason": "added after the lab was made; the lab is regenerated with npm run lab:build, which also changes every shipped capture"
+    },
+    {
+      "id": "f11-slow-start",
+      "family": "F11",
+      "title": "Slow first byte and slow first event",
+      "reason": "added after the lab was made; the lab is regenerated with npm run lab:build, which also changes every shipped capture"
+    },
+    {
+      "id": "f12-gzip-sync",
+      "family": "F12",
+      "title": "Compressed event stream",
+      "reason": "added after the lab was made; the lab is regenerated with npm run lab:build, which also changes every shipped capture"
+    },
+    {
+      "id": "f15-malformed",
+      "family": "F15",
+      "title": "Malformed framing, then good events",
+      "reason": "added after the lab was made; the lab is regenerated with npm run lab:build, which also changes every shipped capture"
+    },
+    {
+      "id": "f16-rate",
+      "family": "F16",
+      "title": "Healthy: a constant rate",
+      "reason": "added after the lab was made; the lab is regenerated with npm run lab:build, which also changes every shipped capture"
     }
   ]
 }

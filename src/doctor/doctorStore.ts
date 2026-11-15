@@ -127,7 +127,13 @@ export class DoctorStore {
         for (const id of ids) {
             if (!this.sessions.has(id)) this.sessions.set(id, new this.engine.DoctorSession(id, this.profile.get()))
             const entry = this.registry.get(id)
-            if (entry) this.sessions.get(id)!.sync(entry, t, this.registry.pageElapsed(id))
+            if (entry) {
+                const session = this.sessions.get(id)!
+                const changed = session.sync(entry, t, this.registry.pageElapsed(id))
+                // Feeding a record clears the findings that are only true "so far" (a silence still going on); a tick puts them back. Publishing between
+                // the two showed a view without them, so an open silence flickered out whenever records kept arriving. Tick in the same step.
+                if (changed && !this.isHidden()) session.tick(t)
+            }
         }
         this.publish(t)
     }

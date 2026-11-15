@@ -5,6 +5,7 @@ import { parseCapture, serializeCapture, newHeader, captureEndT, CaptureFormatEr
 import { importV1, isV1Recording, V1ImportError } from '../core/capture/importV1'
 import { redactCapture, RedactionError, type RedactionPolicy, type RedactionReport } from '../core/capture/redact'
 import { describePolicy, isCustomPolicy, parseRedactionPolicy } from '../core/capture/policy'
+import { isSensitiveName } from '../core/capture/secrets'
 import type { RedactedCapture } from '../core/capture/redacted'
 import { buildReport } from '../core/capture/derived/report'
 import { compareCaptures } from '../core/capture/derived/compare'
@@ -32,7 +33,8 @@ export async function loadCapture(io: CliIo, path: string): Promise<{ capture: C
     try {
         if (text.trimStart().startsWith('{')) {
             let whole: unknown
-            try { whole = JSON.parse(text) } catch { whole = undefined }
+            // an editor or a PowerShell redirect may have put a byte order mark in front; JSON.parse does not accept one
+            try { whole = JSON.parse(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text) } catch { whole = undefined }
             if (isV1Recording(whole)) return { capture: importV1(whole), warnings: ['Imported an old .sse-record file: its timeline is rebuilt from event gaps, so rules that need chunks, headers or reconnects are not evaluated.'] }
         }
         const parsed = parseCapture(text)
@@ -184,6 +186,19 @@ function resolveEnv(io: CliIo, name: string, secrets: SecretRegistry, what: stri
 
 const safeDecode = (text: string): string => { try { return decodeURIComponent(text) } catch { return text } }
 
+/**
+ * Whether a value typed into the URL's query is registered as a secret, which means every output has it replaced wherever it appears. A query value
+ * is a secret when its NAME says so (`token`, `api_key`, `password`...) or when its shape does (long, letters and digits mixed). Registering
+ * all of them was a defect: `?scale=0.05`, `?limit=1000` or `?debug=true` made every `0.05`, `1000` or `true` in the output a placeholder, which cut
+ * into the numbers of a JSON result and the records of the saved capture and left files that could not be read.
+ */
+export function isSecretQueryValue(name: string, value: string): boolean {
+    if (value === '') return false
+    if (isSensitiveName(name)) return true
+    // by shape: long, with both letters and digits (a token, an id), not a word or a number
+    return value.length >= 12 && /[A-Za-z]/.test(value) && /\d/.test(value) && !/^\d{4}-\d{2}-\d{2}/.test(value)
+}
+
 function requestFor(io: CliIo, args: ParsedArgs, url: string, secrets: SecretRegistry): { url: string; headers: Record<string, string>; sentNames: string[] } {
     const headers: Record<string, string> = { Accept: 'text/event-stream', 'Cache-Control': 'no-cache' }
     // Secrets typed into the URL itself (user:password@, ?token=) are secrets too: registered, so no message can echo them. A URL the
@@ -192,7 +207,7 @@ function requestFor(io: CliIo, args: ParsedArgs, url: string, secrets: SecretReg
     try { parsed = new URL(url) } catch { throw new CliError(`"${redactUrl(url)}" is not a valid URL.`, EXIT.usage) }
     secrets.register(safeDecode(parsed.username))
     secrets.register(safeDecode(parsed.password))
-    for (const value of parsed.searchParams.values()) secrets.register(value)
+    for (const [name, value] of parsed.searchParams) if (isSecretQueryValue(name, value)) secrets.register(value)
     const authEnv = stringFlag(args, 'auth-env')
     if (authEnv) headers['Authorization'] = `Bearer ${resolveEnv(io, authEnv, secrets, '--auth-env')}`
     const cookieEnv = stringFlag(args, 'cookie-env')
@@ -307,10 +322,21 @@ export async function observe(io: CliIo, args: ParsedArgs, target: string, secre
     return { target, capture, profile, events, endT, reason, answered, maxBytes }
 }
 
+/** A copy of `value` with `scrub` applied to every string in it, except the base64 of wire bytes (key `b64`). */
+function scrubStrings(value: unknown, scrub: (text: string) => string, key: string): unknown {
+    if (typeof value === 'string') return key === 'b64' ? value : scrub(value)
+    if (Array.isArray(value)) return value.map((v) => scrubStrings(v, scrub, key))
+    if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, scrubStrings(v, scrub, k)]))
+    return value
+}
+
 /** Writes a capture: redacted unless --no-redact, so secrets never reach the disk. */
 export async function saveObserved(io: CliIo, args: ParsedArgs, capture: Capture, out: string): Promise<void> {
     const files = requireFiles(io)
-    if (args.flags['no-redact'] === true) await files.writeText(out, serializeCapture(capture))
+    // --no-redact is the recording as it is: the wire bytes (base64) are kept as they were, so what the server echoed may be in them. Everything else is
+    // scrubbed of the secrets this command was given, field by field BEFORE the file is made: a scrub of the finished text cuts into the base64 of the
+    // wire bytes and leaves a capture that cannot be read back, and the hash must be made from what is written.
+    if (args.flags['no-redact'] === true) await (io.writeRawText ?? files.writeText)(out, serializeCapture(scrubStrings(capture, io.scrub ?? ((t) => t), '') as Capture))
     else {
         const result = redactCapture(capture, await loadRedactionPolicy(io, args)) // secrets never reach the disk
         warnAboutRedaction(io, result.report)

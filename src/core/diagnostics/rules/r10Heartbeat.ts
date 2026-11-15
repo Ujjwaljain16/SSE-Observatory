@@ -19,8 +19,10 @@ export const heartbeat: Rule = {
     version: 1,
     title: 'Heartbeat rhythm',
     requires: ['comments'],
-    create({ thresholds: th }: RuleContext) {
+    create({ thresholds: th, profile }: RuleContext) {
         const late = new Map<HeartbeatSource, Late>()
+        // How long a quiet must last to be worth a note: the longest silence the stream declares, or the default when it declares none (the same limit R05 and R13 use).
+        const quietMs = profile.expected?.maxSilenceMs !== undefined ? Math.max(profile.expected.maxSilenceMs, th.stallMinSilenceMs) : th.stallNoCadenceMs
 
         const draft = (source: HeartbeatSource, intervalMs: number, medianMs: number, intervals: number, prev: Mark, cur: Mark | undefined, endT: number, final: boolean): { draft: FindingDraft; next: Late } => {
             const prior = late.get(source)
@@ -72,7 +74,7 @@ export const heartbeat: Rule = {
                 const out = pending(endT, model, true)
                 const none = model.heartbeats.upstream.count === 0 && model.heartbeats.proxy.count === 0
                 const longest = model.gaps.byte.maxEver
-                if (none && longest >= th.stallNoCadenceMs) {
+                if (none && longest >= quietMs) {
                     out.push({
                         key: 'heartbeat.absent', severity: 'info', title: 'No heartbeats seen',
                         summary: `No heartbeat comments were seen and the longest silence between bytes was ${fmtMs(longest)}.`,
