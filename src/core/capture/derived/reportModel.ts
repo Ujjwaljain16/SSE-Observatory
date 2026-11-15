@@ -9,6 +9,7 @@ import { countByKind } from '../format'
 import type { RedactedCapture } from '../redacted'
 import { framesOf } from '../streamText'
 import { toCurl } from './curl'
+import { isProxiedCapture } from './proxied'
 import { durationOf, ofKind } from './records'
 
 export const EXCERPT_EVENTS = 5
@@ -44,7 +45,8 @@ export interface ReportModel {
     /** Things about the capture itself that limit what any reader can conclude. */
     caveats: string[]
     excerpts: ReportExcerpt[]
-    reproduce: { posix: string; powershell: string; variables: string[] }
+    /** `viaProxy`: the stream went through the app's server proxy, so its address is not in the capture and the reader must supply it. */
+    reproduce: { posix: string; powershell: string; variables: string[]; viaProxy: boolean }
 }
 
 /** The first `max` code points, so a surrogate pair is never cut in half. */
@@ -92,7 +94,7 @@ export function buildReportModel(capture: RedactedCapture, analysis: Analysis): 
     const powershell = toCurl(capture, { shell: 'powershell' })
     const variables = [...new Set(posix.match(/\$\{STREAM_[A-Z0-9_]+\}/g) ?? [])].map((v) => v.slice(2, -1))
 
-    return { capture: summary, findings, coverage: analysis.coverage, notEvaluated, caveats, excerpts, reproduce: { posix, powershell, variables } }
+    return { capture: summary, findings, coverage: analysis.coverage, notEvaluated, caveats, excerpts, reproduce: { posix, powershell, variables, viaProxy: isProxiedCapture(capture) } }
 }
 
 /** Deductions are always worded as guesses. A rule that forgot the prefix still reaches the reader as one. */

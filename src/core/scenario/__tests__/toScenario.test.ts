@@ -8,6 +8,7 @@ import { analyze, type Analysis } from '../../diagnostics'
 import type { EngineInput } from '../../diagnostics/streamModel'
 import type { Finding } from '../../diagnostics/finding'
 import { capture as build, type CaptureBuilder } from '../../testing/captureBuilder'
+import { proxiedCapture, PROXY_CANARY } from '../../capture/derived/__tests__/helpers'
 
 const redacted = (b: CaptureBuilder, header: Partial<CaptureHeader> = {}): RedactedCapture =>
     markRedacted({ header: newHeader({ kind: 'sanitized', source: { kind: 'cli' }, ...header }), records: b.build() } satisfies Capture)
@@ -161,6 +162,32 @@ describe('toScenario', () => {
         expect(scenario.meta?.origin).toBe('https://api.example.com')
         expect(notes.join(' ')).toContain('STREAM_URL, STREAM_AUTHORIZATION, STREAM_X_API_KEY, STREAM_COOKIE')
         expect(headerEnvName('x-api.key')).toBe('STREAM_X_API_KEY')
+    })
+
+    // #76: a capture made through the app's server proxy has no address. The note says that, instead of claiming the URL could not be parsed.
+    it('says a proxied capture went through the app proxy, with what to set, instead of "could not be parsed"', () => {
+        const { scenario, notes } = run(proxiedCapture())
+        const note = notes.find((n) => /server proxy/.test(n))
+        expect(note).toBe("This stream went through the app's server proxy, so its address was not recorded (it may carry a secret). Set STREAM_URL to the address you gave the app.")
+        expect(scenario.meta?.notes).toContain(note)
+        expect(notes.join(' ')).not.toContain('could not be parsed')
+        expect(scenario.meta?.origin).toBeUndefined()
+        expect(scenario.target.url).toBe('${ENV:STREAM_URL}')
+        // the headers were sent to the proxy, not to the stream, so none becomes a variable the run would need
+        expect(scenario.target.headers).toBeUndefined()
+        expect(notes.join(' ')).toContain('Set these environment variables before running: STREAM_URL.')
+        const text = serializeScenario(scenario)
+        expect(text).not.toContain(PROXY_CANARY)
+        expect(text).not.toContain('/api/sse')
+    })
+
+    it('keeps the origin, and no proxy note, for a stream that did not go through the proxy', () => {
+        const { scenario, notes } = run(redacted(healthy()))
+        expect(scenario.meta?.origin).toBe('http://stream.test')
+        expect(notes.join(' ')).not.toContain('server proxy')
+        // an unparseable relative path of the person's own is still reported as it was
+        const own = run(redacted(build().connect({ url: '/events' }).response().frame()))
+        expect(own.notes.join(' ')).toContain('could not be parsed')
     })
 
     it('leaves out the sequence check and says why when no contract is declared', () => {

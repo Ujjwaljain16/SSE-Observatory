@@ -1,6 +1,25 @@
 import { newHeader, type Capture, type CaptureHeader, type CaptureRecord } from '../../format'
 import { markRedacted, type RedactedCapture } from '../../redacted'
-import type { CaptureBuilder } from '../../../testing/captureBuilder'
+import { capture, type CaptureBuilder } from '../../../testing/captureBuilder'
+
+/** A secret planted where a proxied request keeps it: in header values. No output may print it. */
+export const PROXY_CANARY = 'canary-upstream-secret-7731'
+
+/**
+ * What the app records when "Use Server Proxy" is on: the app asked its own `POST /api/sse`, so the request is that relative path and the
+ * stream's address is nowhere in it. The response carries the proxy's `X-SSE-Proxy` header unless `viaHeader` is false.
+ */
+export function proxiedCapture(opts: { url?: string; viaHeader?: boolean } = {}): RedactedCapture {
+    const url = opts.url ?? '/api/sse'
+    const b = capture().connect({ url, method: 'POST', headerNames: ['content-type', 'authorization'] })
+        .response({ headers: opts.viaHeader === false ? {} : { 'x-sse-proxy': 'observatory/1', 'x-sse-upstream-status': '200' } })
+        .at(300).frame('message', '1').silence(100).frame('message', '2')
+    const header = newHeader({
+        kind: 'sanitized', source: { kind: 'browser-app', client: 'browser-fetch' },
+        request: { url, method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${PROXY_CANARY}`, 'X-Trace': PROXY_CANARY } },
+    })
+    return markRedacted({ header, records: b.build() })
+}
 
 export function captureOf(b: CaptureBuilder, header: Partial<CaptureHeader> = {}): Capture {
     return { header: newHeader({ kind: 'sanitized', source: { kind: 'fixture' }, ...header }), records: b.build() }
