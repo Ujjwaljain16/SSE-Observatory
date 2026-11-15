@@ -56,6 +56,40 @@ describe('analyze', () => {
         expect(later.out).toContain('stall.silent')
     })
 
+    it('a stall that a later connection recovered from no longer fails the gate and is printed as resolved; a stall the capture ends in still fails it', async () => {
+        const stalled = () => healthyStart().repeat(12, 1000, (b, i) => b.frame('tick', String(i + 1))).silence(8000).reconnect({ delayMs: 500 }).silence(500).connect({ sentLastEventId: '12' }).response()
+        const recovered = host({ 'r.sse-capture': asFile(stalled().frame('tick', '13')) })
+        expect(await main(['analyze', 'r.sse-capture', '--fail-on', 'warning'], recovered.io)).toBe(EXIT.ok)
+        expect(recovered.out).toContain('stall.silent:bytes')
+        expect(recovered.out).toContain('resolved')
+        // The same stream, but the capture says it ended while the new connection was still silent.
+        const records = stalled()
+        const endsInSilence = serializeCapture({ header: newHeader({ kind: 'local-full', source: { kind: 'browser-app' } }), records: records.build(), footer: { endReason: 'stopped', counts: {}, endT: records.now + 60_000 } })
+        const stuck = host({ 's.sse-capture': endsInSilence })
+        expect(await main(['analyze', 's.sse-capture', '--fail-on', 'warning'], stuck.io)).toBe(EXIT.gateFailed)
+        expect(stuck.out).toContain('stall.silent:bytes')
+    })
+
+    it('a stream whose cadence changed for good (three consecutive 8 s silences after a 1 s rhythm) no longer fails the gate at the slow rhythm, says so as a note, and a later stall still fails it', async () => {
+        const slowed = (silences: number) => healthyStart().repeat(12, 1000, (b, i) => b.frame('tick', String(i + 1))).repeat(silences, 8000, (b, i) => b.frame('tick', String(13 + i)))
+        const endingAt = (records: ReturnType<typeof slowed>, afterMs: number) => serializeCapture({ header: newHeader({ kind: 'local-full', source: { kind: 'browser-app' } }), records: records.build(), footer: { endReason: 'stopped', counts: {}, endT: records.now + afterMs } })
+        // Two silences of 8 s and then the capture ends in a third that has gone on for 8 s: not recognised as a new rhythm, it is a stall in progress.
+        const two = slowed(2)
+        const notYet = host({ 'a.sse-capture': endingAt(two, 8000) })
+        expect(await main(['analyze', 'a.sse-capture', '--fail-on', 'warning'], notYet.io)).toBe(EXIT.gateFailed)
+        // Three silences of 8 s recognised as the new rhythm, and the capture ends 8 s into the next one, which is normal now.
+        const three = slowed(3)
+        const adapted = host({ 'b.sse-capture': endingAt(three, 8000) })
+        expect(await main(['analyze', 'b.sse-capture', '--fail-on', 'warning'], adapted.io)).toBe(EXIT.ok)
+        expect(adapted.out).toContain('cadence.changed:bytes')
+        expect(adapted.out).toContain('Delivery cadence changed')
+        expect(adapted.out).toContain('stall.silent:bytes')
+        expect(adapted.out).toContain('resolved')
+        // The same stream ending in a silence far beyond the new rhythm is a stall again.
+        const later = host({ 'c.sse-capture': endingAt(three, 60_000) })
+        expect(await main(['analyze', 'c.sse-capture', '--fail-on', 'warning'], later.io)).toBe(EXIT.gateFailed)
+    })
+
     it('--fail-on moves the gate, and the other formats are well formed', async () => {
         const text = asFile(build().connect().response({ headers: { 'content-encoding': 'gzip' } }).repeat(3, 1000, (b, i) => b.frame('tick', String(i + 1))))
         const warn = host({ 'w.sse-capture': text })
