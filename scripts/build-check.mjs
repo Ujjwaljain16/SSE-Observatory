@@ -238,6 +238,8 @@ describe('E7: the built files', () => {
         const manifest = JSON.parse(text('package.json'))
         assert.ok(!manifest.dependencies || Object.keys(manifest.dependencies).length === 0)
         assert.ok(existsSync(path.join(DIST, manifest.bin['sse-doctor'])), 'bin target')
+        // npm rewrites a bin path that starts with ./ and says so at publish time (seen on the first publish of 2.0.0): write it the way the registry stores it
+        assert.equal(manifest.bin['sse-doctor'], 'bin/sse-doctor.mjs', 'the bin path is written as npm stores it, without a leading ./')
         assert.ok(existsSync(path.join(DIST, manifest.main)), 'main')
         assert.ok(existsSync(path.join(DIST, manifest.types)), 'types')
     })

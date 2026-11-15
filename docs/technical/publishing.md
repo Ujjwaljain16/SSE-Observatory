@@ -1,7 +1,6 @@
 # Publishing `sse-doctor`
 
-`sse-doctor` is built so that it **can** be published to npm, and it is **not** published. The repository's root package stays
-`private`; nothing in the normal build or in CI can publish. This page is the checklist for the day that changes.
+`sse-doctor` **is published to npm**: [`sse-doctor@2.0.0`](https://www.npmjs.com/package/sse-doctor) went out on 2026-11-15 from the release commit of `main`, after the checklist below, and was checked from a clean folder against the registry (`npx sse-doctor@2.0.0 --version`, `selftest`, and a `probe` and `analyze` of a real public stream). The repository's root package stays `private` (an `npm publish` in the repository root fails with `EPRIVATE`, which is what keeps the app, the tests and local notes out of a package); nothing in the normal build or in CI publishes. This page is the checklist for every release of the package.
 
 ## What the build produces
 
@@ -14,9 +13,9 @@ unless `SSE_DOCTOR_PUBLISH=1` is set, so an accidental `npm publish` there does 
 carrying canary secrets, and checks the file list, the size budget (about 400 KB), the shebang, the absence of
 dependencies, and that no canary appears in any output. CI runs it on Ubuntu and Windows.
 
-## Before the first publish
+## Before a publish
 
-- [ ] **Choose and check the public name.** The name `sse-doctor` was looked up on the registry on 2026-11-15 and was not taken (a lookup that finds nothing is not a claim: check again on the day, and consider a scope). To change it, change `PACKAGE_NAME` in `scripts/build-cli.mjs`.
+- [ ] **Choose and check the public name.** The name `sse-doctor` was free on the registry on 2026-11-15 and is now this project's. To change it (a scoped name, for example), change `PACKAGE_NAME` in `scripts/build-cli.mjs`.
 - [ ] **Decide the version policy.** The build writes version `2.0.0`, the same as the repository's release tag `v2.0.0`. The CLI, the capture format (`2.x`) and the scenario schema (`1`) version separately. A
   breaking change to a format is a major version of that format; the analyzer version is written into every capture.
 - [ ] **Read the package README** (`dist-cli/README.md`) as a stranger would: what it is, one command that works, the exit
@@ -33,6 +32,8 @@ dependencies, and that no canary appears in any output. CI runs it on Ubuntu and
 - [ ] **Licence**: MIT, as the repository.
 
 ## Publishing
+
+From `dist-cli` (not the repository root), with an npm account that has two-factor authentication and the name `sse-doctor`:
 
 ```bash
 npm run build:cli

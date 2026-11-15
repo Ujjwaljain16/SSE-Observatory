@@ -134,7 +134,7 @@ steps:
 
 With `comment: 'true'` on a `pull_request` run, the summary is posted as **one comment that later runs update**, found by a hidden marker in its text. It never edits "the last comment", which may belong to another workflow. The token (`token`, default `github.token`) needs `pull-requests: write`; a pull request from a fork gets a read-only token, and then the comment step fails without failing the job, because the verdict is the exit code and not the comment. Nothing is posted unless you set `comment`.
 
-The tool is not published to npm yet; building it from the repository is the supported path.
+The tool is published to npm as [`sse-doctor`](https://www.npmjs.com/package/sse-doctor) (version 2.0.0; Node 20 or newer, no dependencies): `npx sse-doctor@2 test scenarios/*.json` runs a scenario anywhere. The composite action in this repository builds the same code from its own checkout, so a workflow in this repository does not need the package.
 
 ## Other commands
 
