@@ -10,7 +10,7 @@ The campaign's idea: more tests of the same shape find few bugs, so it uses **in
 |---|---|---|
 | B | Parser and framing: the parser against the specification (random streams, raw bytes, every 2- and 3-way split of the specification's examples), the proxy's framer against the parser, hostile input, observer on/off identity | done |
 | C | Rules and engine: every threshold at T-1, T and T+1, finding lifecycle, odd threshold values, evidence pointers, rule/fixture/twin coverage, odd sequence ids | done |
-| D3 | A scenario made from a capture, run against the faulty stream and its healthy twin | done, two gaps recorded (below) |
+| D3 | A scenario made from a capture, run against the faulty stream and its healthy twin | done; the two gaps it found (Q4a, Q4b) were decided by the owner and closed (see "Decided and done") |
 | E3 | Hostile text from a stream through every command and format, with a strict XML parser for JUnit | done |
 | F | The built command line as a process: exit codes, clean stdout, no stack traces, always stops, expands its own globs (`npm run doctor:contract`) | done |
 | A1, A5 | The fixture server's own log, and the four-way comparison (server, transport, parser, findings) on ten routes | done |
@@ -29,6 +29,7 @@ The campaign's idea: more tests of the same shape find few bugs, so it uses **in
 | H0, H6 (soak) | The existing soak spec (`npm run test:soak`, here with `SOAK_MINUTES=10` on Chrome 157, i5-13450HX, otherwise idle, 2026-11-15): a stream at 200 events/s for 10 minutes. It passed: connected the whole time, event rows present at all 20 checks, no crash. Heap used by the page, sampled every 30 s without forcing a garbage collection: 35-100 MB, no upward trend that can be told from the noise of uncollected garbage (a fit gives 2 MB/min with samples varying by 60 MB); the total heap went from 126 to 154 MB | smoke only. The plan's gate (heap slope under 0.5 MB/min with a **forced** collection before each sample, plus timers, listeners and the SharedWorker's heap) is **not evaluated**: the spec cannot force a collection. The recording is bounded at 8 MiB by design |
 | H4 (overhead harness with arms and CIs), H5 (workloads) | The plan's paired-block harness with an A/A calibration, and the full list of workloads | not started; the existing `scripts/bench.mjs` (above) is what was run |
 | I1 | The end-to-end journey (`e2e/journey.spec.ts`, `e2e/support/journeyKit.ts`): a healthy stream; a stalled one (the finding is not raised earlier than the stream's own rhythm allows, and its evidence record is the server's last write to within 100 ms plus slack); the finding read as observation, then deduction; the report, the capture and the scenario taken out of the real export dialog into `test-results/journey/<run>/`; the built command line (a process) analysing the downloaded capture and agreeing with the app's report, a replay of it probed and compared under the D1 policy; the scenario validated against its published schema and run; fail on the faulty stream and pass on the twin (an end-to-end green path for `f06-skips` / `f06-resumes`); and the fix simulated (the scenario byte for byte unchanged, the stall absent, its check evaluated) | done, **1 defect** (19). **Two steps are known gaps and pinned, not hidden:** for the stall itself the scenario passes on the stalled stream (Q4a; the journey step is a Playwright `test.fail`, so it fails loudly the day the gap is closed), and the downloaded capture cannot be replayed by the command line as it is (Q-I1). Each file the journey needs is taken from its own page (a second download on one page did not arrive on CI), so the report and the capture are two recordings of one stream and are compared by what they conclude |
+| Q-I1 | `sse-doctor replay` of the app's exported capture (no payload): a labelled synthetic replay built in memory by the same function as the app's button, ids, names, order and timing kept, bodies of the recorded size, the file never changed; refusals for no events, no sizes, absurd sizes and damaged files; a capture with payload unchanged and unlabelled | done (the owner's decision); the journey step 5a replays the downloaded file. A scenario's `target.replay` of such a capture is still refused (open, above) |
 | G9 | Converting the waits in `e2e/doctor.spec.ts` to signals | done: the 12 `waitForTimeout` calls wait for the health strip's event count, a counted reconnect, a test id, or the live region's text; `src/cli/__tests__/doctorSpecsNoSleep.test.ts` fails if any `e2e/doctor*.spec.ts` (or the journey) calls it again. The repository's older specs still have dozens |
 | Q12, Q13 | The owner's two decisions on stalls: a stall that a later connection recovered from is resolved and kept as history (R05, R13, R04); a gap that was a stall is kept out of the rhythm the next stall is judged by | done, each with the failing test first (see the two sections under "Open decisions"); **2 more defects** of the same shape found on the way: R13 and R04 also stayed open for ever after a recovery |
 
@@ -55,7 +56,7 @@ Assessed 2026-11-15 on `phase-15-campaign`, which holds everything that would sh
 2. Run the release-candidate workflow by hand on `v2` (Actions, "Release candidate") and read its summary; it publishes and deploys nothing.
 3. Smoke-test the Vercel preview of the release pull request: open the app, connect to a stream, open the Doctor, export a report; check `/docs/` and that the mock API is off.
 4. Decide the version: `package.json` says 0.0.1 and the command line says 2.0.0-dev.0; the tag would be `v2.0.0`.
-5. Decide which open questions to settle first. None is a release blocker by itself: each is pinned by a test and described above. The ones with the most effect on users are Q4 (a scenario made from a stall capture does not catch the stall), Q14 (what `--no-redact` writes) and Q6 (a silent redirect).
+5. Decide which open questions to settle first. None is a release blocker by itself: each is pinned by a test and described above. The ones with the most effect on users are Q14 (what `--no-redact` writes) and Q6 (a silent redirect).
 6. Open the pull request from `v2` to `main`, merge it, tag it, and write the release notes. Say in the notes what is **not** covered (the section "Not covered" below) and that the "under 2% CPU at 500 events/s" target is not demonstrated.
 
 **Rollback.** Revert the merge commit on `main`; Vercel redeploys the previous version (v1). Nothing in v2 changes stored data.
@@ -116,28 +117,15 @@ The release itself (the pull request from `v2` to `main`, the tag, the package, 
 
 ## Open decisions
 
-The sections below are the questions as they were put, each pinned by a test so the behaviour is visible. The decisions are in the table above.
+The sections below are the questions as they were put, each pinned by a test so the behaviour is visible. The decisions are in the table above. Q4a and Q4b are decided and done: see "Decided and implemented" below.
 
-### Q4a. A scenario made from a stall capture does not catch the stall
+### Q-I1. The capture to share is documented as replayable by the command line, and the command line refused it (decided and done)
 
-A scenario collects the events the capture had and stops, so the silence that followed is never judged: it passes against the stalled stream. Test: `src/cli/__tests__/scenarioRoundTrip.test.ts` (`it.fails`, with a set-up test beside it).
+`docs/guide/stream-doctor.md` says the capture to share "can be analysed and replayed" by the command line. `sse-doctor replay` used to refuse it (exit 2, "holds no payload to replay"), because the app records what happened on the wire and not what events said; the app's own **Replay in Mock mode** button first made a labelled copy with placeholder bodies, and the command line did not.
 
-- **Option 1 (recommended):** an optional `expect.max_silence_ms` in the scenario schema (an additive, backward-compatible change), generated from stall findings, with the runner observing for that long after the last step.
-- **Option 2:** leave it, and say in the generated scenario's notes that a stall is not checked.
+**Decision (the owner):** the command line replays it, matching the app, as a synthetic replay and not a byte-exact one. Done: the app's `replayCopy` moved to `src/core/capture/replayCopy.ts` (one function for both), and `src/cli/replaySource.ts` builds the copy in memory for `replay`. Ids, event names, order and times are kept; each body is a placeholder of the recorded size (an event with no recorded size gets the smallest valid body, and the notice counts them); the notice on stderr, the address line and an `X-Mock-Synthetic` response header say it is synthetic; the file is never changed or written to. A capture that holds payload replays exactly as before, unlabelled. Still refused (exit 2, with the reason): a capture with no events, with no recorded event size at all, with sizes that add up to more than 16 MB, and a damaged file. Tests: `src/cli/__tests__/replaySynthetic.test.ts`, `src/core/capture/__tests__/replayCopy.test.ts`, and the journey step 5a, which now replays the downloaded file.
 
-### Q4b. A scenario made from a bad-response capture expects the bad response
-
-It expects the captured status and content type, so it passes on the fault and fails on the fix. The generated note tells the user to edit `expect`; a regression scenario that has to be edited to mean what it says is not one.
-
-- **Option 1 (recommended):** when the captured response was not a healthy event stream, expect a healthy one (200, `text/event-stream`) and say so in the notes.
-- **Option 2:** keep it and emit a failing check that states the choice.
-
-### Q-I1. The capture to share is documented as replayable by the command line, and the command line refuses it
-
-`docs/guide/stream-doctor.md` says the capture to share "can be analysed and replayed" by the command line. It can be analysed. `sse-doctor replay` refuses it (exit 2, "holds no payload to replay"), because the app records what happened on the wire and not what events said; the app's own **Replay in Mock mode** button first makes a labelled copy with placeholder bodies (`src/doctor/replayCopy.ts`), and the command line does not. Pinned in `e2e/journey.spec.ts` (step 5a); the journey replays that copy.
-
-- **Option 1 (recommended):** `sse-doctor replay` makes the same labelled placeholder copy for a capture without payloads, and says so on stderr.
-- **Option 2:** change the documentation to say what is true (analyse; replay only through the app's button), and make the refusal message say how.
+**Left open:** a scenario's `target.replay` that names such a capture (`sse-doctor test`) is still refused, because `src/cli/scenarioRunner.ts` calls the mock's session reader directly; it can call `loadReplaySession` from `src/cli/replaySource.ts` and add a label to its output (the `test` JSON schema would need an optional field). The copy keeps events only, so comments and heartbeats in the recording are not replayed, and a recorded size of 3 to 6 bytes becomes 7 (the shortest padded body).
 
 ### Q-I2. A scenario's `reconnect` step does not delay the connection or drop the cursor after a server drop
 
@@ -262,6 +250,16 @@ With the switch off the proxy still sent `: sse-proxy-ping`, which the client la
 - **Legitimate captures checked:** every capture in `public/lab`, every v1 sample and the damaged-gap v1 imports, the captures `probe --out` writes for `h01`, `f05-drops` (several connections) and `f06-skips`, and the fixture round trips pass. None tripped the check.
 - **Pins changed:** `fileEdge.test.ts` "a duplicate seq is read as it is... no warning" and "a time that goes backwards is read as it is" now also assert the reported problems. The test that inserts unknown record kinds used `seq` 1 000 000 + i in the middle of the file (a shape no writer produces); it now gives them `r.seq + 0.5`. `captureLibrary.test.ts` tampered a middle record's time to test the hash; that file is now refused for its order, so the hash test tampers the last record and a new test covers the refusal.
 - **Tests:** `integrity.test.ts`, `captureIntegrity.test.ts` (the CLI, per command, with a probe round trip).
+
+### Q4a. A scenario made from a stall capture did not catch the stall
+
+The scenario collected the events the capture had and stopped, so the silence that followed was never judged: it passed against the stalled stream. **Decided (option 1), done:** an optional `expect.max_silence_ms` (integer, 1 or more; the format stays version 1, `docs/public/schemas/sse-scenario-1.json` and `SCENARIO_SCHEMA` changed together), generated from the capture's `stall.silent` findings (the shortest limit among them, read from the finding's own statement of its threshold), and the runner keeps the connection open and observing for that long plus a margin after the last step, then analyses to the end of that time instead of to the last record. The check `expect max silence` fails when the longest stretch without a byte on one connection (the trailing one included) is longer than the limit, or a `stall.silent` finding was raised (this is how a heartbeats-only stall is caught). Scenarios without the field run as before. Tests: `src/cli/__tests__/scenarioRoundTrip.test.ts` (the scenario made from the lab's `f04-silent` and `f04-heartbeats` captures fails on the stalled fixture, with the server's own log showing the connection stayed open and silent for the observation time, and passes on the steady healthy twin `h01` at the same cadence; the same scenario without the field still passes on the stalled stream, as before), `src/cli/__tests__/scenarios.test.ts` (the runner: window, limit, a closed-by-the-scenario stream is inconclusive, a stream the server ends, the shipped `scenarios/ci` files unchanged), `src/core/scenario/__tests__` (schema, Ajv agreement, derivation).
+
+Limits that stay: the stall rule does not hand its limit over as data, so `toScenario` reads it from the finding's text ("The threshold was 1 s ...", `stallLimitMs`); a test pins the wording, and a `data.limitMs` on the finding would replace the parsing (a change in `src/core/diagnostics`, not made here). When a capture has stall findings of several kinds only the shortest limit is used, so a heartbeats-only stall with a longer limit than a byte stall in the same capture is not separately observed for its own length. A scenario's cadence is the capture's: a stream of another rhythm needs another value, and the generated note says so.
+
+### Q4b. A scenario made from a bad-response capture expected the bad response
+
+It expected the captured status and content type, so it passed on the fault and failed on the fix. **Decided (option 1), done:** when the captured response was not HTTP 200 with `text/event-stream`, the scenario expects 200 and `text/event-stream` and says in its notes that it is designed to verify the fix, not to reproduce the broken response. Tests: `scenarioRoundTrip.test.ts` (`f01-text-html` and `f01-404`: fails on the bad response, for the reason it was made for, and passes on `h01`) and `toScenario.test.ts` (every kind of bad response, and no note for a healthy one).
 
 ### h06 `?bare=1`: the client keeps reconnecting (decided: keep it; the test is bounded and pins the finding)
 

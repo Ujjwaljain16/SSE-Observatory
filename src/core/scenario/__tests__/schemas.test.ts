@@ -57,6 +57,8 @@ const VALID: Array<[string, unknown]> = [
     ['allow_gaps', mod((d) => { d.allow_gaps = [{ from: 1, to: 2 }] })],
     ['meta anything', mod((d) => { d.meta = { origin: 'https://a.test', whatever: [1, { a: null }] } })],
     ['$schema', mod((d) => { d.$schema = 'https://example.test/s.json' })],
+    ['max_silence_ms', mod((d) => { d.expect.max_silence_ms = 1000 })],
+    ['max_silence_ms alone in expect', mod((d) => { d.expect = { max_silence_ms: 1 } })],
     ['empty steps and verify', mod((d) => { d.steps = []; d.verify = [] })],
 ]
 
@@ -87,6 +89,10 @@ const INVALID: Array<[string, unknown]> = [
     ['status fractional', mod((d) => { d.expect.status = 200.5 })],
     ['unknown expect key', mod((d) => { d.expect.body = 'x' })],
     ['first event zero', mod((d) => { d.expect.first_event_within_ms = 0 })],
+    ['max_silence_ms zero', mod((d) => { d.expect.max_silence_ms = 0 })],
+    ['max_silence_ms negative', mod((d) => { d.expect.max_silence_ms = -5 })],
+    ['max_silence_ms fractional', mod((d) => { d.expect.max_silence_ms = 1.5 })],
+    ['max_silence_ms string', mod((d) => { d.expect.max_silence_ms = '1000' })],
     ['steps not an array', mod((d) => { d.steps = {} })],
     ['unknown step', mod((d) => { d.steps = [{ explode: true }] })],
     ['step with two actions', mod((d) => { d.steps = [{ wait: { ms: 1 }, disconnect: { mode: 'client' } }] })],
