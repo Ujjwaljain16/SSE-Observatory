@@ -16,5 +16,5 @@ export interface CaptureProblem {
 
 export const MAX_CAPTURE_PROBLEMS: number
 export function recordShapeProblem(record: unknown): string | undefined
-export function validateCaptureIntegrity(records: ReadonlyArray<unknown>, options?: { lines?: ReadonlyArray<number | undefined> }): CaptureProblem[]
+export function validateCaptureIntegrity(records: ReadonlyArray<unknown>, options?: { lines?: ReadonlyArray<number | undefined>; lineOf?: (index: number) => number | undefined }): CaptureProblem[]
 export function describeCaptureProblems(problems: readonly CaptureProblem[], shown?: number): string

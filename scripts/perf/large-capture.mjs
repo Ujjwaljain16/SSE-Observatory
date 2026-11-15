@@ -41,7 +41,7 @@ const file = path.join(tmp, 'big.sse-capture')
     let id = 0
     while (seq < RECORDS) {
         id++
-        const t = seq * 2
+        const t = 10 + seq * 2
         await write(JSON.stringify({ seq: seq++, t, conn: 0, kind: 'chunk', bytes: 120, text: `id: ${id}\nevent: tick\ndata: {"n":${id},"price":9.5}\n\n` }))
         if (seq < RECORDS) await write(JSON.stringify({ seq: seq++, t, conn: 0, kind: 'event', event: 'tick', sseId: String(id), dataBytes: 24, dataHash: id.toString(16) }))
     }

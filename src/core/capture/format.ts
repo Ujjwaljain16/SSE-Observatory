@@ -165,22 +165,23 @@ export function parseCapture(text: string): ParsedCapture {
     const warnings: string[] = []
     const bodyRaw: string[] = []
     const records: CaptureRecord[] = []
-    const recordLines: number[] = []
+    // Lines that hold no record (blank, cut off, the footer). The line of record i is i + 2 plus the ones before it: a list per record would hold
+    // 1.2 million numbers more for a capture that fits the documented 384 MB heap by a small margin.
+    const notRecords: number[] = []
     let footer: CaptureFooter | undefined
     for (let i = 1; i < raw.length; i++) {
         const line = raw[i]!
-        if (line.trim() === '') continue
+        if (line.trim() === '') { notRecords.push(i + 1); continue }
         let value: unknown
         try { value = JSON.parse(line) } catch {
-            if (i === raw.length - 1) { warnings.push(`line ${i + 1} is cut off (the capture was probably interrupted); it was ignored`); continue }
+            if (i === raw.length - 1) { warnings.push(`line ${i + 1} is cut off (the capture was probably interrupted); it was ignored`); notRecords.push(i + 1); continue }
             throw new CaptureFormatError('not valid JSON', i + 1)
         }
         if (!isObject(value)) throw new CaptureFormatError('a record must be a JSON object', i + 1)
-        if (isObject(value.footer)) { footer = value.footer as unknown as CaptureFooter; continue }
+        if (isObject(value.footer)) { footer = value.footer as unknown as CaptureFooter; notRecords.push(i + 1); continue }
         const shape = recordShapeProblem(value)
         if (shape !== undefined) throw new CaptureFormatError(shape, i + 1)
         records.push(value as unknown as CaptureRecord)
-        recordLines.push(i + 1)
         bodyRaw.push(line)
     }
     if (!footer) warnings.push('the capture has no footer (it was not finished); counts and the integrity check are unavailable')
@@ -189,5 +190,5 @@ export function parseCapture(text: string): ParsedCapture {
     let integrity: IntegrityStatus = 'absent'
     if (footer?.integrity) integrity = footer.integrity.value === integrityOf(bodyRaw) ? 'ok' : 'mismatch'
     if (integrity === 'mismatch') warnings.push('the integrity hash does not match: the records were changed after the capture was written')
-    return { capture: { header: header as unknown as CaptureHeader, records, footer }, integrity, warnings, problems: validateCaptureIntegrity(records, { lines: recordLines }) }
+    return { capture: { header: header as unknown as CaptureHeader, records, footer }, integrity, warnings, problems: validateCaptureIntegrity(records, { lineOf: (index) => { let line = index + 2; for (const skipped of notRecords) { if (skipped <= line) line++; else break } return line } }) }
 }
