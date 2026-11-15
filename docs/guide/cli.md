@@ -22,12 +22,24 @@ npm run doctor -- analyze stream.sse-capture
 | `repro <capture>` | Shrinks a capture to the smallest one that still reports a finding (`--finding <key>`, default the most severe), writes it redacted to `--output`, and can also write a matching scenario (`--scenario`) and a test template (`--test`). Stops after 3000 analyses and says if the result may not be minimal. |
 | `redact <capture>` | Writes a copy that is safe to share: `--output <file>`. |
 | `test <scenario.json>...` | Runs [scenario files](/guide/cli-ci). |
-| `replay <capture>`, `fixtures list|serve` | Serve a capture or the built-in streams locally ([details](/guide/cli-ci)). |
+| `replay <capture>`, `fixtures list|serve` | Serve a capture or the built-in streams locally ([details](/guide/cli-ci)). A capture without payload, such as the app's export, is replayed as a labelled [synthetic replay](#replaying-a-capture-from-the-app-a-synthetic-replay). |
 | `selftest` | Checks that this build works: each rule against a stream that should and one that should not trigger it, plus redaction. |
 
 Options for every command: `--format human|json|md|junit`, `--fail-on info|warning|error|critical` (default `error`), `--profile <file.json>`, `--quiet`, `--verbose`.
 
 A full (not redacted) capture served by `replay` is not readable by web pages unless you pass `--allow-origin <page origin>` (the app's proxy and `curl` work without it); a redacted capture keeps the open policy.
+
+### Replaying a capture from the app (a synthetic replay)
+
+A capture that holds the stream's bytes or text (one from `probe --out`, redacted or not) is replayed **exactly** as it was recorded. The **capture to share** that the app exports is different: the app records what happened on the wire (times, sizes, ids, event names, reconnects), not what the events said, so the file has no payload. `sse-doctor replay` replays it anyway, as a **synthetic replay, not a byte-exact one**:
+
+- it builds a copy **in memory** (the same function as the app's **Replay in Mock mode** button), so the file is never changed and nothing is written;
+- every event keeps its **id, event name, order and time** from the capture, so a gap, a stall or a resume from the wrong id plays back as it was recorded;
+- every body is a **placeholder of the recorded size** (valid JSON, carrying only the numbers your profile reads). An event with no recorded size gets the smallest valid body (`{}`), and the notice says how many;
+- comments, heartbeats and how the bytes were split into reads are **not** replayed;
+- it says so: a `note: SYNTHETIC replay, not byte-exact...` line on stderr, the same words on the line with the address, and an `X-Mock-Synthetic: placeholder-bodies` response header. A replay of a capture that holds payload has none of these.
+
+A capture with no events, no recorded event sizes, or sizes too large to build bodies from (together more than 16 MB), and a file that is damaged, is refused with exit code 2 and the reason. `replay` prints no JSON, so the output schemas are unchanged. A scenario whose `replay.capture` is such a capture (see [CI](/guide/cli-ci)) is still refused.
 
 ## Exit codes
 
