@@ -152,12 +152,17 @@ export async function runScenario(scenario: Scenario, file: string, io: CliIo, s
 
         stream.start()
         let index = 0
+        // The runner's client reconnects by itself when the server drops it, so events of the new connection can arrive while a `reconnect` step
+        // waits. They count for the next `collect_events`: it counts from the drop, not from the moment it starts.
+        let countFrom: number | undefined
         for (const step of scenario.steps as ScenarioStep[]) {
             index++
             if ('collect_events' in step) {
-                const goal = events + step.collect_events
+                const base = countFrom ?? events
+                countFrom = undefined
+                const goal = base + step.collect_events
                 const ok = await waitFor(() => events >= goal || ended(), step.timeout_ms ?? 30_000)
-                const got = events - (goal - step.collect_events)
+                const got = events - base
                 check(`step ${index}: collect ${step.collect_events} events`, ok && events >= goal, events >= goal ? `received ${got}` : ended() ? `the stream ${phase} after ${got}` : `received ${got} of ${step.collect_events} before the timeout`)
             } else if ('disconnect' in step) {
                 if (step.disconnect.mode === 'client') {
@@ -165,6 +170,7 @@ export async function runScenario(scenario: Scenario, file: string, io: CliIo, s
                     check(`step ${index}: disconnect (client)`, true, 'closed by the client')
                 } else {
                     const ok = await waitFor(() => phase === 'reconnecting' || ended(), 15_000)
+                    if (ok) countFrom = events
                     check(`step ${index}: disconnect (server)`, ok, ok ? 'the server dropped the connection' : 'the server did not drop the connection')
                 }
             } else if ('reconnect' in step) {
