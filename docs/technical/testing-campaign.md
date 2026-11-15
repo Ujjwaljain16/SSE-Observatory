@@ -37,29 +37,22 @@ The campaign's idea: more tests of the same shape find few bugs, so it uses **in
 
 ## Release readiness (v2 to main)
 
-Assessed 2026-11-15 on `phase-15-campaign`, which holds everything that would ship. Nothing below has been done to `main`: opening the release pull request, merging, tagging and deploying are the owner's.
+Assessed 2026-11-15 on the commit that became v2.0.0 (`v2` at the merge of pull request 65, `a2dc301` plus the pull request's own merge). `main` is an ancestor of `v2`, so the release is a plain merge; `main` is what Vercel deploys, so the merge puts v2 on the hosted demo.
 
-**Release path.** `main` is an ancestor of `v2` (150 commits ahead), so the release is a plain merge. `main` is what Vercel deploys, so merging to `main` puts v2 on the hosted demo. Compared with `main`, the deployment surface is small: no runtime dependency changed, `api/` is unchanged, `vercel.json` only gives the mock stream a 60 s limit, and the proxy and mock code under `lib/` and `server.js` changed. The production defaults are unchanged (proxy closed, mock API off unless enabled).
-
-| Gate | Status |
+| Gate | Result |
 |---|---|
-| Unit, integration and property tests with coverage | 2114 passed locally on the merged tree; coverage 83.0% statements, 70.7% branches, 74.4% functions, 84.5% lines |
-| Lint, three typechecks, the app and docs build, the CLI build | pass locally |
-| Built command line: selftest, build check, pack check, scenarios, process contract | pass locally (35 and 34 checks) |
-| Browser tests on Chrome, whole suite | 161 of 163 passed with the machine idle; the 2 failures were an environment timeout that passes alone and a real defect (a silence flickering out of the live view), fixed since. **Not yet re-run whole after the fix.** The journey test is still being written |
+| Unit, integration and property tests with coverage | 179 files, 2402 tests passed, 30 skipped (they run only in the nightly and release-candidate workflows); coverage 84.4% statements, 72.8% branches, 76.4% functions, 85.8% lines (CI, Node 20) |
+| Lint, three typechecks, the app and docs build, the CLI build | pass in CI on Linux (Node 20 and 22) and Windows |
+| Built command line: selftest, build check, pack check, scenarios, process contract | pass in CI (35 build checks, 36 contract checks) |
+| Browser tests, Chromium, whole suite | 176 of 176 on an idle machine, on an isolated copy of the release candidate; the Chromium job in CI passed on the release commit |
+| Release-candidate workflow, on the release commit | passed: verify on Linux (Node 20 and 22) and Windows, the healthy twins in real time with the default thresholds, the documented limits (`scripts/perf/large-capture.mjs`), the audit, Docker, Chromium |
 | Dependency audit (runtime, high and above) | 0 vulnerabilities |
-| CI on pull request 50 | Windows verify, composite action, Docker, audit pass. Both Linux verify legs failed on one test that assumed a platform (a 100 KB request line is refused with 431 on Linux); fixed in `2e46be4`; **re-run pending** |
-| Nightly and release-candidate workflows | written and checked by tests; **neither has run on GitHub** (their parts were run here) |
-| Firefox and WebKit | informational; pending |
-| Smoke test of a hosted preview | **not done**: the Vercel preview is behind a login and no bypass was used |
+| Firefox and WebKit | informational; see the CI run |
+| Smoke test of a hosted preview | done on the `v2` preview (signed in by the owner): the app loads, the proxy streamed a real public stream (200, the proxy's headers, 39 events/s), the Doctor read it live, `/docs/` serves, the mock API is off |
 
-**What only the owner can do or decide** (in order):
-1. Merge pull request 50 into `v2` once its checks are green.
-2. Run the release-candidate workflow by hand on `v2` (Actions, "Release candidate") and read its summary; it publishes and deploys nothing.
-3. Smoke-test the Vercel preview of the release pull request: open the app, connect to a stream, open the Doctor, export a report; check `/docs/` and that the mock API is off.
-4. Version: decided and set to 2.0.0 (`package.json`, `package-lock.json`, the command line's `VERSION` in `scripts/build-cli.mjs`, the app's footer); the tag is `v2.0.0`.
-5. Decide which open questions to settle first. None is a release blocker by itself: each is pinned by a test and described above. The ones with the most effect on users are Q14 (what `--no-redact` writes) and Q6 (a silent redirect).
-6. Open the pull request from `v2` to `main`, merge it, tag it, and write the release notes. Say in the notes what is **not** covered (the section "Not covered" below) and that the "under 2% CPU at 500 events/s" target is not demonstrated.
+**What the release-candidate runs found** (all fixed before the release): the healthy twin `h06-comments-only` was missing from the nightly list; the capture-integrity check held a table per record and broke the documented 384 MB heap for a 1.2 million record capture (pull request 66: the table is built only for a capture that is already invalid); a bookmark read that finished after the Timeline was gone updated state, an unhandled error that failed the Node 20 test run (pull request 67). The synthetic capture of `large-capture.mjs` had a time that went backwards, which the new integrity check now rightly refuses; the generator was fixed.
+
+**Known flakiness, not fixed:** the browser test "a stalled lane, a healthy lane and a dropping lane" (`e2e/doctor.fixtures.spec.ts`, G5) failed in some CI runs because the third lane never connected, and passed on a re-run and every time locally. The cause is not found. If it recurs it blocks a pull request until the job is re-run.
 
 **Rollback.** Revert the merge commit on `main`; Vercel redeploys the previous version (v1). Nothing in v2 changes stored data.
 
