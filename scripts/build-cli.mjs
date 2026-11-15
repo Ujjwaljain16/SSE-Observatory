@@ -55,7 +55,8 @@ const pkg = {
     },
 }
 writeFileSync(path.join(out, 'package.json'), JSON.stringify(pkg, null, 2) + '\n')
-writeFileSync(path.join(out, 'README.md'), `# ${PACKAGE_NAME}\n\n${pkg.description}\n\nPart of [SSE Observatory](https://github.com/Ujjwaljain16/SSE-Observatory). Run \`npx ${PACKAGE_NAME} --help\`.\n`)
+// The README is what the package page shows, and a published README cannot be changed without a new version: it is written by hand in scripts/cli-readme.md.
+cpSync(path.join(root, 'scripts', 'cli-readme.md'), path.join(out, 'README.md'))
 if (existsSync(path.join(root, 'LICENSE'))) cpSync(path.join(root, 'LICENSE'), path.join(out, 'LICENSE'))
 
 console.log(`built ${PACKAGE_NAME}@${VERSION} -> dist-cli/`)
