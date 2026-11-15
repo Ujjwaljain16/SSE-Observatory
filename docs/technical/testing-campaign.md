@@ -114,13 +114,13 @@ The limit is three times the 95th-percentile gap of the stream's own history. Wi
 - **Option 1 (recommended):** keep a gap that was itself reported as a stall out of the baseline it is judged by.
 - **Option 2:** document it in the known limitations.
 
-### Q14. A `--no-redact` capture keeps the wire bytes as recorded, so the secrets you gave may be in them
+### Q14. A `--no-redact` capture keeps the wire bytes as recorded, so the secrets you gave may be in them (DECIDED, IMPLEMENTED)
 
-The command line scrubs every value you give it (`--auth-env`, `--cookie-env`, ...) from everything it writes. For `--no-redact` that corrupted the file (defect 9). The capture is now scrubbed field by field, except the base64 of the wire bytes, which is the point of a byte-exact local capture. The flag already says "may contain secrets, do not share". Test: `src/cli/__tests__/security.canary.test.ts`, and `security.url.test.ts` for the URL's own secrets.
+**Decision (owner):** refuse `--no-redact` when secret-bearing options are supplied, with a clear explanation; keep the warning; preserve the byte-exact local capture for the cases where it is safe.
 
-- **Option 1 (current):** as above, documented in `docs/guide/cli.md`.
-- **Option 2:** refuse `--no-redact` when any secret option was given, and say why.
-- **Option 3:** also scrub the decoded wire bytes and re-encode them, which is redaction under another name and defeats a byte-exact capture.
+**Implemented.** `probe` and `env-diff` refuse `--no-redact` when any option supplies a secret (`--auth-env`, `--cookie-env`, `--header-env`, `--query-env`, a literal `--header`, the per-side `-a`/`-b` forms, credentials in the URL, a secret-looking query value in the URL; the list is `secretOptionsIn` in `src/cli/commands.ts` and is stated in `docs/guide/cli.md`). The refusal is a usage error (exit 2), happens before any connection or file, names the options (never a value) and gives the two ways out (run without `--no-redact`, or without the secret options). With no secret option the flag works as before: a byte-exact local capture and the "may contain secrets, do not share" warning. Tests: `src/cli/__tests__/security.noredact.test.ts` (each option refused alone; URL secrets; no connection, no file; env-diff per side; the allowed case is byte-exact and still warns), `security.canary.test.ts` (the refusal's output is searched like every other output; the full-local-capture sweep now builds its capture from the observation, since the command no longer writes one with secrets in it), `security.url.test.ts`.
+
+Not done: option 3 (also scrub the decoded wire bytes), which is redaction under another name and defeats a byte-exact capture. The field-by-field scrub in `saveObserved` stays as a second layer; with the refusal it has nothing to scrub in practice.
 
 ### Q15. Forged proxy tags
 
@@ -150,15 +150,23 @@ The Sequence view lists event ids as received, so a JWT used as an event id is o
 
 The app has no input for them, so the browser sweep cannot plant them; the unit and command-line sweeps do. Add inputs if the browser should cover them.
 
-### Q6 (plan). A redirect to another origin drops the secrets silently
+### Q6. A redirect to another origin drops the secrets silently (DECIDED, IMPLEMENTED)
 
-`probe` follows a cross-origin redirect with the secret headers stripped, exits 0 and says nothing. Pinned in `src/cli/__tests__/security.redirect.test.ts`.
+**Decision (owner):** refuse cross-origin redirects when secret-bearing options are present; provide `--follow-redirects` as an explicit opt-in with a warning that names the credentials that will not be forwarded; same-origin redirects continue; never forward authorization headers or custom secret headers to an untrusted origin.
 
-- **Option 1:** refuse the redirect when a secret option is present, with a clear message, and a `--follow-redirects` to opt in.
-- **Option 2 (cheapest):** keep following, and print a note saying which headers were withheld from which origin.
-- **Option 3 (current):** keep as is.
+**Implemented** in `src/cli/safeFetch.ts` (`createSafeFetch`) and `observe` in `src/cli/commands.ts`, so it applies to `probe`, `env-diff` and `validate`. A redirect to another origin (scheme, host or port differs):
+- with no secret option: followed, as before, silently;
+- with a secret option and no flag: **refused**, exit 3 (could not run), before the other origin is contacted; the message names the options (never a value) and the origin, and says how to opt in;
+- with `--follow-redirects`: followed, the credentials are still not sent, and one warning per origin on stderr names the options that were not forwarded;
+- inside the same origin: followed with the credentials, as before.
 
-### Secret encodings the command line's scrub does not cover (E2)
+Tests: `src/cli/__tests__/security.redirect.test.ts` (refused for every status and every option alone, URL secrets, another port and another scheme, `--format json`; opt-in with its warning once per origin; same origin with secrets; no secrets with and without the flag; env-diff per side), `hardening.test.ts`. The existing "B receives none of the secrets" tests now run with `--follow-redirects`, with their assertions unchanged.
+
+**Open:** `sse-doctor test` (`src/cli/scenarioRunner.ts`) calls the plain `safeFetch`, which has no secret list: a scenario's cross-origin redirect is still followed without its credentials and silently. Passing `createSafeFetch({ secretOptions, followRedirects })` there and accepting `--follow-redirects` in `testCommand` closes it; the file was owned by another change, so it was left alone.
+
+### Secret encodings the command line's scrub does not cover (E2) (DECIDED: DOCUMENT, KEEP THE GAP TESTS; DOCUMENTED)
+
+**Decision (owner):** update the CLI guide with the known unsupported encodings and the exact scope of the `SecretRegistry`; do not claim complete detection; keep the gap tests. **Done:** `docs/guide/cli.md` ("What the scrub covers, and what it does not") lists the exact forms scrubbed (raw, `encodeURIComponent`, lower-case percent, base64 padded and unpadded, base64url, JSON-escaped, the value behind a scheme), how values are registered, the minimum length, the unsupported forms below, and says plainly that detection is not complete and what to do about it. Every gap test in `security.encodings.test.ts` is unchanged.
 
 Pinned as known gaps in `src/cli/__tests__/security.encodings.test.ts` (each is a pair: a test that the form survives today and an `it.fails` for the wanted behaviour): hex (either case); a space written as `+`; `! ' ( ) * ~` percent-encoded; JSON unicode escapes of non-ASCII and surrogate pairs; PHP `\/`; Go's escaped angle brackets; HTML entities; double percent-encoding; base64 of `user:secret`; the secret inside a larger base64 value at an unaligned offset; a secret split across two writes; and two secrets that overlap without one containing the other.
 
