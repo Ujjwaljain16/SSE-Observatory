@@ -8,6 +8,7 @@ import { framesOf } from '../streamText'
 import { loadCaptureText } from '../../../doctor/loadCapture'
 import { EXIT, main, type CliIo } from '../../../cli/index'
 import { replay, validateSession } from '../../../../lib/mock/session.js'
+import { planReplay, sessionFromCapture } from '../../../../lib/mock/capturePlan.js'
 
 // Plan D6: recordings made by the v1 app (.sse-record) must keep importing.
 //
@@ -242,14 +243,69 @@ describe('the mock server\'s own path for a v1 recording (no capture involved): 
         expect(frames).toHaveLength(raw.events.length + 1)
         expect(frames.at(-1)).toBe('event: end\ndata: {"done":true}\n\n')
         const dataOf = (frame: string) => frame.split('\n').filter((l) => l.startsWith('data: ')).map((l) => l.slice(6)).join('\n')
-        expect(frames.slice(0, -1).map((f) => dataOf(f))).toEqual(['{"type":"order","sku":"café","total":5}', 'line one\nline two\n\nline four', '', '日本語 ✓ emoji 😀', '{"sku":"x","total":7,"type":"order"}'])
+        expect(frames.slice(0, -1).map((f) => dataOf(f))).toEqual(['{"type":"order","sku":"café","total":5}', 'line one\nline two\n\nline four', '', '日本語 ✓ emoji 😀', '{"sku":"x","total":7}']) // the last one is not given a "type" any more
     })
 
-    it('OPEN QUESTION, pinned as it is today: the id on a replayed frame is the recording\'s internal uuid, not the server\'s id (sseId), and the event name is not sent as "event:"', async () => {
+    // Owner decision (was an OPEN QUESTION that pinned the old behaviour: the internal uuid as `id:` and the name folded into the JSON data):
+    // never the storage uuid as `id:`; the server's own id (sseId) as `id:` and the event name as `event:`, each independent of the data;
+    // a field the recording did not keep is not sent at all.
+    it('a recording WITH the original ids and names replays exactly those: `id:` is the server\'s id (sseId), `event:` is the name, the uuid appears nowhere', async () => {
         const raw = rawOf('named-unicode-multiline')
         const frames = await framesOfReplay('named-unicode-multiline')
-        expect(frames[0]!.startsWith(`id: ${raw.events[0]!.id}\n`)).toBe(true)
-        expect(frames[0]).not.toContain('id: 10')
-        for (const f of frames) expect(f).not.toMatch(/^event: (order|heartbeat)/m)
+        expect(frames.slice(0, -1)).toEqual([
+            'id: 10\nevent: order\ndata: {"type":"order","sku":"café","total":5}\n\n',
+            'id: 11\nevent: order\ndata: line one\ndata: line two\ndata: \ndata: line four\n\n',
+            'event: heartbeat\ndata: \n\n', // no sseId kept for this event: no id line
+            'data: 日本語 ✓ emoji 😀\n\n', // the default name "message": no event line (a client sees "message" either way)
+            'id: 12\nevent: order\ndata: {"sku":"x","total":7}\n\n',
+        ])
+        for (const e of raw.events) for (const f of frames) expect(f).not.toContain(e.id)
+    })
+
+    it('the data bytes are what the recording holds: a name is never merged into the JSON payload', async () => {
+        const raw = rawOf('named-unicode-multiline')
+        const frames = await framesOfReplay('named-unicode-multiline')
+        const last = raw.events[4]!
+        expect(last.data).toBe('{"sku":"x","total":7}') // no "type" field in the recording, and the name is "order"
+        expect(frames[4]).toContain(`data: ${last.data}\n`)
+        expect(frames[4]).not.toContain('"type"')
+    })
+
+    it('a recording WITHOUT original ids and names replays with neither line, and never with the uuid', async () => {
+        const body = { version: '1.0', events: [
+            { id: '6762f50d-a861-4d17-a596-de60ce9df5d2', data: '{"n":1}', deltaMs: 0 },
+            { id: 'bdea7873-0ec2-4371-bc2a-9927aee62df9', type: '', sseId: '', data: 'plain', deltaMs: 0 },
+        ] }
+        const { session, error } = validateSession(body)
+        expect(error).toBeUndefined()
+        const written: string[] = []
+        await replay({ res: { write: (s: string) => { written.push(s); return true }, once: () => undefined, end: () => undefined } as never, session, speed: 1000, isClosed: () => false })
+        expect(written.slice(0, -1)).toEqual(['data: {"n":1}\n\n', 'data: plain\n\n'])
+        expect(written.join('')).not.toMatch(/6762f50d|bdea7873/)
+    })
+
+    it('the same recording imported as a capture (the other replay path) agrees: same ids and names, and the data is not changed', () => {
+        const capture = importV1(JSON.parse(read('named-unicode-multiline')))
+        const { session, error } = sessionFromCapture(serializeCapture(capture))
+        expect(error).toBeUndefined()
+        const plan = planReplay(session, { speed: 1000 })
+        expect(plan.steps.map((s) => s.write)).toEqual([
+            'id: 10\nevent: order\ndata: {"type":"order","sku":"café","total":5}\n\n',
+            'id: 11\nevent: order\ndata: line one\ndata: line two\ndata: \ndata: line four\n\n',
+            'event: heartbeat\ndata: \n\n',
+            'data: 日本語 ✓ emoji 😀\n\n',
+            'id: 12\nevent: order\ndata: {"sku":"x","total":7}\n\n',
+        ])
+    })
+
+    it('resuming with Last-Event-ID works only on real ids: on the capture path after "10" it continues at 11; a recording without ids has nothing to resume from and is served from the start', () => {
+        const withIds = sessionFromCapture(serializeCapture(importV1(JSON.parse(read('named-unicode-multiline'))))).session
+        const resumed = planReplay(withIds, { honorLastEventId: true, lastEventId: '10', speed: 1000 })
+        expect(resumed.steps.map((s) => String(s.write).split('\n')[0])).toEqual(['id: 11', 'event: heartbeat', 'data: 日本語 ✓ emoji 😀', 'id: 12'])
+        const noIds = sessionFromCapture(serializeCapture(importV1({ version: '1.0', events: [{ id: 'uuid-1', data: 'a', deltaMs: 0 }, { id: 'uuid-2', data: 'b', deltaMs: 0 }] }))).session
+        for (const lastEventId of ['uuid-1', '1', '0']) {
+            const plan = planReplay(noIds, { honorLastEventId: true, lastEventId, speed: 1000 })
+            expect(plan.steps.map((s) => s.write), `Last-Event-ID ${lastEventId}`).toEqual(['data: a\n\n', 'data: b\n\n'])
+        }
     })
 })

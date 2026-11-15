@@ -42,12 +42,34 @@ When a non-looping replay finishes, the server sends an `event: end` message so 
 {
   "version": "1.0",
   "events": [
-    { "id": "1", "type": "message", "data": "{\"n\":1}", "deltaMs": 0 }
+    { "sseId": "1", "type": "tick", "data": "{\"n\":1}", "deltaMs": 0 }
   ]
 }
 ```
 
-`data` must be a string. `type` is merged into JSON payloads as a `type` field when the payload does not have one.
+`data` must be a string.
+
+### What a `.sse-record` replays (v1 recordings)
+
+A v1 event carries three different things, and they are kept apart:
+
+| Field in the file | What it is | What the replay sends |
+|---|---|---|
+| `sseId` | the `id:` the original server sent (absent when it sent none) | `id: <sseId>` |
+| `type` | the `event:` name the original server sent (the viewer stores `message` when it sent none) | `event: <type>`, except `message` |
+| `id` | the viewer's own storage identifier (a random uuid) | **nothing**: it is not an SSE field and is never sent as `id:` |
+| `data` | the payload | sent as it is, byte for byte; the name is **not** merged into a JSON payload any more |
+
+Where the recording did not keep a field, the replay sends no line for it and does not make one up:
+
+- An event the server sent without an `id:` has no `sseId` in the file, so it is replayed with no `id:` line. Nothing in the file says what its id was.
+- The name `message` is not written as `event: message`. The viewer stores `message` both for "no `event:` line" and for an explicit `event: message`, so the file cannot tell them apart; a client dispatches both as the same `message` event, and the capture replay does the same.
+- `parsedType` (a `type` value found inside a JSON payload) is not an SSE field and is not replayed.
+- A file written by hand with only `id` (the form this page used to show) now replays with no `id:` line. Use `sseId` for an id you want sent.
+
+**Resuming with `Last-Event-ID`.** A `.sse-record` upload is replayed from the start on every request: the server ignores the `Last-Event-ID` header for it, whatever the id, so a recording never pretends to resume. The ids it sends are the real ones, so a client that reconnects with one gets the whole recording again. To get resumption, upload the recording as a capture instead (the Doctor imports a `.sse-record` as a capture): with `honorLastEventId=1` the replay continues after the event whose `id:` equals the header, and works only on real ids. If the id is not in the recording (an event that has none can never be one), `unknownId` decides (the default is to start from the beginning).
+
+**About the samples.** The four v1 samples in the test suite were produced by running the v1 viewer's own export code, not downloaded from a running v1 app. They show the fields that code writes; compatibility with every real v1 export is not established until real files are tried.
 
 ## Replaying a capture (`.sse-capture` v2)
 
