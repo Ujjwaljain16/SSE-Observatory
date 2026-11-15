@@ -177,7 +177,7 @@ export const InterceptorEditor = ({
                                     aria-checked={interceptor.enabled}
                                     aria-label={`${interceptor.name} enabled`}
                                     onClick={e => { e.stopPropagation(); onToggle(interceptor.id) }}
-                                    className="flex items-center justify-center"
+                                    className="flex items-center justify-center min-w-6 min-h-6"
                                 >
                                     <span className="flex">
                                         {interceptor.enabled
@@ -191,7 +191,7 @@ export const InterceptorEditor = ({
                                 <button
                                     onClick={e => { e.stopPropagation(); onRemove(interceptor.id) }}
                                     aria-label={`Remove ${interceptor.name || 'interceptor'}`}
-                                    className="p-1 rounded text-red-400/60 hover:text-red-400 hover:bg-red-500/10 transition-all"
+                                    className="p-1.5 min-w-6 min-h-6 rounded text-red-400/60 hover:text-red-400 hover:bg-red-500/10 transition-all"
                                 >
                                     <Trash2 className="w-3.5 h-3.5" />
                                 </button>

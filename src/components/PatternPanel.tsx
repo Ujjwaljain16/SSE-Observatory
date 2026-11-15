@@ -297,7 +297,7 @@ export function PatternPanel({
                                 aria-checked={rule.enabled}
                                 aria-label={`${rule.name} enabled`}
                                 onClick={() => onToggleRule(rule.id)}
-                                className="shrink-0 transition-colors"
+                                className="shrink-0 transition-colors min-w-6 min-h-6 flex items-center justify-center"
                             >
                                 {rule.enabled
                                     ? <ToggleRight className="w-5 h-5 text-indigo-400" />
@@ -310,7 +310,7 @@ export function PatternPanel({
                                 <button
                                     onClick={() => onRemoveRule(rule.id)}
                                     aria-label={`Remove rule ${rule.name}`}
-                                    className={`shrink-0 p-1 rounded transition-colors ${isDark ? 'hover:bg-slate-600 text-slate-400' : 'hover:bg-slate-200 text-slate-600'
+                                    className={`shrink-0 p-1.5 min-w-6 min-h-6 rounded transition-colors ${isDark ? 'hover:bg-slate-600 text-slate-400' : 'hover:bg-slate-200 text-slate-600'
                                         }`}
                                 >
                                     <X className="w-3.5 h-3.5" />

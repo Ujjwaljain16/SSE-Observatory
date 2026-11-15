@@ -227,7 +227,8 @@ capture is analysed again or reduced to its smallest form.
 The panel is built from native lists, headings and buttons. Each finding is a disclosure button that says whether it is
 open (`aria-expanded`), the parts inside it are headings in order, evidence chips are buttons, severity is written out as
 well as coloured, and a polite live region announces only changes of state (connection state and the counts of open
-errors and warnings), not the once-a-second figures. Automated checks (axe, WCAG A and AA), a keyboard-only run and a check
+errors and warnings), not the once-a-second figures. Buttons, links, inputs and tabs are at least 24 by 24 CSS pixels (WCAG 2.2, 2.5.8),
+checked at a 360 px width. Automated checks (axe, WCAG A and AA), a keyboard-only run and a check
 of the accessibility tree run on every change. A run with a real screen reader has not been done, so treat it as untested
 with one: reports are welcome.
 

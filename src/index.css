@@ -44,6 +44,15 @@ body {
   overflow-x: hidden;
 }
 
+/* WCAG 2.2 target size (2.5.8, level AA): a checkbox or radio button is at least 24 by 24 CSS pixels (the browser default is 13). */
+@layer base {
+  input[type='checkbox'],
+  input[type='radio'] {
+    min-width: 1.5rem;
+    min-height: 1.5rem;
+  }
+}
+
 /* Animated Background */
 .bg-animated {
   background: linear-gradient(-45deg, #020617, #0f172a, #1e293b, #0c4a6e); /* Slate to Deep Sky */

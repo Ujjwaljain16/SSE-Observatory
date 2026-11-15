@@ -29,6 +29,8 @@ export interface StreamInstance {
     connected: boolean
     isLoading: boolean
     error: string
+    /** The lane is down and waiting to reconnect: `error` is then the retry message, not a failure. */
+    retrying?: boolean
 }
 
 interface UseMultiStreamReturn {
@@ -119,6 +121,7 @@ export const useMultiStream = (): UseMultiStreamReturn => {
                         connected: status.phase === 'open',
                         isLoading: status.phase === 'connecting',
                         error: status.phase === 'reconnecting' || status.phase === 'failed' || status.phase === 'ended' ? status.message : '',
+                        retrying: status.phase === 'reconnecting',
                     })
                 },
             },

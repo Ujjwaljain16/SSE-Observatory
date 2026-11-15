@@ -82,9 +82,9 @@ export const ProfileTabs = ({
                                 onBlur={() => setConfirming((c) => (c === profile.name ? null : c))}
                                 aria-label={asking ? `Confirm deleting profile ${profile.name}` : `Delete profile ${profile.name}`}
                                 title={asking ? 'Click again to delete' : 'Delete profile'}
-                                className={`mr-2 rounded-full transition-colors flex items-center gap-1 text-xs ${asking
+                                className={`mr-2 min-w-6 min-h-6 justify-center rounded-full transition-colors flex items-center gap-1 text-xs ${asking
                                     ? 'px-2 py-0.5 bg-red-600 text-white'
-                                    : `p-0.5 ${dark ? 'hover:bg-red-500/20 hover:text-red-400' : 'hover:bg-red-100 hover:text-red-600'}`
+                                    : `p-1.5 ${dark ? 'hover:bg-red-500/20 hover:text-red-400' : 'hover:bg-red-100 hover:text-red-600'}`
                                     }`}
                             >
                                 {asking ? 'Delete?' : <X className="w-3 h-3" aria-hidden="true" />}
