@@ -2,7 +2,8 @@ import fs from 'node:fs'
 import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import AxeBuilder from '@axe-core/playwright'
-import { test, expect, type Page } from '@playwright/test'
+import { test, expect, type Locator, type Page } from '@playwright/test'
+import { eventCountOf, healthStrip } from './support/doctorKit'
 
 // The Stream Doctor panel against streams that behave in known ways. The servers are local and start with the test, so
 // nothing here depends on the repository's other test servers.
@@ -68,6 +69,12 @@ async function connect(page: Page, path: string) {
 
 const openDoctor = (page: Page) => page.getByTestId('doctor-toggle').click()
 
+// No test here waits for a fixed time (src/cli/__tests__/doctorSpecsNoSleep.test.ts keeps it so). A test that needs the stream to have
+// done something waits for the page to show it: the events the health strip counts, a reconnect it counts, or a test id that appears.
+// The test servers send an event every 250 ms (a drop every 200 ms), so "n events" is also "n quarters of a second of stream".
+const untilEvents = (page: Page, n: number) => expect.poll(async () => eventCountOf(await healthStrip(page)), { message: `the health strip counts ${n} events`, timeout: 30_000 }).toBeGreaterThanOrEqual(n)
+const untilReconnected = (page: Page) => expect.poll(async () => Number((await healthStrip(page))['Reconnects']?.value), { message: 'the health strip counts a reconnect', timeout: 30_000 }).toBeGreaterThanOrEqual(1)
+
 test.describe('Stream Doctor', () => {
     test('says what to do before any stream is connected', async ({ page }) => {
         await page.goto('/')
@@ -107,7 +114,8 @@ test.describe('Stream Doctor', () => {
         await page.goto('/')
         await connect(page, '/steady')
         await openDoctor(page)
-        await page.waitForTimeout(6000)
+        // the silent twin of this stream has its finding after 12 events and a second; 24 events (6 s of stream) is well past that
+        await untilEvents(page, 24)
         await expect(page.getByTestId('doctor-none')).toContainText('not proof')
         await expect(page.getByTestId('doctor-badge')).toHaveCount(0)
         // Checks that had nothing to look at are listed as such rather than left out.
@@ -191,7 +199,8 @@ test.describe('Stream Doctor', () => {
         // The live region names the state and the counts, and does not change while the state does not.
         const live = panel.getByRole('status')
         await expect(live).toHaveText(/Connection open. [0-9]+ errors?, [0-9]+ warnings? open./)
-        await page.waitForTimeout(1500)
+        // settled: the warning has grown into an error (the announcement says so), and nothing further is due
+        await expect(live).toHaveText('Connection open. 1 error, 0 warnings open.')
         const mutations = await live.evaluate((el) => new Promise<number>((resolve) => {
             let n = 0
             const observer = new MutationObserver((list) => { n += list.length })
@@ -290,7 +299,8 @@ test.describe('Stream Doctor', () => {
             test.setTimeout(60_000)
             await page.emulateMedia({ reducedMotion: 'reduce' })
             await openExport(page, '/leaky')
-            await page.waitForTimeout(400)
+            await expect(page.getByTestId('export-dialog').getByLabel(/Preview of/)).toBeVisible() // the dialog has drawn what the check looks at
+            await expect(page.getByTestId('export-dialog').getByRole('button', { name: 'Close', exact: true }).first()).toBeFocused() // focus has moved into the dialog
             const results = await new AxeBuilder({ page }).include('[data-testid="export-dialog"]').withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze()
             const found = results.violations.map((v) => `${v.id} (${v.impact}) ${v.help} e.g. ${v.nodes[0]?.target.join(' ')}`)
             expect(found, found.join('\n')).toEqual([])
@@ -310,7 +320,7 @@ test.describe('Stream Doctor', () => {
             await startSeq(page, '1')
             await openDoctor(page)
             await page.getByTestId('doctor-tab-sequence').click()
-            await page.waitForTimeout(2500)
+            await untilEvents(page, 10)
             await expect(page.getByTestId('sequence-trust')).toContainText('Not declared')
             await expect(page.getByTestId('sequence-trust')).toContainText('hint, not a check')
             await expect(page.getByRole('button', { name: 'Declare the sequence' })).toBeVisible()
@@ -321,7 +331,7 @@ test.describe('Stream Doctor', () => {
             await page.goto('/')
             await startSeq(page, '1')
             await openDoctor(page)
-            await page.waitForTimeout(3000)
+            await untilEvents(page, 12) // enough events for the profile tab to have fields to suggest
 
             // the profile tab lists the fields of recent events, the counter first
             await page.getByTestId('doctor-tab-profile').click()
@@ -402,17 +412,17 @@ test.describe('Stream Doctor', () => {
             await page.goto('/')
             await startSeq(page, '1')
             await openDoctor(page)
-            await page.waitForTimeout(3000)
-            const check = async (label: string) => {
-                await page.waitForTimeout(400)
+            await untilEvents(page, 12)
+            const check = async (label: string, ready: Locator) => {
+                await expect(ready).toBeVisible() // the tab has drawn what the check looks at
                 const results = await new AxeBuilder({ page }).include('[data-testid="doctor-panel"]').withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze()
                 const found = results.violations.map((v) => `${label}: ${v.id} (${v.impact}) ${v.help} e.g. ${v.nodes[0]?.target.join(' ')}`)
                 expect(found, found.join('\n')).toEqual([])
             }
             await page.getByTestId('doctor-tab-sequence').click()
-            await check('sequence')
+            await check('sequence', page.getByTestId('sequence-trust'))
             await page.getByTestId('doctor-tab-profile').click()
-            await check('profile')
+            await check('profile', page.getByTestId('profile-suggestions'))
         })
     })
 
@@ -482,7 +492,7 @@ test.describe('Stream Doctor', () => {
             await page.goto('/')
             await connect(page, '/steady')
             await openDoctor(page)
-            await page.waitForTimeout(2500)
+            await untilEvents(page, 10)
             await page.getByTestId('doctor-tab-captures').click()
             await page.getByTestId('capture-name').fill('steady one')
             await page.getByTestId('capture-save').click()
@@ -535,7 +545,8 @@ test.describe('Stream Doctor', () => {
             await page.goto('/')
             await connect(page, '/drop')
             await openDoctor(page)
-            await page.waitForTimeout(3500)
+            await untilReconnected(page)
+            await untilEvents(page, 8)
             await page.getByTestId('doctor-export').click()
             await page.getByLabel(/Capture to share/).check()
             const ack = page.getByTestId('export-ack')
@@ -567,19 +578,20 @@ test.describe('Stream Doctor', () => {
             await page.goto('/')
             await connect(page, '/drop')
             await openDoctor(page)
-            await page.waitForTimeout(3500)
-            const check = async (label: string) => {
-                await page.waitForTimeout(400)
+            await untilReconnected(page)
+            await untilEvents(page, 8)
+            const check = async (label: string, ready: Locator) => {
+                await expect(ready).toBeVisible() // the tab has drawn what the check looks at
                 const results = await new AxeBuilder({ page }).include('[data-testid="doctor-panel"]').withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze()
                 const found = results.violations.map((v) => `${label}: ${v.id} (${v.impact}) ${v.help} e.g. ${v.nodes[0]?.target.join(' ')}`)
                 expect(found, found.join('\n')).toEqual([])
             }
             await page.getByTestId('doctor-tab-timeline').click()
-            await check('timeline')
+            await check('timeline', page.getByTestId('timeline-table'))
             await page.getByTestId('doctor-tab-captures').click()
             await page.getByTestId('capture-save').click()
             await expect(page.getByTestId('capture-list')).toBeVisible()
-            await check('captures')
+            await check('captures', page.getByTestId('capture-list'))
         })
     })
 
@@ -590,7 +602,7 @@ test.describe('Stream Doctor', () => {
         await connect(page, '/silent')
         await openDoctor(page)
         await expect(page.locator('[data-testid="doctor-finding"][data-finding-key^="stall"]')).toBeVisible({ timeout: 25_000 })
-        await page.waitForTimeout(600)
+        await expect(page.locator('[data-testid="doctor-finding"][data-finding-key^="stall"]').getByRole('heading', { name: 'Limits' })).toBeVisible() // the open finding has drawn its parts
         const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze()
         const found = results.violations.map((v) => `${v.id} (${v.impact}) ${v.help} e.g. ${v.nodes[0]?.target.join(' ')}`)
         expect(found, found.join('\n')).toEqual([])
