@@ -28,8 +28,8 @@ The campaign's idea: more tests of the same shape find few bugs, so it uses **in
 | G | Browser end-to-end against the fixture server's own log: healthy and stalled streams (three different findings for three kinds of silence), two tabs on one URL (one connection), three lanes, a reconnect diagnosis checked against the log, the shared worker against the in-page fallback (equal reports), lifecycle (20 open/close rounds with no timer or listener left), the browser canary sweep (every export kind, the dialog preview, the clipboard, local storage), and a production-build smoke test | done, **1 defect**; each spec was run at least three times in the agent's run |
 | H0, H6 (soak) | The existing soak spec (`npm run test:soak`, here with `SOAK_MINUTES=10` on Chrome 157, i5-13450HX, otherwise idle, 2026-11-15): a stream at 200 events/s for 10 minutes. It passed: connected the whole time, event rows present at all 20 checks, no crash. Heap used by the page, sampled every 30 s without forcing a garbage collection: 35-100 MB, no upward trend that can be told from the noise of uncollected garbage (a fit gives 2 MB/min with samples varying by 60 MB); the total heap went from 126 to 154 MB | smoke only. The plan's gate (heap slope under 0.5 MB/min with a **forced** collection before each sample, plus timers, listeners and the SharedWorker's heap) is **not evaluated**: the spec cannot force a collection. The recording is bounded at 8 MiB by design |
 | H4 (overhead harness with arms and CIs), H5 (workloads) | The plan's paired-block harness with an A/A calibration, and the full list of workloads | not started; the existing `scripts/bench.mjs` (above) is what was run |
-| I | The end-to-end journey | handed to an agent (see the next row when it reports) |
-| G9 | Converting the waits in `e2e/doctor.spec.ts` to signals | not done (it edits an existing spec) |
+| I1 | The end-to-end journey (`e2e/journey.spec.ts`, `e2e/support/journeyKit.ts`): a healthy stream; a stalled one (the finding is not raised earlier than the stream's own rhythm allows, and its evidence record is the server's last write to within 100 ms plus slack); the finding read as observation, then deduction; the report, the capture and the scenario taken out of the real export dialog into `test-results/journey/<run>/`; the built command line (a process) analysing the downloaded capture and agreeing with the app's report, a replay of it probed and compared under the D1 policy; the scenario validated against its published schema and run; fail on the faulty stream and pass on the twin (an end-to-end green path for `f06-skips` / `f06-resumes`); and the fix simulated (the scenario byte for byte unchanged, the stall absent, its check evaluated) | done, **1 defect** (19). **Two steps are known gaps and pinned, not hidden:** for the stall itself the scenario passes on the stalled stream (Q4a; the journey step is a Playwright `test.fail`, so it fails loudly the day the gap is closed), and the downloaded capture cannot be replayed by the command line as it is (Q-I1). Each file the journey needs is taken from its own page (a second download on one page did not arrive on CI), so the report and the capture are two recordings of one stream and are compared by what they conclude |
+| G9 | Converting the waits in `e2e/doctor.spec.ts` to signals | done: the 12 `waitForTimeout` calls wait for the health strip's event count, a counted reconnect, a test id, or the live region's text; `src/cli/__tests__/doctorSpecsNoSleep.test.ts` fails if any `e2e/doctor*.spec.ts` (or the journey) calls it again. The repository's older specs still have dozens |
 
 ## Release readiness (v2 to main)
 
@@ -80,6 +80,7 @@ Assessed 2026-11-15 on `phase-15-campaign`, which holds everything that would sh
 | 16 | Redaction | A leading byte order mark was dropped from the text of a sanitized capture (the decoder removed it), so a replay lost the `BOM_STRIPPED` note | `e4ccb34` |
 | 14 | CLI | Control characters from argv or a file name (an escape sequence in a URL, an unknown command) reached stderr raw, as S13 closed for streams | `8075ed8` |
 | 10 | CLI | Every value in the URL's query was registered as a secret, so a harmless `?scale=0.05`, `?limit=1000` or `?debug=true` made each `0.05`, `1000` or `true` in the output a placeholder, including inside JSON numbers: `--format json` output and the saved capture could be invalid (found as a flake in the canary sweep). A value is now a secret when its name says so or its shape does (12+ characters mixing letters and digits) | same commit |
+| 19 | CLI scenario runner | After `disconnect: server` the runner's own client reconnects at once, so the events of the new connection arrive while a `reconnect` step with `after_ms` waits; the next `collect_events` counted only events that came after it started and waited for ones already delivered ("the stream ended after 1"). A scenario made from a capture taken in the app (which waits about a second to reconnect) therefore **failed on the healthy twin** of the stream it came from. Found by the journey; the scenarios shipped with the tool use `after_ms: 0`, where the wait is too short to show it | the commit that adds `scenarioReconnectWait.test.ts` |
 | 9 | CLI | `probe --no-redact --out` wrote a capture that could not be read back, redacted or replayed: the scrub of the secrets you gave the command replaced part of the base64 of an echoed secret inside the wire bytes. The capture is now scrubbed field by field before it is written, leaving only the base64 of the wire bytes as recorded | same commit |
 
 ## Open decisions
@@ -99,6 +100,24 @@ It expects the captured status and content type, so it passes on the fault and f
 
 - **Option 1 (recommended):** when the captured response was not a healthy event stream, expect a healthy one (200, `text/event-stream`) and say so in the notes.
 - **Option 2:** keep it and emit a failing check that states the choice.
+
+### Q-I1. The capture to share is documented as replayable by the command line, and the command line refuses it
+
+`docs/guide/stream-doctor.md` says the capture to share "can be analysed and replayed" by the command line. It can be analysed. `sse-doctor replay` refuses it (exit 2, "holds no payload to replay"), because the app records what happened on the wire and not what events said; the app's own **Replay in Mock mode** button first makes a labelled copy with placeholder bodies (`src/doctor/replayCopy.ts`), and the command line does not. Pinned in `e2e/journey.spec.ts` (step 5a); the journey replays that copy.
+
+- **Option 1 (recommended):** `sse-doctor replay` makes the same labelled placeholder copy for a capture without payloads, and says so on stderr.
+- **Option 2:** change the documentation to say what is true (analyse; replay only through the app's button), and make the refusal message say how.
+
+### Q-I2. A scenario's `reconnect` step does not delay the connection or drop the cursor after a server drop
+
+`docs/guide/cli-ci.md`: "`reconnect` waits `after_ms`, then connects again; `resume_from_last_event_id: false` forgets the cursor first." After `disconnect: server` the runner's client has already reconnected, with the cursor, so neither is honoured (defect 19 only fixed the counting). Pinned in `src/cli/__tests__/scenarioReconnectWait.test.ts`.
+
+- **Option 1 (recommended):** hold the client at the drop (stop it), so that the `reconnect` step is the reconnect. Scenarios that put a step other than `reconnect` after a server drop would then need one.
+- **Option 2:** say in the documentation that after a server drop the client reconnects by itself and the step only waits.
+
+### Observation: a capture from the app has no wall-clock start
+
+`clock.startedAtEpochMs` is absent from captures made by the app (`captureOf` does not pass it), so a record's time cannot be placed on a server's log. The journey compares an interval from the first byte instead. Whether to add it (it tells a reader when the recording was made, to the millisecond) is a privacy call for the owner.
 
 ### Q12. A stall that ended with a closed connection stays open after a healthy reconnect
 
