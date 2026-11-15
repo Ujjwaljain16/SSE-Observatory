@@ -78,6 +78,8 @@ Export a report, a shareable capture, a curl command or a test scenario. Redacti
 | **Monitor** | a saved library of captures, compare two | `compare`, the composite `action.yml` |
 
 ```bash
+# from npm (Node 20+):  npx sse-doctor probe https://example.com/stream --duration 30 --out incident.sse-capture
+# from this repository:
 npm run build:cli
 npm run doctor -- probe https://example.com/stream --duration 30 --out incident.sse-capture
 npm run doctor -- analyze incident.sse-capture
@@ -92,7 +94,7 @@ What it will not pretend to know (the full list is in [Known limitations](https:
 - **No findings is not proof of health.** Checks that had nothing to look at are listed as *not evaluated*.
 - The app records what happened on the wire, not what events said, so exports hold no event bodies, and a replay uses placeholders of the original size.
 - Captures saved in the browser are not redacted; only an export goes through redaction, and its scan is a check, not a guarantee.
-- The command line is built to be publishable and is not published (the version it reports is 2.0.0; the checklist for the day it is published is [Publishing sse-doctor](https://sse-observatory.vercel.app/docs/technical/publishing)).
+- The command line is published to npm as `sse-doctor` (`npx sse-doctor --help`, Node 20 or newer, no dependencies); how it is published is in [Publishing sse-doctor](https://sse-observatory.vercel.app/docs/technical/publishing).
 - The scrub the command line applies to its own output recognises the secrets you give it in several encodings, not all of them. [The list](https://sse-observatory.vercel.app/docs/guide/cli) says which, and detection is not complete.
 - The live views show raw values as received (they say so on screen, and copying one asks first); every export is redacted.
 
@@ -254,7 +256,7 @@ Reproduce with `npm run bench` (add `-- --throttle 4` for the slow-CPU run, `-- 
 
 ## 12. Future Improvements
 
-What v2 deliberately left out (a fault-injection proxy, environment comparison, a server SDK, OpenTelemetry export, an AI explainer, npm publishing of the CLI) and the places it was built to grow are in [the later track](https://sse-observatory.vercel.app/docs/technical/roadmap-later).
+What v2 deliberately left out (a fault-injection proxy, environment comparison, a server SDK, OpenTelemetry export, an AI explainer) and the places it was built to grow are in [the later track](https://sse-observatory.vercel.app/docs/technical/roadmap-later).
 
 - **WASM query engine** for even tighter filtering loops.
 - **Protobuf / gRPC-Web decoding** beyond stringified JSON.

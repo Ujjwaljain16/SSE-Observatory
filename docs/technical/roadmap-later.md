@@ -21,7 +21,6 @@ says what it measured separately from what it deduces. See [Diagnostics](/techni
 | A browser extension, a server SDK, OpenTelemetry export, event lineage, a synthetic monitoring service | See below. |
 | Per-stream profiles, a heartbeat predicate in the profile | One profile applies to every stream in a browser. The recorder can already read a heartbeat predicate, but no rule uses it yet, so offering one would promise something the checks do not do. |
 | Bookmarks inside exported files | The format has no record for them yet; they stay with the recording in the browser. |
-| npm publishing of `sse-doctor` | Built to be publishable, not published. See [Publishing](/technical/publishing). |
 
 ## Extension points
 

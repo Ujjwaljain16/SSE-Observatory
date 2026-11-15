@@ -1,6 +1,6 @@
 # Command line: `sse-doctor`
 
-`sse-doctor` runs the same diagnostics as the app, from a terminal or a CI job. It is built from this repository (`npm run build:cli`, then `npm run doctor -- <command>`); it is not published to npm yet.
+`sse-doctor` runs the same diagnostics as the app, from a terminal or a CI job. It is published to npm as [`sse-doctor`](https://www.npmjs.com/package/sse-doctor) (Node 20 or newer, no dependencies), so `npx sse-doctor <command>` works anywhere; from a checkout of this repository, `npm run build:cli` and then `npm run doctor -- <command>` run the same code.
 
 ```bash
 npm run build:cli

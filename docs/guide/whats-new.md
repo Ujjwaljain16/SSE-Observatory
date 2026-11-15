@@ -18,7 +18,7 @@ SSE Observatory 2.0.0 (released 2026-11-15) keeps everything v1 did (the live vi
 - The command line **refuses** a redirect to another origin while credentials are attached (`--follow-redirects` opts in, and the credentials still never go to the other origin), refuses `--no-redact` together with secret options, and refuses a capture whose `seq` repeats or goes down or whose `t` goes backwards. [Why](/guide/cli).
 - `sse-doctor replay` replays a capture exported from the app as a labelled **synthetic** replay (placeholder bodies of the recorded size), never as byte-exact. A v1 recording replays with its original SSE id and event name, never its internal storage id.
 - The Timeline numbers rows by connection and shows the retry counter in its own column. The live views are labelled "Raw values — as received, not redacted." and copying a raw event value asks first.
-- `npm run build:cli` builds the command line as version 2.0.0. It is **not published to npm**; [the checklist](/technical/publishing) is ready for the day that changes.
+- The command line is **published to npm** as [`sse-doctor@2.0.0`](https://www.npmjs.com/package/sse-doctor): `npx sse-doctor --help` (Node 20 or newer, no dependencies, 79 files, about 250 KB). From a checkout, `npm run build:cli` builds the same code. [How it is published](/technical/publishing).
 
 ## How it was tested
 

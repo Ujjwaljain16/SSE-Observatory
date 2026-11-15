@@ -11,7 +11,7 @@
 
 import { build } from 'esbuild'
 import { spawnSync } from 'node:child_process'
-import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -22,7 +22,9 @@ const VERSION = '2.0.0'
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const out = path.join(root, 'dist-cli')
 
-rmSync(out, { recursive: true, force: true })
+// Clear what is inside, not the folder itself: a folder that is some process's working directory (a terminal left in dist-cli) cannot be removed on Windows (EBUSY), but its contents can.
+mkdirSync(out, { recursive: true })
+for (const entry of readdirSync(out)) rmSync(path.join(out, entry), { recursive: true, force: true })
 mkdirSync(path.join(out, 'bin'), { recursive: true })
 
 const common = { bundle: true, platform: 'node', target: 'node20', format: 'esm', logLevel: 'warning', define: { __VERSION__: JSON.stringify(VERSION) } }
@@ -42,7 +44,7 @@ const pkg = {
     license: 'MIT',
     engines: { node: '>=20' },
     repository: { type: 'git', url: 'git+https://github.com/Ujjwaljain16/SSE-Observatory.git' },
-    bin: { [PACKAGE_NAME]: './bin/sse-doctor.mjs' },
+    bin: { [PACKAGE_NAME]: 'bin/sse-doctor.mjs' },
     main: './index.mjs',
     types: './types/core/index.d.ts',
     exports: {
