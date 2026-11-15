@@ -202,6 +202,20 @@ describe('E7: the built files', () => {
         assert.deepEqual(files.filter((f) => !/^(?:bin\/sse-doctor\.mjs|index\.mjs|package\.json|README\.md|LICENSE|types\/.+\.d\.ts)$/.test(f)), [])
     })
 
+    it('the README a stranger reads on the package page: what it is, a command that works, the exit codes, what it cannot tell, where the docs are, the licence', () => {
+        const readme = text('README.md')
+        assert.ok(readme.length > 1500, `the README is only ${readme.length} characters`)
+        for (const [what, pattern] of [
+            ['a command that works', /npx sse-doctor probe https?:\/\//],
+            ['analyze', /sse-doctor analyze/],
+            ['the exit codes', /\| 130 \|/],
+            ['that no findings is not proof of health', /not proof/i],
+            ['the documentation link', /https:\/\/sse-observatory\.vercel\.app\/docs\//],
+            ['the licence', /MIT/],
+            ['the Node version', /Node(?:\.js)? 20/],
+        ]) assert.match(readme, pattern, `the README lacks ${what}`)
+    })
+
     for (const rel of ['bin/sse-doctor.mjs', 'index.mjs', 'package.json', 'README.md']) {
         it(`${rel}: no machine path or name, no node_modules, no source map comment`, () => {
             assert.deepEqual(scanText(text(rel), { kind: 'js', markers }), [])
