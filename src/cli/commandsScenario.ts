@@ -77,7 +77,7 @@ export async function testCommand(io: CliIo, args: ParsedArgs, secrets: SecretRe
             const lines = errors.map((e) => `  ${e.line !== undefined ? `line ${e.line}, column ${e.column}` : e.pointer || '(document)'}: ${e.message}`)
             throw new CliError(`"${file}" is not a valid scenario:\n${lines.join('\n')}`, EXIT.usage)
         }
-        runs.push(await runScenario(value, file, io, secrets, args.multi['allow-env'] ?? []))
+        runs.push(await runScenario(value, file, io, secrets, args.multi['allow-env'] ?? [], args.flags['follow-redirects'] === true))
     }
     const format = stringFlag(args, 'format') ?? 'human'
     let text: string

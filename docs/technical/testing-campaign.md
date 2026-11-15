@@ -199,7 +199,7 @@ The app has no input for them, so the browser sweep cannot plant them; the unit 
 
 Tests: `src/cli/__tests__/security.redirect.test.ts` (refused for every status and every option alone, URL secrets, another port and another scheme, `--format json`; opt-in with its warning once per origin; same origin with secrets; no secrets with and without the flag; env-diff per side), `hardening.test.ts`. The existing "B receives none of the secrets" tests now run with `--follow-redirects`, with their assertions unchanged.
 
-**Open:** `sse-doctor test` (`src/cli/scenarioRunner.ts`) calls the plain `safeFetch`, which has no secret list: a scenario's cross-origin redirect is still followed without its credentials and silently. Passing `createSafeFetch({ secretOptions, followRedirects })` there and accepting `--follow-redirects` in `testCommand` closes it; the file was owned by another change, so it was left alone.
+**Scenarios too (done):** `sse-doctor test` applies the same rule. A scenario is secret-bearing when a header, or a query value in `target.url`, comes from `${ENV:NAME}` (the address alone, `${ENV:STREAM_URL}`, is not a credential). A cross-origin redirect then stops the run with exit 3 naming the header or variable (never a value) and `--follow-redirects`; with the flag it is followed, the credentials stay behind, and a warning names them. Tests: `src/cli/__tests__/scenarioRedirect.test.ts` (refused for a header and for a query value, B never contacted; opted in, B's own log has no secret; same origin keeps the headers; no secret follows as before; three of the five were red first and fail again with the secret list emptied).
 
 ### Secret encodings the command line's scrub does not cover (E2) (DECIDED: DOCUMENT, KEEP THE GAP TESTS; DOCUMENTED)
 

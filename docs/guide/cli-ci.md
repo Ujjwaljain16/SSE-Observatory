@@ -37,6 +37,8 @@ A `replay` capture path is relative to the folder you run the command from, not 
 
 Secrets enter only through `${ENV:NAME}`, and only for variables named `STREAM_*` or `SSE_*` (a scenario is configuration that runs, and one from a pull request must not be able to read `GITHUB_TOKEN`); name another one yourself with `--allow-env NAME`. A literal token, key or password in a scenario is rejected (exit 2), and every value taken from the environment is scrubbed from all output.
 
+A redirect to another origin (another scheme, host or port) is treated as for `probe`: when the scenario carries a credential (a header, or a query value, that comes from `${ENV:NAME}`; the address alone does not count) the run stops with exit 3 and says which, because credentials are never sent to another origin. Add `--follow-redirects` to follow it anyway: the credentials stay behind and a warning names them. A redirect inside one origin always continues, and a scenario with no credential follows redirects as before.
+
 ## Steps
 
 - `collect_events` waits for that many events, or fails at `timeout_ms`.
