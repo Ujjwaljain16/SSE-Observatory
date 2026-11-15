@@ -82,9 +82,37 @@ Assessed 2026-11-15 on `phase-15-campaign`, which holds everything that would sh
 | 10 | CLI | Every value in the URL's query was registered as a secret, so a harmless `?scale=0.05`, `?limit=1000` or `?debug=true` made each `0.05`, `1000` or `true` in the output a placeholder, including inside JSON numbers: `--format json` output and the saved capture could be invalid (found as a flake in the canary sweep). A value is now a secret when its name says so or its shape does (12+ characters mixing letters and digits) | same commit |
 | 9 | CLI | `probe --no-redact --out` wrote a capture that could not be read back, redacted or replayed: the scrub of the secrets you gave the command replaced part of the base64 of an echoed secret inside the wire bytes. The capture is now scrubbed field by field before it is written, leaving only the base64 of the wire bytes as recorded | same commit |
 
+## Owner decisions (2026-11-15) and their status
+
+The owner decided every open question below. Each decision is implemented in its own pull request into `v2`, test first (a failing test, then the smallest fix), with the faulty and the healthy path tested. The sections under "Open decisions" keep the options as they were put; the decision and the status are here, and each implementing pull request moves its own section from open to decided. Nothing here has been merged to `main`, tagged or released.
+
+| | Decision | Priority | Status |
+|---|---|---|---|
+| Q4a | Option 1: optional `expect.max_silence_ms` in the scenario schema (additive, version stays 1), generated from stall findings; the runner keeps observing after the last step. A scenario from a stall capture must fail on the stalled fixture and pass on its healthy twin; scenarios without the field are unchanged | P0 | in progress |
+| Q4b | Option 1: a scenario from an unhealthy captured response expects a healthy one (200, `text/event-stream`), with an explicit note that it verifies the fix and does not reproduce the broken response | P0 | in progress |
+| Q12 | Option 1: a later connection that delivers an event resolves the stall finding; the original stall stays as history (duration, connection, occurrence count); a recovered stream no longer fails an active-health gate, a capture that ends in a stall still does | P0 | in progress |
+| Q13 | Option 1: a gap already classified as a stall is kept out of the baseline later stalls are judged by (test: about 12 gaps, an 8 s stall, another 8 s stall) | P0 | in progress |
+| Q15 | Option 1: the proxy escapes or rewrites upstream comments in the reserved `sse-proxy` namespace before adding its own tags; tested with the real proxy in the loop | P0 | in progress |
+| Q16 | The proxy's error notice becomes an SSE comment, not an application event; the reason stays readable by the inspector through the observation | P0 | in progress |
+| Q17 | `PROXY_DIAGNOSTICS=0` means no proxy diagnostic text and no proxy diagnostic headers at all, the ping included; the test that allowed the ping is changed | P0 | in progress |
+| Q6 | Option 1: refuse a cross-origin redirect when secret-bearing options are present; `--follow-redirects` is an explicit opt-in with a warning that names the credentials not forwarded; same-origin redirects continue; authorization and custom secret headers are never forwarded to another origin | P0 | not started |
+| Q14 | Option 2: refuse `--no-redact` when secret-bearing options are supplied, with a clear explanation; keep the warning; a byte-exact local capture stays possible when it is safe | P0 | not started |
+| Q18 | Number Timeline connection rows by connection attempt and show the retry counter separately | P1 | not started |
+| R10 | The declared longest silence also informs the no-heartbeat evaluation (already implemented; kept consistent with R05 and R13) | P1 | done |
+| Fixture | `f04-late-heartbeat` is approved and kept; its healthy twin `h06-comments-only` is now in the nightly twins list | P1 | done (this pull request) |
+| `h06-comments-only?bare=1` | Keep the reconnect behaviour; make its test bounded and verify the reconnect-loop finding explicitly | P1 | not started |
+| E2 | Document in the command-line guide the encodings the scrub does not cover and the exact scope of the secret registry, with no claim of complete detection; the gap tests stay | P1 | not started |
+| v1 mock replay | Never use the internal storage id as the SSE `id:`; keep a v1 recording's original SSE id and event name apart where it has them; say in the docs which a v1 recording did not retain; do not invent either | P1 | not started |
+| Capture integrity | A duplicate `seq` or a `t` that goes backwards must not pass as healthy: a capture-integrity check returns a clear diagnostic (an invalid capture) | P1 | not started |
+| Q19 | Label the live views "Raw values — as received, not redacted." and warn before copying a sensitive value; the values stay exactly as received | P2 | not started |
+| Real v1 corpus | Optional: add real v1 recordings if any are provided; no claim of real-world compatibility from generated samples | P2 | waiting for samples |
+| Q20 | No new inputs in the UI for v2.0 | P2 | decided, nothing to build |
+
+The release itself (the pull request from `v2` to `main`, the tag, the package, the deploy) is not authorised until the owner says so.
+
 ## Open decisions
 
-None of these is fixed. Each is pinned by a test so the behaviour is visible, and each needs a decision.
+The sections below are the questions as they were put, each pinned by a test so the behaviour is visible. The decisions are in the table above.
 
 ### Q4a. A scenario made from a stall capture does not catch the stall
 
