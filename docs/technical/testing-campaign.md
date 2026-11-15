@@ -31,6 +31,34 @@ The campaign's idea: more tests of the same shape find few bugs, so it uses **in
 | I | The end-to-end journey | handed to an agent (see the next row when it reports) |
 | G9 | Converting the waits in `e2e/doctor.spec.ts` to signals | not done (it edits an existing spec) |
 
+## Release readiness (v2 to main)
+
+Assessed 2026-11-15 on `phase-15-campaign`, which holds everything that would ship. Nothing below has been done to `main`: opening the release pull request, merging, tagging and deploying are the owner's.
+
+**Release path.** `main` is an ancestor of `v2` (150 commits ahead), so the release is a plain merge. `main` is what Vercel deploys, so merging to `main` puts v2 on the hosted demo. Compared with `main`, the deployment surface is small: no runtime dependency changed, `api/` is unchanged, `vercel.json` only gives the mock stream a 60 s limit, and the proxy and mock code under `lib/` and `server.js` changed. The production defaults are unchanged (proxy closed, mock API off unless enabled).
+
+| Gate | Status |
+|---|---|
+| Unit, integration and property tests with coverage | 2114 passed locally on the merged tree; coverage 83.0% statements, 70.7% branches, 74.4% functions, 84.5% lines |
+| Lint, three typechecks, the app and docs build, the CLI build | pass locally |
+| Built command line: selftest, build check, pack check, scenarios, process contract | pass locally (35 and 34 checks) |
+| Browser tests on Chrome, whole suite | 161 of 163 passed with the machine idle; the 2 failures were an environment timeout that passes alone and a real defect (a silence flickering out of the live view), fixed since. **Not yet re-run whole after the fix.** The journey test is still being written |
+| Dependency audit (runtime, high and above) | 0 vulnerabilities |
+| CI on pull request 50 | Windows verify, composite action, Docker, audit pass. Both Linux verify legs failed on one test that assumed a platform (a 100 KB request line is refused with 431 on Linux); fixed in `2e46be4`; **re-run pending** |
+| Nightly and release-candidate workflows | written and checked by tests; **neither has run on GitHub** (their parts were run here) |
+| Firefox and WebKit | informational; pending |
+| Smoke test of a hosted preview | **not done**: the Vercel preview is behind a login and no bypass was used |
+
+**What only the owner can do or decide** (in order):
+1. Merge pull request 50 into `v2` once its checks are green.
+2. Run the release-candidate workflow by hand on `v2` (Actions, "Release candidate") and read its summary; it publishes and deploys nothing.
+3. Smoke-test the Vercel preview of the release pull request: open the app, connect to a stream, open the Doctor, export a report; check `/docs/` and that the mock API is off.
+4. Decide the version: `package.json` says 0.0.1 and the command line says 2.0.0-dev.0; the tag would be `v2.0.0`.
+5. Decide which open questions to settle first. None is a release blocker by itself: each is pinned by a test and described above. The ones with the most effect on users are Q4 (a scenario made from a stall capture does not catch the stall), Q14 (what `--no-redact` writes) and Q6 (a silent redirect).
+6. Open the pull request from `v2` to `main`, merge it, tag it, and write the release notes. Say in the notes what is **not** covered (the section "Not covered" below) and that the "under 2% CPU at 500 events/s" target is not demonstrated.
+
+**Rollback.** Revert the merge commit on `main`; Vercel redeploys the previous version (v1). Nothing in v2 changes stored data.
+
 ## Defects found and fixed
 
 | # | Where | What was wrong | Commit |
