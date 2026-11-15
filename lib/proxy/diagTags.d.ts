@@ -3,7 +3,9 @@ export const PING_TEXT: string
 export const HEARTBEAT_TEXT_PREFIX: string
 export const CAP_TEXT_PREFIX: string
 export const META_TEXT_PREFIX: string
+export const ERROR_TEXT_PREFIX: string
 export const LEGACY_KEEPALIVE_TEXT: string
+export const UPSTREAM_ESCAPE: string
 export const PROXY_ID: string
 export const HEADER: {
     proxy: string
@@ -19,6 +21,12 @@ export function legacyKeepAliveComment(): string
 export function heartbeatComment(upIdleMs: number, n: number): string
 export function capComment(durationMs: number): string
 export function metaComment(meta: object): string
+export function errorComment(message: string): string
+/** Rewrites upstream comment lines in the reserved `sse-proxy` namespace so the upstream cannot pass for the proxy. Bytes in, bytes out; a comment cut across chunks is judged whole. */
+export class NamespaceEscaper {
+    push(chunk: Uint8Array | string): Buffer
+    flush(): Buffer
+}
 export function headerSafe(value: unknown): string
 export function diagnosticHeaders(d: {
     status: number
