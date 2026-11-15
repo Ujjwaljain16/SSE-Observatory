@@ -28,10 +28,10 @@ describe('reading a capture upload', () => {
         expect(looksLikeCapture({ events: [] })).toBe(false)
     })
 
-    it('keeps old v1 uploads exactly as they were', () => {
-        const { session: s, error } = validateSession({ version: '1.0', events: [{ id: 1, type: 'a', data: 'x', deltaMs: 5 }] })
+    it('still reads old v1 uploads, but replays the server\'s id (sseId) and the name, not the recording\'s internal id (owner decision)', () => {
+        const { session: s, error } = validateSession({ version: '1.0', events: [{ id: 1, sseId: 'srv-1', type: 'a', data: 'x', deltaMs: 5 }] })
         expect(error).toBeUndefined()
-        expect(s).toEqual({ events: [{ id: '1', type: 'a', data: 'x', deltaMs: 5 }] })
+        expect(s).toEqual({ events: [{ sseId: 'srv-1', name: 'a', data: 'x', deltaMs: 5 }] })
     })
 
     it('says what is wrong with a file that cannot be replayed', () => {

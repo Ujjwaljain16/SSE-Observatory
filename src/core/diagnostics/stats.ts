@@ -3,6 +3,8 @@ export interface StatSnapshot {
     count: number
     median?: number | undefined
     p95?: number | undefined
+    /** Present (true) when the samples were rebuilt from a cadence change that was recognised: a rhythm to trust even with few samples. */
+    trusted?: boolean | undefined
 }
 
 /**
@@ -65,5 +67,8 @@ export class RollingStats {
         return sum / this.buf.length
     }
 
-    snapshot(): StatSnapshot { return { count: this.total, median: this.median(), p95: this.p95() } }
+    /** Set by whoever rebuilt the window from samples it has already vouched for (see StreamModel's cadence change). */
+    trusted = false
+
+    snapshot(): StatSnapshot { return { count: this.total, median: this.median(), p95: this.p95(), ...(this.trusted ? { trusted: true } : {}) } }
 }

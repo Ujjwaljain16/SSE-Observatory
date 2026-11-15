@@ -8,10 +8,13 @@ import { handleMockSession, handleMockStream } from '../../lib/mock/handlers.js'
 import { loadConfig } from '../../lib/proxy/guard.js'
 
 describe('validateSession', () => {
-    it('accepts a normal recording and strips unknown fields', () => {
-        const { session, error } = validateSession({ version: '1.0', events: [{ id: 1, type: 'a', data: '{"x":1}', deltaMs: 5, evil: true }] })
+    it('accepts a normal recording and strips unknown fields; the SSE id is the recording\'s sseId and the internal `id` is dropped', () => {
+        const { session, error } = validateSession({ version: '1.0', events: [{ id: 'internal-uuid', sseId: 1, type: 'a', data: '{"x":1}', deltaMs: 5, evil: true }] })
         expect(error).toBeUndefined()
-        expect(session!.events[0]).toEqual({ id: '1', type: 'a', data: '{"x":1}', deltaMs: 5 })
+        expect(session!.events[0]).toEqual({ sseId: '1', name: 'a', data: '{"x":1}', deltaMs: 5 })
+        // a recording that kept neither: the session holds neither (nothing is made up, and the uuid is not carried over)
+        expect(validateSession({ events: [{ id: 'internal-uuid', data: 'd' }] }).session!.events[0]).toEqual({ data: 'd', deltaMs: 0 })
+        expect(validateSession({ events: [{ id: 'internal-uuid', sseId: '', type: '', data: 'd' }] }).session!.events[0]).toEqual({ data: 'd', deltaMs: 0 })
     })
     it.each([
         [null], [{}], [{ events: 'no' }],
@@ -22,7 +25,8 @@ describe('validateSession', () => {
     it('enforces size limits and strips CR/LF from ids', () => {
         expect(validateSession({ events: [{ data: 'xxxxx' }, { data: 'xxxxx' }] }, { maxEvents: 1, maxBytes: 100, maxDeltaMs: 1 }).error).toMatch(/Too many/)
         expect(validateSession({ events: [{ data: 'x'.repeat(50) }, { data: 'x'.repeat(60) }] }, { maxEvents: 5, maxBytes: 100, maxDeltaMs: 1 }).error).toMatch(/large/)
-        expect(validateSession({ events: [{ id: 'a\nevent: x', data: 'd' }] }).session!.events[0].id).toBe('aevent: x')
+        expect(validateSession({ events: [{ sseId: 'a\nevent: x', data: 'd' }] }).session!.events[0].sseId).toBe('aevent: x')
+        expect(validateSession({ events: [{ type: 'a\r\nid: x', data: 'd' }] }).session!.events[0].name).toBe('aid: x')
     })
 })
 
@@ -60,15 +64,15 @@ describe('replay', () => {
         expect(res.frames.length).toBeLessThanOrEqual(2 * 8)
     })
 
-    it('respects recorded timing, speed, ids, multi-line data and type injection', async () => {
+    it('respects recorded timing, speed, ids, names and multi-line data; the data is sent as it is', async () => {
         const res = new FakeRes()
-        const session = { events: [{ id: '1', type: 'tick', data: '{"n":1}', deltaMs: 0 }, { data: 'l1\r\nl2', deltaMs: 100 }] }
+        const session = { events: [{ sseId: '1', name: 'tick', data: '{"n":1}', deltaMs: 0 }, { data: 'l1\r\nl2', deltaMs: 100 }] }
         const t0 = Date.now()
         await replay({ res: res as never, session, speed: 2, isClosed: () => false })
         const took = Date.now() - t0
         expect(took).toBeGreaterThanOrEqual(40)
         expect(took).toBeLessThan(400)
-        expect(res.frames[0]).toBe('id: 1\ndata: {"n":1,"type":"tick"}\n\n')
+        expect(res.frames[0]).toBe('id: 1\nevent: tick\ndata: {"n":1}\n\n')
         expect(res.frames[1]).toBe('data: l1\ndata: l2\n\n')
         // a finished recording says so, otherwise clients treat the close as a drop and replay it again
         expect(res.frames[2]).toBe('event: end\ndata: {"done":true}\n\n')
@@ -154,5 +158,20 @@ describe('mock HTTP handlers', () => {
 
         expect((await call('DELETE', `/api/mock/session?id=${sessionId}`, same)).status).toBe(200)
         expect((await call('GET', `/api/mock/stream?session=${sessionId}`)).status).toBe(404)
+    })
+
+    it('a v1 recording is served with its real ids and names; Last-Event-ID is ignored for it (no resumption), whatever id it carries', async () => {
+        const body = { version: '1.0', events: [
+            { id: 'uuid-a', sseId: '7', type: 'tick', data: '{"n":1}', deltaMs: 0 },
+            { id: 'uuid-b', sseId: '8', type: 'tick', data: '{"n":2}', deltaMs: 0 },
+            { id: 'uuid-c', type: 'message', data: 'no id kept', deltaMs: 0 },
+        ] }
+        const { sessionId } = JSON.parse((await call('POST', '/api/mock/session', json, JSON.stringify(body))).body)
+        const whole = 'id: 7\nevent: tick\ndata: {"n":1}\n\nid: 8\nevent: tick\ndata: {"n":2}\n\ndata: no id kept\n\nevent: end\ndata: {"done":true}\n\n'
+        expect((await call('GET', `/api/mock/stream?session=${sessionId}&speed=10`)).body).toBe(whole)
+        for (const lastEventId of ['7', 'uuid-a', '']) {
+            const again = await call('GET', `/api/mock/stream?session=${sessionId}&speed=10&honorLastEventId=1`, { 'Last-Event-ID': lastEventId })
+            expect(again.body, `Last-Event-ID "${lastEventId}"`).toBe(whole)
+        }
     })
 })

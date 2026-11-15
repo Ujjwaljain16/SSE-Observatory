@@ -1,6 +1,8 @@
 import { maxSeverity, type Deduction, type Evidence, type Fact, type FindingDraft, type Severity } from '../finding'
 import type { Rule, RuleContext } from '../rule'
-import type { GapInfo } from '../streamModel'
+import type { CadenceShift, GapInfo } from '../streamModel'
+import type { StatSnapshot } from '../stats'
+import { CADENCE_TOLERANCE_PERCENT, stallLimit } from '../stallLimit'
 import { ev, fmtMs, plural } from './util'
 
 /**
@@ -18,6 +20,11 @@ import { ev, fmtMs, plural } from './util'
  * `onObservation`. A gap still going is judged in `onTick` (without changing state) and in `onEnd`.
  * Silence is not judged when the connection is not open, before the first byte of the connection (that is (i)), or
  * across a clock discontinuity (measuring restarts at the jump).
+ *
+ * A stall is `resolved` when data resumes on its own connection. One that ended because the connection closed stays `open`
+ * until a LATER connection delivers an event, which resolves it (decided: results Q12); the finding keeps what it was. A capture
+ * that ends in a stall (open, or closed with no later event) still has it open.
+ * A gap longer than its limit is not added to the cadence the next gap is judged by (StreamModel.baseline, results Q13).
  */
 
 type Subtype = 'no-bytes' | 'bytes' | 'origin' | 'events'
@@ -58,21 +65,8 @@ function judge(gap: GapInfo, endT: number, { thresholds: th, profile }: RuleCont
     }
 
     const heartbeatMs = gap.hbMedianMs ?? profile.expected?.heartbeatMs
-    const p95 = gap.stats.p95
-    let warnMs: number
-    let errorMs: number | undefined
-    let basis: Verdict['basis']
-    if (subtype !== 'no-bytes' && p95 !== undefined && gap.stats.count >= th.stallMinSamples) {
-        warnMs = Math.max(th.stallP95Factor * p95, th.stallHeartbeatFactor * (heartbeatMs ?? 0), th.stallMinSilenceMs)
-        errorMs = Math.max(th.stallErrorFactor * p95, th.stallErrorFactor * (heartbeatMs ?? 0), warnMs)
-        basis = 'cadence'
-    } else if (profile.expected?.maxSilenceMs !== undefined) {
-        warnMs = Math.max(profile.expected.maxSilenceMs, th.stallMinSilenceMs)
-        basis = 'profile'
-    } else {
-        warnMs = th.stallNoCadenceMs
-        basis = 'none'
-    }
+    // The limit is the stream's rhythm so far, and that rhythm holds no gap that was itself a stall (see StreamModel.closeGap).
+    const { warnMs, errorMs, basis } = stallLimit(gap.stats, heartbeatMs, th, profile, subtype !== 'no-bytes')
     // An event gap is only a finding when the stream has its own measured rhythm to compare with, and bytes were
     // really alive throughout (otherwise the byte clock already reports the silence).
     if (subtype === 'events') {
@@ -153,6 +147,59 @@ function describe(gap: GapInfo, v: Verdict, final: boolean): { facts: Fact[]; de
     }
 }
 
+const CLOCK_LABEL: Record<GapInfo['clock'], string> = { byte: 'between bytes', origin: 'between origin outputs', event: 'between complete events' }
+const CLOCK_START: Record<GapInfo['clock'], string> = { byte: 'last byte', origin: 'last origin output', event: 'last complete event' }
+
+/**
+ * The informational finding for a cadence change (results Q13): the old and the new rhythm, the three silences with evidence, and the plain
+ * statement that this is inferred from the stream's own intervals. It is `open` like every note; it is not a failure (severity info).
+ */
+function cadenceChanged(shift: CadenceShift, last: GapInfo, stallKey: string, now: StatSnapshot, { thresholds: th, profile }: RuleContext, seen: Map<string, { count: number; firstSeenT: number }>): FindingDraft {
+    const key = `cadence.changed:${stallKey.slice(stallKey.indexOf(':') + 1)}`
+    const label = CLOCK_LABEL[shift.clock]
+    const startNote = CLOCK_START[shift.clock]
+    const heartbeatMs = last.hbMedianMs ?? profile.expected?.heartbeatMs
+    const before = stallLimit(shift.before, heartbeatMs, th, profile)
+    const after = stallLimit(now, heartbeatMs, th, profile)
+    const endT = shift.gaps.at(-1)!.endT
+    const prior = seen.get(key)
+    const next = { count: (prior?.count ?? 0) + 1, firstSeenT: prior?.firstSeenT ?? endT }
+    seen.set(key, next)
+
+    const was = before.basis === 'cadence'
+        ? `Before, the stream's own rhythm was a p95 gap of ${fmtMs(shift.before.p95 ?? 0)} over ${plural(shift.before.count, 'gap')}, so a silence beyond ${fmtMs(before.warnMs)} was a stall.`
+        : `Before, the stream had no rhythm of its own to compare with (${plural(shift.before.count, 'gap')} seen), so a silence beyond ${fmtMs(before.warnMs)} was a stall (${before.basis === 'profile' ? 'the longest silence the stream profile allows' : 'the default'}).`
+    const lengths = shift.gaps.map((g) => fmtMs(g.lengthMs))
+    const facts: Fact[] = [
+        { text: was, evidence: [] },
+        { text: `Three consecutive silences were each beyond that limit and agree with each other within ${CADENCE_TOLERANCE_PERCENT}% of their median: ${lengths[0]}, ${lengths[1]} and ${lengths[2]} (median ${fmtMs(shift.medianMs)}).`, evidence: [] },
+        ...shift.gaps.map((g, i): Fact => ({ text: `Silence ${i + 1}: ${fmtMs(g.lengthMs)}, after the ${startNote} at t=${fmtMs(g.startT)}.`, evidence: [ev(g.startSeq, g.startT, startNote), ev(g.endSeq, g.endT, 'data resumed')] })),
+        { text: `From here on the stream's own rhythm is the new one: a silence beyond ${fmtMs(after.warnMs)} is a stall.`, evidence: [] },
+    ]
+    const change = shift.before.median !== undefined && shift.before.count > 0
+        ? `changed from about ${fmtMs(shift.before.median)} to about ${fmtMs(shift.medianMs)}`
+        : `settled at about ${fmtMs(shift.medianMs)} after it had no measured rhythm`
+    return {
+        key,
+        title: 'Delivery cadence changed',
+        summary: `The gaps ${label} ${change}, inferred from three consecutive silences.`,
+        severity: 'info',
+        facts,
+        deductions: [{
+            statement: 'Likely: the producer, or the path to it, now delivers on a slower schedule than before (a changed timer, a different load, a different server). This is inferred from the stream\'s own intervals; it is not proof of what the producer intended.',
+            confidence: 'low',
+            basis: shift.gaps.flatMap((g) => [g.startSeq, g.endSeq]),
+            alternatives: ['A lasting fault that makes every silence long: the stalls stay on record as history, and a silence beyond the new limit is reported again.', 'A throttled tab or an intermediary that now releases data on a schedule of its own.'],
+        }],
+        nextCheck: { description: 'Ask whoever runs the producer whether the new rhythm is intended. If it is, declare the longest silence you accept (expected.maxSilenceMs in the stream profile): a declared limit is never overridden by this inference.' },
+        limits: [
+            `A cadence change is inferred from the stream's own intervals (three consecutive silences on one connection within ${CADENCE_TOLERANCE_PERCENT}% of their median); it says what the stream did, not why.`,
+            'A longest silence declared in the stream profile (expected.maxSilenceMs) is never overridden: a cadence that breaks it is not learned, and its silences stay stalls.',
+        ],
+        status: 'open', firstSeenT: next.firstSeenT, lastSeenT: endT, occurrences: next.count,
+    }
+}
+
 export const stallSilent: Rule = {
     id: RULE_ID,
     version: 1,
@@ -160,6 +207,10 @@ export const stallSilent: Rule = {
     requires: ['phases', 'chunks'],
     create(ctx) {
         const episodes = new Map<string, Episodes>()
+        /** Stalls that ended with their connection closing, as last reported (open), and the connection they were on. */
+        const unresolved = new Map<string, { draft: FindingDraft; conn: number }>()
+        /** Cadence changes recognised so far, per kind of silence. */
+        const cadences = new Map<string, { count: number; firstSeenT: number }>()
 
         const build = (gap: GapInfo, endT: number, final: boolean): { draft: FindingDraft; next: Episodes } | undefined => {
             const v = judge(gap, endT, ctx)
@@ -184,13 +235,38 @@ export const stallSilent: Rule = {
         }
 
         return {
-            onObservation(_o, model) {
+            onObservation(o, model) {
                 const out: FindingDraft[] = []
+                const drafts = new Map<GapInfo, FindingDraft>()
                 for (const gap of model.delta.gaps) {
                     const built = build(gap, gap.endT ?? model.nowT, true)
                     if (!built) continue
+                    drafts.set(gap, built.draft)
                     episodes.set(built.draft.key, built.next)
                     out.push(built.draft)
+                    // A silence that ended because the connection closed is not resolved yet; one that ended with data on its own connection is.
+                    if (built.draft.status === 'open') unresolved.set(built.draft.key, { draft: built.draft, conn: gap.conn })
+                    else unresolved.delete(built.draft.key)
+                }
+                // A cadence change the model recognised with this gap (three consecutive, consistent stalls): the stall stays on record, resolved, with
+                // what it was, and a note says the stream's rhythm was inferred to have changed. Only for a stall this rule reported.
+                for (const shift of model.delta.shifts ?? []) {
+                    const last = shift.gaps.at(-1)!
+                    const gap = model.delta.gaps.find((g) => g.clock === shift.clock && g.endSeq === last.endSeq && g.via === 'next')
+                    const draft = gap && drafts.get(gap)
+                    if (!gap || !draft) continue
+                    const note = cadenceChanged(shift, gap, draft.key, model.baseline[shift.clock].snapshot(), ctx, cadences)
+                    draft.facts = [...draft.facts, { text: `The cadence was then recognised as changed: three consecutive silences like this one agree with one another, so the stream's rhythm was taken to be about ${fmtMs(shift.medianMs)} from here on (inferred, see ${note.key}). This stall stays on record as history.`, evidence: [] }]
+                    out.push(note)
+                }
+                // A later connection delivering an event is the recovery. The stall stays on record with everything it was (its duration, its
+                // evidence, its count); it is only no longer open, so a recovered stream does not keep failing a gate.
+                if (o.kind === 'event') {
+                    for (const [key, u] of unresolved) {
+                        if (o.conn <= u.conn) continue
+                        out.push({ ...u.draft, status: 'resolved', facts: [...u.draft.facts, { text: `A later connection delivered an event at t=${fmtMs(o.t)}, so the stream recovered; the stall is kept as history.`, evidence: [ev(o.seq, o.t, 'a later connection delivered an event')] }] })
+                        unresolved.delete(key)
+                    }
                 }
                 return out
             },
