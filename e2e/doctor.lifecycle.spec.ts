@@ -77,6 +77,20 @@ function installCounters(): void {
 
 const live = (page: Page): Promise<Counts> => page.evaluate(() => (window as unknown as { __live: () => Counts }).__live())
 
+/** The counts once the page's own start-up timers have run out: three equal reads, 300 ms apart. A baseline taken right after load can include a
+ *  one-shot timer of the app that fires before the "after" read and reads as a leak in reverse (seen once on a cold CI runner: timeouts 2 then 1). */
+async function settled(page: Page): Promise<Counts> {
+    let last = await live(page)
+    let equal = 0
+    for (let i = 0; i < 40 && equal < 2; i++) {
+        await new Promise((r) => setTimeout(r, 300))
+        const now = await live(page)
+        equal = now.listeners === last.listeners && now.intervals === last.intervals && now.timeouts === last.timeouts ? equal + 1 : 0
+        last = now
+    }
+    return last
+}
+
 async function openAndCloseOnce(page: Page): Promise<void> {
     await page.getByTestId('doctor-toggle').click()
     await expect(page.getByTestId('doctor-panel')).toBeVisible()
@@ -98,7 +112,7 @@ test.describe('G4: the Doctor leaves nothing behind', () => {
 
     test('the counters can fail: a timer, an interval and a listener that are not cleaned up are seen, and the ones that are cleaned up are not', async ({ page }) => {
         await page.goto('/')
-        const before = await live(page)
+        const before = await settled(page)
         await page.evaluate(() => {
             const w = window as unknown as Record<string, unknown>
             const handler = () => undefined
