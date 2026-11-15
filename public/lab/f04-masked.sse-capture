@@ -1,55 +1,53 @@
-{"format":"sse-capture","version":"2.0","createdAt":"2026-11-14T18:43:32.826Z","tool":{"name":"sse-observatory","version":"dev"},"clock":{"origin":"monotonic"},"capabilities":["connect","response","chunks","comments","violations","events","phases","reconnects","payload"],"kind":"sanitized","source":{"kind":"fixture","client":"node-undici"},"request":{"url":"https://lab.example/f04-masked","method":"GET","headers":{}},"redaction":{"policy":"default","version":1,"applied":[],"placeholders":0}}
-{"seq":0,"t":0.022500000002764864,"conn":0,"domain":"transport","kind":"phase","phase":"connecting","info":{"attempt":0}}
-{"seq":1,"t":0.06290000000080909,"conn":0,"domain":"transport","kind":"connect","attempt":0,"url":"http://127.0.0.1:59246/f04/masked?scale=[redacted]","method":"GET","headerNames":["accept","cache-control"],"sentLastEventId":""}
-{"seq":2,"t":3.3466000000007625,"conn":0,"domain":"transport","kind":"response","status":200,"contentType":"text/event-stream; charset=utf-8","redirected":false,"headers":{"content-type":"text/event-stream; charset=utf-8","cache-control":"no-cache","transfer-encoding":"chunked","x-accel-buffering":"no"},"ttfbMs":3}
-{"seq":3,"t":3.364900000000489,"conn":0,"domain":"transport","kind":"phase","phase":"open","info":{"attempt":0}}
-{"seq":4,"t":259.45330000000104,"conn":0,"domain":"transport","kind":"chunk","bytes":33}
-{"seq":5,"t":259.5527000000002,"conn":0,"domain":"transport","kind":"event","event":"tick","sseId":"1","dataBytes":7,"dataHash":"e90efaf78a8c5","extracted":{"shape":"$:o|n:n"}}
-{"seq":6,"t":516.4629999999997,"conn":0,"domain":"transport","kind":"chunk","bytes":33}
-{"seq":7,"t":516.5277000000024,"conn":0,"domain":"transport","kind":"event","event":"tick","sseId":"2","dataBytes":7,"dataHash":"c8d9f8cb5baea","extracted":{"shape":"$:o|n:n"}}
-{"seq":8,"t":767.7401000000027,"conn":0,"domain":"transport","kind":"chunk","bytes":33}
-{"seq":9,"t":767.8032999999996,"conn":0,"domain":"transport","kind":"event","event":"tick","sseId":"3","dataBytes":7,"dataHash":"1815dbe1cca4bd","extracted":{"shape":"$:o|n:n"}}
-{"seq":10,"t":1023.4676,"conn":0,"domain":"transport","kind":"chunk","bytes":33}
-{"seq":11,"t":1023.5676999999996,"conn":0,"domain":"transport","kind":"event","event":"tick","sseId":"4","dataBytes":7,"dataHash":"1dd5f8884c7c15","extracted":{"shape":"$:o|n:n"}}
-{"seq":12,"t":1273.8600000000006,"conn":0,"domain":"transport","kind":"chunk","bytes":33}
-{"seq":13,"t":1273.929,"conn":0,"domain":"transport","kind":"event","event":"tick","sseId":"5","dataBytes":7,"dataHash":"86cacdffe171c","extracted":{"shape":"$:o|n:n"}}
-{"seq":14,"t":1523.144400000001,"conn":0,"domain":"transport","kind":"chunk","bytes":33}
-{"seq":15,"t":1523.2080000000024,"conn":0,"domain":"transport","kind":"event","event":"tick","sseId":"6","dataBytes":7,"dataHash":"a8d8ae792a119","extracted":{"shape":"$:o|n:n"}}
-{"seq":16,"t":1780.2836000000025,"conn":0,"domain":"transport","kind":"chunk","bytes":33}
-{"seq":17,"t":1780.3448000000026,"conn":0,"domain":"transport","kind":"event","event":"tick","sseId":"7","dataBytes":7,"dataHash":"1249dc7f64319d","extracted":{"shape":"$:o|n:n"}}
-{"seq":18,"t":2037.2638000000043,"conn":0,"domain":"transport","kind":"chunk","bytes":33}
-{"seq":19,"t":2037.326799999999,"conn":0,"domain":"transport","kind":"event","event":"tick","sseId":"8","dataBytes":7,"dataHash":"11fcd09ddda9aa","extracted":{"shape":"$:o|n:n"}}
-{"seq":20,"t":2294.1415000000015,"conn":0,"domain":"transport","kind":"chunk","bytes":33}
-{"seq":21,"t":2294.208300000002,"conn":0,"domain":"transport","kind":"event","event":"tick","sseId":"9","dataBytes":7,"dataHash":"704b87e04184c","extracted":{"shape":"$:o|n:n"}}
-{"seq":22,"t":2550.8437999999987,"conn":0,"domain":"transport","kind":"chunk","bytes":35}
-{"seq":23,"t":2550.9687999999987,"conn":0,"domain":"transport","kind":"event","event":"tick","sseId":"10","dataBytes":8,"dataHash":"18212aadff9dee","extracted":{"shape":"$:o|n:n"}}
-{"seq":24,"t":2807.7369,"conn":0,"domain":"transport","kind":"chunk","bytes":35}
-{"seq":25,"t":2807.8102000000035,"conn":0,"domain":"transport","kind":"event","event":"tick","sseId":"11","dataBytes":8,"dataHash":"1dcefe44a7aeb5","extracted":{"shape":"$:o|n:n"}}
-{"seq":26,"t":3059.8598999999995,"conn":0,"domain":"transport","kind":"chunk","bytes":35}
-{"seq":27,"t":3059.9401000000034,"conn":0,"domain":"transport","kind":"event","event":"tick","sseId":"12","dataBytes":8,"dataHash":"196e666bf26a9c","extracted":{"shape":"$:o|n:n"}}
-{"seq":28,"t":3315.027100000003,"conn":0,"domain":"transport","kind":"chunk","bytes":32}
-{"seq":29,"t":3315.1093,"conn":0,"domain":"transport","kind":"comment","text":"sse-proxy hb up_idle=250 n=1","source":"proxy"}
-{"seq":30,"t":3571.494300000002,"conn":0,"domain":"transport","kind":"chunk","bytes":32}
-{"seq":31,"t":3571.5226999999977,"conn":0,"domain":"transport","kind":"comment","text":"sse-proxy hb up_idle=500 n=2","source":"proxy"}
-{"seq":32,"t":3821.4954000000034,"conn":0,"domain":"transport","kind":"chunk","bytes":32}
-{"seq":33,"t":3821.5387999999984,"conn":0,"domain":"transport","kind":"comment","text":"sse-proxy hb up_idle=750 n=3","source":"proxy"}
-{"seq":34,"t":4071.456699999999,"conn":0,"domain":"transport","kind":"chunk","bytes":33}
-{"seq":35,"t":4071.4854000000014,"conn":0,"domain":"transport","kind":"comment","text":"sse-proxy hb up_idle=1000 n=4","source":"proxy"}
-{"seq":36,"t":4321.556700000005,"conn":0,"domain":"transport","kind":"chunk","bytes":33}
-{"seq":37,"t":4321.5891999999985,"conn":0,"domain":"transport","kind":"comment","text":"sse-proxy hb up_idle=1250 n=5","source":"proxy"}
-{"seq":38,"t":4583.584400000003,"conn":0,"domain":"transport","kind":"chunk","bytes":33}
-{"seq":39,"t":4583.615600000001,"conn":0,"domain":"transport","kind":"comment","text":"sse-proxy hb up_idle=1500 n=6","source":"proxy"}
-{"seq":40,"t":4835.0632000000005,"conn":0,"domain":"transport","kind":"chunk","bytes":33}
-{"seq":41,"t":4835.092200000003,"conn":0,"domain":"transport","kind":"comment","text":"sse-proxy hb up_idle=1750 n=7","source":"proxy"}
-{"seq":42,"t":5085.038900000003,"conn":0,"domain":"transport","kind":"chunk","bytes":33}
-{"seq":43,"t":5085.072600000003,"conn":0,"domain":"transport","kind":"comment","text":"sse-proxy hb up_idle=2000 n=8","source":"proxy"}
-{"seq":44,"t":5349.072499999998,"conn":0,"domain":"transport","kind":"chunk","bytes":33}
-{"seq":45,"t":5349.101200000001,"conn":0,"domain":"transport","kind":"comment","text":"sse-proxy hb up_idle=2250 n=9","source":"proxy"}
-{"seq":46,"t":5603.015000000003,"conn":0,"domain":"transport","kind":"chunk","bytes":34}
-{"seq":47,"t":5603.042799999999,"conn":0,"domain":"transport","kind":"comment","text":"sse-proxy hb up_idle=2500 n=10","source":"proxy"}
-{"seq":48,"t":5854.551800000005,"conn":0,"domain":"transport","kind":"chunk","bytes":34}
-{"seq":49,"t":5854.577399999998,"conn":0,"domain":"transport","kind":"comment","text":"sse-proxy hb up_idle=2750 n=11","source":"proxy"}
-{"seq":50,"t":6110.086800000001,"conn":0,"domain":"transport","kind":"chunk","bytes":34}
-{"seq":51,"t":6110.114900000004,"conn":0,"domain":"transport","kind":"comment","text":"sse-proxy hb up_idle=3000 n=12","source":"proxy"}
-{"seq":52,"t":6147.535100000005,"conn":0,"domain":"transport","kind":"phase","phase":"stopped","info":{"attempt":0}}
-{"footer":{"endReason":"stopped","counts":{"phase":3,"connect":1,"response":1,"chunk":24,"event":12,"comment":12},"endT":12147.535100000005,"integrity":{"algorithm":"sha256","value":"21e62d26fb09be0df67f591546f1e6931c796bb944810f3759ebb23b219178bb"}}}
+{"format":"sse-capture","version":"2.0","createdAt":"2026-11-15T20:09:17.782Z","tool":{"name":"sse-observatory","version":"dev"},"clock":{"origin":"monotonic"},"capabilities":["connect","response","chunks","comments","violations","events","phases","reconnects","payload"],"kind":"sanitized","source":{"kind":"fixture","client":"node-undici"},"request":{"url":"https://lab.example/f04-masked","method":"GET","headers":{}},"redaction":{"policy":"default","version":1,"applied":[],"placeholders":0}}
+{"seq":0,"t":0.02449999999953434,"conn":0,"domain":"transport","kind":"phase","phase":"connecting","info":{"attempt":0}}
+{"seq":1,"t":0.07289999999920838,"conn":0,"domain":"transport","kind":"connect","attempt":0,"url":"http://127.0.0.1:59480/f04/masked?scale=[redacted]","method":"GET","headerNames":["accept","cache-control"],"sentLastEventId":""}
+{"seq":2,"t":2.9609999999993306,"conn":0,"domain":"transport","kind":"response","status":200,"contentType":"text/event-stream; charset=utf-8","redirected":false,"headers":{"content-type":"text/event-stream; charset=utf-8","cache-control":"no-cache","transfer-encoding":"chunked","x-accel-buffering":"no"},"ttfbMs":3}
+{"seq":3,"t":2.9714999999996508,"conn":0,"domain":"transport","kind":"phase","phase":"open","info":{"attempt":0}}
+{"seq":4,"t":262.84920000000056,"conn":0,"domain":"transport","kind":"chunk","bytes":33}
+{"seq":5,"t":262.913700000001,"conn":0,"domain":"transport","kind":"event","event":"tick","sseId":"1","dataBytes":7,"dataHash":"134e9a0eb6ffbc","extracted":{"shape":"$:o|n:n"}}
+{"seq":6,"t":514.4930999999997,"conn":0,"domain":"transport","kind":"chunk","bytes":33}
+{"seq":7,"t":514.5502000000015,"conn":0,"domain":"transport","kind":"event","event":"tick","sseId":"2","dataBytes":7,"dataHash":"66e24f6d4c54c","extracted":{"shape":"$:o|n:n"}}
+{"seq":8,"t":767.7055,"conn":0,"domain":"transport","kind":"chunk","bytes":33}
+{"seq":9,"t":767.7616999999991,"conn":0,"domain":"transport","kind":"event","event":"tick","sseId":"3","dataBytes":7,"dataHash":"3ab82d50239bb","extracted":{"shape":"$:o|n:n"}}
+{"seq":10,"t":1031.7573999999986,"conn":0,"domain":"transport","kind":"chunk","bytes":33}
+{"seq":11,"t":1031.8181000000004,"conn":0,"domain":"transport","kind":"event","event":"tick","sseId":"4","dataBytes":7,"dataHash":"1b1dafca837cf9","extracted":{"shape":"$:o|n:n"}}
+{"seq":12,"t":1286.748599999999,"conn":0,"domain":"transport","kind":"chunk","bytes":33}
+{"seq":13,"t":1286.8233,"conn":0,"domain":"transport","kind":"event","event":"tick","sseId":"5","dataBytes":7,"dataHash":"d9052be6967a7","extracted":{"shape":"$:o|n:n"}}
+{"seq":14,"t":1549.001400000001,"conn":0,"domain":"transport","kind":"chunk","bytes":33}
+{"seq":15,"t":1549.0626999999986,"conn":0,"domain":"transport","kind":"event","event":"tick","sseId":"6","dataBytes":7,"dataHash":"177db6c6d02a46","extracted":{"shape":"$:o|n:n"}}
+{"seq":16,"t":1804.2479999999996,"conn":0,"domain":"transport","kind":"chunk","bytes":33}
+{"seq":17,"t":1804.3074000000015,"conn":0,"domain":"transport","kind":"event","event":"tick","sseId":"7","dataBytes":7,"dataHash":"4ca057bd1e050","extracted":{"shape":"$:o|n:n"}}
+{"seq":18,"t":2064.8740999999973,"conn":0,"domain":"transport","kind":"chunk","bytes":33}
+{"seq":19,"t":2064.9685999999965,"conn":0,"domain":"transport","kind":"event","event":"tick","sseId":"8","dataBytes":7,"dataHash":"18622d2612c03","extracted":{"shape":"$:o|n:n"}}
+{"seq":20,"t":2316.6035999999986,"conn":0,"domain":"transport","kind":"chunk","bytes":33}
+{"seq":21,"t":2316.698099999998,"conn":0,"domain":"transport","kind":"event","event":"tick","sseId":"9","dataBytes":7,"dataHash":"154c0827fc06c6","extracted":{"shape":"$:o|n:n"}}
+{"seq":22,"t":2566.7643999999964,"conn":0,"domain":"transport","kind":"chunk","bytes":35}
+{"seq":23,"t":2566.825399999998,"conn":0,"domain":"transport","kind":"event","event":"tick","sseId":"10","dataBytes":8,"dataHash":"49c028f5617f1","extracted":{"shape":"$:o|n:n"}}
+{"seq":24,"t":2822.6104000000014,"conn":0,"domain":"transport","kind":"chunk","bytes":35}
+{"seq":25,"t":2822.6740000000027,"conn":0,"domain":"transport","kind":"event","event":"tick","sseId":"11","dataBytes":8,"dataHash":"1cb675c517cc67","extracted":{"shape":"$:o|n:n"}}
+{"seq":26,"t":3074.357500000002,"conn":0,"domain":"transport","kind":"chunk","bytes":35}
+{"seq":27,"t":3074.4151999999995,"conn":0,"domain":"transport","kind":"event","event":"tick","sseId":"12","dataBytes":8,"dataHash":"1cb1e61ae11c31","extracted":{"shape":"$:o|n:n"}}
+{"seq":28,"t":3330.7158999999992,"conn":0,"domain":"transport","kind":"chunk","bytes":32}
+{"seq":29,"t":3330.7726999999977,"conn":0,"domain":"transport","kind":"comment","text":"sse-proxy hb up_idle=250 n=1","source":"proxy"}
+{"seq":30,"t":3584.155300000002,"conn":0,"domain":"transport","kind":"chunk","bytes":32}
+{"seq":31,"t":3584.192299999999,"conn":0,"domain":"transport","kind":"comment","text":"sse-proxy hb up_idle=500 n=2","source":"proxy"}
+{"seq":32,"t":3837.1628999999994,"conn":0,"domain":"transport","kind":"chunk","bytes":32}
+{"seq":33,"t":3837.2032,"conn":0,"domain":"transport","kind":"comment","text":"sse-proxy hb up_idle=750 n=3","source":"proxy"}
+{"seq":34,"t":4087.979000000003,"conn":0,"domain":"transport","kind":"chunk","bytes":33}
+{"seq":35,"t":4088.0134999999973,"conn":0,"domain":"transport","kind":"comment","text":"sse-proxy hb up_idle=1000 n=4","source":"proxy"}
+{"seq":36,"t":4339.511499999997,"conn":0,"domain":"transport","kind":"chunk","bytes":33}
+{"seq":37,"t":4339.5516000000025,"conn":0,"domain":"transport","kind":"comment","text":"sse-proxy hb up_idle=1250 n=5","source":"proxy"}
+{"seq":38,"t":4590.604900000002,"conn":0,"domain":"transport","kind":"chunk","bytes":33}
+{"seq":39,"t":4590.638000000003,"conn":0,"domain":"transport","kind":"comment","text":"sse-proxy hb up_idle=1500 n=6","source":"proxy"}
+{"seq":40,"t":4840.6767999999975,"conn":0,"domain":"transport","kind":"chunk","bytes":33}
+{"seq":41,"t":4840.709700000003,"conn":0,"domain":"transport","kind":"comment","text":"sse-proxy hb up_idle=1750 n=7","source":"proxy"}
+{"seq":42,"t":5097.0353,"conn":0,"domain":"transport","kind":"chunk","bytes":33}
+{"seq":43,"t":5097.086599999999,"conn":0,"domain":"transport","kind":"comment","text":"sse-proxy hb up_idle=2000 n=8","source":"proxy"}
+{"seq":44,"t":5358.164200000003,"conn":0,"domain":"transport","kind":"chunk","bytes":33}
+{"seq":45,"t":5358.201899999996,"conn":0,"domain":"transport","kind":"comment","text":"sse-proxy hb up_idle=2250 n=9","source":"proxy"}
+{"seq":46,"t":5614.675500000001,"conn":0,"domain":"transport","kind":"chunk","bytes":34}
+{"seq":47,"t":5614.702699999998,"conn":0,"domain":"transport","kind":"comment","text":"sse-proxy hb up_idle=2500 n=10","source":"proxy"}
+{"seq":48,"t":5867.429,"conn":0,"domain":"transport","kind":"chunk","bytes":34}
+{"seq":49,"t":5867.458600000002,"conn":0,"domain":"transport","kind":"comment","text":"sse-proxy hb up_idle=2750 n=11","source":"proxy"}
+{"seq":50,"t":6088.876800000002,"conn":0,"domain":"transport","kind":"phase","phase":"stopped","info":{"attempt":0}}
+{"footer":{"endReason":"stopped","counts":{"phase":3,"connect":1,"response":1,"chunk":23,"event":12,"comment":11},"endT":12088.876800000002,"integrity":{"algorithm":"sha256","value":"bb3cd0c5a084549d7f3b931f4ec2941b005797e895bcd0a18264124d9bb7fd85"}}}
