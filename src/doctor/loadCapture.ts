@@ -6,6 +6,7 @@
 
 import { CaptureFormatError, parseCapture, type Capture, type IntegrityStatus } from '../core/capture/format'
 import { importV1, isV1Recording, V1ImportError } from '../core/capture/importV1'
+import { describeCaptureProblems } from '../core/capture/integrity'
 
 export const MAX_OPEN_BYTES = 20 * 1024 * 1024
 
@@ -25,6 +26,8 @@ export function loadCaptureText(text: string, size: number = text.length): Loade
     try {
         if (isCapture) {
             const parsed = parseCapture(body)
+            // the same refusal, in the same words, as the command line: a capture that repeats a seq or goes back in time is not opened as if it were healthy
+            if (parsed.problems.length > 0) return { ok: false, error: describeCaptureProblems(parsed.problems) }
             return { ok: true, capture: parsed.capture, warnings: parsed.warnings, integrity: parsed.integrity, format: 'sse-capture' }
         }
         let value: unknown
