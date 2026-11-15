@@ -14,6 +14,9 @@ hero:
       text: Get Started
       link: /guide/getting-started
     - theme: alt
+      text: What's new in 2.0
+      link: /guide/whats-new
+    - theme: alt
       text: View Architecture
       link: /technical/architecture
 
@@ -29,7 +32,9 @@ features:
   - title: VCR Mock Server & Replay
     details: Export production incidents as `.sse-record` files, upload them, and time-travel replay the exact bug with pixel-perfect deterministic timing.
   - title: Stream Doctor
-    details: Says why a stream is stuck, late or losing events, with the evidence, and turns a captured failure into a regression test. In the app and on the command line.
+    details: Says why a stream is stuck, late or losing events, with the evidence, and turns a captured failure into a regression test. In the app and on the command line. New in 2.0.
+  - title: Tested, and honest about it
+    details: A testing campaign with independent oracles, the real proxy in the loop and the built command line as a process, found and fixed about twenty defects before 2.0. What it did not cover is written down too.
   - title: Dynamic Schema Inference
     details: Feed in raw JSON blobs and the engine will detect value frequencies, types, and recursive object mappings to generate a living TypeScript Interface.
 ---

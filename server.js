@@ -58,7 +58,8 @@ app.get('/api/mock/stream', (req, res) => handleMockStream(req, res, { config })
 
 // Serve the built frontend in production
 if (config.production) {
-    app.use(express.static(path.join(process.cwd(), 'dist')))
+    // `extensions: ['html']`: the documentation is linked without ".html" (docs/guide/cli is docs/guide/cli.html), as Vercel's cleanUrls does.
+    app.use(express.static(path.join(process.cwd(), 'dist'), { extensions: ['html'] }))
     app.get('/{*splat}', (req, res, next) => {
         if (req.path.startsWith('/api')) return next()
         res.sendFile(path.join(process.cwd(), 'dist', 'index.html'))

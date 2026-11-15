@@ -27,6 +27,7 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
+    "smoke:live": "node scripts/live-smoke.mjs",
     "test:soak": "playwright test e2e/soak.spec.ts --config=playwright.soak.config.ts",
     "bench": "node scripts/bench.mjs",
     "lab:build": "node scripts/build-lab.mjs",

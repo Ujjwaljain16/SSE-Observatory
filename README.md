@@ -3,8 +3,10 @@
 <div align="center">
   <img src="./public/logo.png" alt="SSE Observatory Logo" width="160" style="border-radius: 20px;"/>
   <h3>Real-Time Observability for Server-Sent Event Streams</h3>
-  <p><a href="https://sse-observatory.vercel.app">Live demo</a> · <a href="https://sse-observatory.vercel.app/docs/">Documentation</a></p>
+  <p><a href="https://sse-observatory.vercel.app">Live demo</a> · <a href="https://sse-observatory.vercel.app/docs/">Documentation</a> · <a href="https://github.com/Ujjwaljain16/SSE-Observatory/releases/tag/v2.0.0">v2.0.0 release notes</a></p>
 </div>
+
+> **Version 2.0.0 (2026-11-15): the Stream Doctor.** Besides the live viewer, the app now says *why* a stream is stuck, late or losing events, with the evidence, and the `sse-doctor` command line turns a captured failure into a CI test. What changed, and what you may notice: [What's new in 2.0](https://sse-observatory.vercel.app/docs/guide/whats-new). How it was tested, and what was not: [the testing campaign](https://sse-observatory.vercel.app/docs/technical/testing-campaign).
 
 ## 1. Overview of the Problem Solved
 
@@ -90,7 +92,9 @@ What it will not pretend to know (the full list is in [Known limitations](https:
 - **No findings is not proof of health.** Checks that had nothing to look at are listed as *not evaluated*.
 - The app records what happened on the wire, not what events said, so exports hold no event bodies, and a replay uses placeholders of the original size.
 - Captures saved in the browser are not redacted; only an export goes through redaction, and its scan is a check, not a guarantee.
-- The command line is built to be publishable and is not published.
+- The command line is built to be publishable and is not published (the version it reports is 2.0.0; the checklist for the day it is published is [Publishing sse-doctor](https://sse-observatory.vercel.app/docs/technical/publishing)).
+- The scrub the command line applies to its own output recognises the secrets you give it in several encodings, not all of them. [The list](https://sse-observatory.vercel.app/docs/guide/cli) says which, and detection is not complete.
+- The live views show raw values as received (they say so on screen, and copying one asks first); every export is redacted.
 
 ## 4. System Architecture
 
@@ -168,7 +172,7 @@ src/
 lib/                 # Server code shared by Express and Vercel: proxy (guard, streamProxy) and mock replay API
 api/                 # Thin Vercel function adapters
 e2e/                 # Playwright specs
-scripts/             # bench.mjs (benchmarks), screenshots.mjs (README images), docs post-build
+scripts/             # bench.mjs (benchmarks), screenshots.mjs (README images), live-smoke.mjs (a deployed site, end to end), cli-contract.mjs and build-check.mjs (the built command line), perf/ and campaign/ (measurements, the results report), docs post-build
 test-servers/        # SSE servers for demos and tests (demo, chaos, multi-stream, patterns, interceptors)
 docs/                # VitePress documentation site
 ```
@@ -184,7 +188,12 @@ npm run test:soak     # long-running memory soak
 npm run build:cli && npm run doctor:selftest   # build the command line and check every shipped rule against its fixtures
 npm run cli:check     # pack the CLI, install the tarball in a clean folder, run it against a stream with canary secrets
 npm run doctor:scenarios   # scenario files against the built-in fixture streams (pass, fail, inconclusive)
+npm run doctor:buildcheck # the built package: file list, size budget, no dependencies, no source paths (run before doctor:scenarios)
+npm run doctor:contract   # the built command line as a process: exit codes, clean stdout, no stack traces, it always stops
+npm run smoke:live        # a real browser against a DEPLOYED site (default the hosted demo; --base <url>): connect through the proxy, the Doctor, an export, the docs
 ```
+
+At the 2.0.0 release the suite was 179 test files and 2,402 tests (statements 84%, branches 73%, functions 76%, lines 86%), the whole Chromium suite (176 tests) passed on an idle machine, and the release-candidate workflow passed on Linux and Windows. Beyond the unit and browser tests, a testing campaign checked the project against independent oracles (the specification's parsing algorithm written out literally, the fixture server's own log of every byte it wrote), the real proxy in the loop, the built command line as a process, and a browser sweep that plants secrets and searches every export. The account, with each defect it found and the commit that fixed it, what it did **not** cover, and how to reproduce every check, is in [docs/technical/testing-campaign.md](docs/technical/testing-campaign.md). Three GitHub workflows run the heavier checks: `ci.yml` on every pull request, `nightly.yml` (the healthy twins in real time with the default thresholds, a flake loop, the suite on Node 20) and `release-candidate.yml` (everything before a release, on the commit that ships).
 
 The unit suite covers the proxy guard and SSRF filter, the SSE parser and client, the query language, the filter engine, patterns, correlation, storage, the sandbox and the worker protocol. The e2e specs drive a real browser through connecting, filtering, interceptor failures (errors, infinite loops, escape attempts), bursts and backpressure, reconnect storms, multi-tab SharedWorker use, a killed SharedWorker, and mock replay.
 
@@ -217,6 +226,21 @@ Measured the same way (production build, Chrome, `npm run bench -- --doctor all 
 At a realistic rate the Doctor adds nothing the page can feel. In the extreme burst it adds a few short stalls and tens of megabytes of heap (the recording and its copy; it does not keep growing). The first measurement of this build was much worse (timer late p95 about 600 ms, a worst frame near 900 ms): a profile showed that re-sorting a 256-sample window every time a rule asked for a quantile took about three of eight seconds of main-thread time, and keeping the window sorted as samples arrive removed it.
 
 What this does not show: the plan's target of "under 2% CPU at 500 events/s" **is not demonstrated**. The main thread is busy 70 to 98% of the time in every variant (rendering 500 rows a second dominates), the run-to-run spread is about ten points, and the SharedWorker's own work is not in the figure, so a difference of two points cannot be seen. Per record, the engine costs about 13 microseconds (50,000 records in 650 ms the first time, a refresh with 100 new records in about 2 ms); at 1,500 records a second that is about 2% of one core, which is the basis for the target but not a measurement of it.
+
+#### Re-measured for 2.0.0
+
+Both figures above were measured on the October development build. For the release the same measurements were repeated on the release code (Chrome 157, an i5-13450HX laptop with 16 logical CPUs, Windows 11, the machine otherwise idle, 2026-11-15, production build, medians of five runs):
+
+| scenario | Doctor | timer late p95 | long frames | worst frame | heap growth |
+|---|---|---|---|---|---|
+| 20k-event burst, reconnecting every second | off | 13 ms | 0 | 0 ms | +32 MB |
+| | closed | 20 ms | 5 (357 ms in total) | 97 ms | +50 MB |
+| | open | 18 ms | 6 (440 ms) | 101 ms | +59 MB |
+| sustained ~500 events/s | off | 4 ms | 0 | 0 ms | +24 MB |
+| | closed | 4 ms | 0 | 0 ms | +25 MB |
+| | open | 9 ms | 0 | 0 ms | +21 MB |
+
+The October table is **not reproduced exactly**: the burst stalls are about the same or milder, but with the panel open at 500 events/s the main thread was busier (91% against 74% with the Doctor off) and the p95 timer lateness doubled; the machine and the Chrome version differ, and the runs vary by about ten points, so this is a difference to look at, not a measured regression. A Node micro-benchmark of the per-record cost (`npm run perf:record-cost`, 200,000 records, median of 15 runs) gives **0.49 µs** to record an observation, **0.52 µs** for `engine.feed` with the 15 shipped rules, 0.41 µs per record for the worker-to-page `structuredClone` of a batch of 10, and **3.96 µs** per record for the Doctor's sync of 100 new records while 50,000 are held: **about 4.9 µs per record added by the Doctor, against the 13.3 µs that 2% of one core at 1,500 records a second allows**. The "about 13 microseconds" in the paragraph above was a first-run figure, not this warm one; this benchmark is Node, not the browser, its stream is steady and rule-light, and the sync figure is mostly the copy of the held records, so it grows with what is held. The "under 2% CPU at 500 events/s" target is still **not demonstrated end to end**.
 
 Reproduce with `npm run bench` (add `-- --throttle 4` for the slow-CPU run, `-- --app http://localhost:3100` to target a production build). Numbers vary by machine and from run to run; the budget the pipeline is built around is: no main-thread stall longer than a few frames, flat memory, and the first row on screen almost immediately.
 

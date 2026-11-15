@@ -1,6 +1,6 @@
 # Testing campaign
 
-What has been tested beyond the ordinary unit and end-to-end tests, what it found, what is still open, and what has not been done. This page is kept up to date as the campaign goes on; every claim here can be checked with the command or the file named next to it.
+What has been tested beyond the ordinary unit and end-to-end tests, what it found, what is still open, and what has not been done. **Status: the campaign ended with the release of v2.0.0 on 2026-11-15**; every decision it raised was taken by the owner and is implemented (the table under "Owner decisions"), and the release gate is under "Release readiness". After the release, the deployed site is checked end to end with `npm run smoke:live`. Every claim here can be checked with the command or the file named next to it.
 
 The campaign's idea: more tests of the same shape find few bugs, so it uses **independent oracles** (the WHATWG algorithm written out literally, the fixture server's own log, a strict XML parser, the specification's own examples), **real processes** (the built command line), and **tables that pin every threshold at its edge**. Each defect gets a failing test before its fix.
 

@@ -34,3 +34,23 @@ In another terminal:
 Run `npm run dev:all` to start the app and the chaos server together. More scenarios live in `test-servers/` (multi-stream, patterns, interceptors).
 
 Local test servers are reachable through the proxy in development. In production the proxy refuses private addresses, so connect directly or self-host with `ALLOW_PRIVATE_TARGETS=1`.
+
+## Find out why a stream misbehaves (new in 2.0)
+
+1. Connect to the stream as above, then open **Doctor** (the button beside the event list). The health strip says whether the connection is open, when the last byte and the last event arrived, and how many reconnects there were. Findings appear as the stream shows a problem, each with what was observed, what is only inferred and a command to check next. [Details](/guide/stream-doctor).
+2. To keep the evidence, choose **Export...**: a report, a shareable capture (redacted before it leaves the page), a curl command, or a test scenario that fails while the problem is there and passes when it is fixed.
+3. The same checks run on the command line, for CI and for streams you cannot open in a browser:
+
+```sh
+npm run build:cli
+npm run doctor -- probe https://example.com/stream --duration 30 --out incident.sse-capture
+npm run doctor -- analyze incident.sse-capture
+npm run doctor -- fixtures list        # the built-in faulty streams and their healthy twins, to try every rule
+```
+
+See [the command line](/guide/cli) and [Scenarios and CI](/guide/cli-ci). What changed in this release is on [What's new in 2.0](/guide/whats-new).
+
+## Try the hosted demo
+
+The hosted demo at `https://sse-observatory.vercel.app` runs the same app. Its proxy relays public streams only (it refuses private and cloud-metadata addresses), so a public stream such as `https://stream.wikimedia.org/v2/stream/recentchange` works there, and the mock replay API is off on that deployment. To check that a deployment works end to end, run `npm run smoke:live` (a real browser against `--base <url>`).
+
