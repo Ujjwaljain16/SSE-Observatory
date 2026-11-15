@@ -54,7 +54,7 @@ export default function SequenceView({ theme, streamId, view, onDeclare }: Props
                     <p className={`text-sm ${muted}`}>
                         A server may legitimately send 104 and then 111, so numbers are only judged once you say which ones count.{' '}
                         {onDeclare
-                            ? <button type="button" onClick={onDeclare} className={`underline ${dark ? 'text-teal-300' : 'text-teal-800'}`}>Declare the sequence</button>
+                            ? <button type="button" onClick={onDeclare} className={`underline inline-flex items-center min-h-6 align-middle ${dark ? 'text-teal-300' : 'text-teal-800'}`}>Declare the sequence</button>
                             : 'Declare the sequence in the profile above the lanes.'}
                     </p>
                 )}

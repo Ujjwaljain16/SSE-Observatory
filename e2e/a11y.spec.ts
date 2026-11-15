@@ -1,5 +1,8 @@
+import http from 'node:http'
+import type { AddressInfo } from 'node:net'
 import AxeBuilder from '@axe-core/playwright'
 import { test, expect, type Page } from '@playwright/test'
+import { connectDirect } from './support/doctorKit'
 
 // Automated accessibility checks (axe-core, WCAG 2.0/2.1 A and AA) on the main states of the app, plus keyboard checks.
 // A screen reader is not run here: this finds what can be found by rules (names, roles, contrast, structure) and by keyboard.
@@ -82,5 +85,55 @@ test.describe('Accessibility', () => {
         await page.goto('/')
         const regions = await page.locator('[aria-live], [role="status"], [role="alert"]').count()
         expect(regions, 'no aria-live / status / alert region exists to announce connection changes').toBeGreaterThan(0)
+    })
+})
+
+// What a screen reader is told when a connection fails (WCAG 4.1.3, status messages). A failure that ends the attempt is an alert; a
+// retry is a polite status whose countdown is hidden from assistive technology, so it is announced once per attempt and not every second.
+test.describe('Connection errors are announced', () => {
+    let server: http.Server
+    let base = ''
+    test.beforeAll(async () => {
+        server = http.createServer((req, res) => {
+            const headers = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' }
+            if (req.method === 'OPTIONS') { res.writeHead(204, headers); res.end(); return }
+            const status = req.url?.startsWith('/forbidden') ? 403 : 502
+            res.writeHead(status, { ...headers, 'Content-Type': 'text/plain' })
+            res.end(status === 403 ? 'no' : 'bad gateway')
+        })
+        await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()))
+        base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
+    })
+    test.afterAll(() => { server.closeAllConnections(); server.close() })
+
+    test('a connect that fails for good is an alert, and the page has no violations with it showing', async ({ page }) => {
+        await page.emulateMedia({ reducedMotion: 'reduce' })
+        await page.goto('/')
+        await connectDirect(page, `${base}/forbidden`, { waitConnected: false })
+        const alert = page.getByRole('alert').filter({ hasText: 'HTTP 403' })
+        await expect(alert).toBeVisible({ timeout: 10_000 })
+        await expect(alert).toHaveAttribute('data-testid', 'connection-error')
+        await expect(page.getByTestId('connection-status')).not.toContainText('403') // the status region does not repeat it
+        expect(await violations(page, 'connection failed')).toEqual([])
+    })
+
+    test('a retry is a polite status, not an alert, and what is read out does not include the countdown', async ({ page }) => {
+        test.setTimeout(60_000)
+        await page.emulateMedia({ reducedMotion: 'reduce' })
+        await page.goto('/')
+        await connectDirect(page, `${base}/bad`, { waitConnected: false })
+        const status = page.getByTestId('connection-status')
+        await expect(status).toContainText('Retrying in', { timeout: 15_000 })
+        await expect(status).toHaveAttribute('role', 'status')
+        await expect(status).toHaveAttribute('aria-live', 'polite')
+        await expect(page.getByRole('alert').filter({ hasText: 'Retrying' })).toHaveCount(0)
+        // the seconds are hidden from assistive technology, the attempt is not
+        const spoken = await status.evaluate((el) => {
+            const walk = (n: Node): string => n.nodeType === Node.TEXT_NODE ? (n.textContent ?? '') : n instanceof HTMLElement && n.getAttribute('aria-hidden') !== 'true' ? Array.from(n.childNodes).map(walk).join('') : ''
+            return walk(el).replace(/\s+/g, ' ').trim()
+        })
+        expect(spoken).toMatch(/Retrying \(attempt \d+\)/)
+        expect(spoken).not.toMatch(/\d+s\b/)
+        expect(await violations(page, 'connection retrying')).toEqual([])
     })
 })
