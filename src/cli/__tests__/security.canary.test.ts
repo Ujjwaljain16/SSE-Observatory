@@ -46,9 +46,15 @@ const PROBE = ['--duration', '3', '--max-events', '4', '--auth-env', 'STREAM_SWE
 
 describe('E1 (CLI): every output of every command, searched for what was planted', () => {
     beforeAll(async () => {
+        // Q14: `probe --no-redact` is refused when a secret option is given, so the full local capture that the commands below must cope with
+        // (one that holds the secrets, as the recorder or an earlier version wrote it) is made from the observation directly, unscrubbed.
+        const { parseArgs } = await import('../args')
+        const { observe } = await import('../commands')
+        const { SecretRegistry } = await import('../secretRegistry')
+        const { serializeCapture } = await import('../../core/capture/format')
+        const observed = await observe({ out: () => undefined, err: () => undefined, env: ENV }, parseArgs(['probe', probeUrl(), ...PROBE]), probeUrl(), new SecretRegistry())
+        files['local.sse-capture'] = serializeCapture(observed.capture)
         // the secrets really are sent, and really come back: a sweep over a stream that never carried them proves nothing
-        const raw = await keep(['probe', probeUrl(), ...PROBE, '--no-redact', '--out', 'local.sse-capture'])
-        expect(raw.code, raw.err).toBeLessThanOrEqual(1)
         const local = files['local.sse-capture']!
         const echoed = [C['authorization']!, C['cookie']!, C['apiKey']!, C['urlToken']!].filter((k) => survivors(Buffer.from(local).toString('latin1') + local, k).length > 0 || local.includes('b64'))
         expect(echoed.length).toBeGreaterThan(0)
@@ -79,15 +85,17 @@ describe('E1 (CLI): every output of every command, searched for what was planted
         files['echo.scenario.json'] = JSON.stringify(scenario)
         for (const format of ['human', 'json', 'md', 'junit']) await keep(['test', 'echo.scenario.json', '--format', format], { ...ENV, STREAM_SWEEP_URL: probeUrl() }).catch(() => undefined)
         await keep(['test', 'echo.scenario.json', '--format', 'junit', '--output', 'out.junit.xml'], { ...ENV, STREAM_SWEEP_URL: probeUrl() })
+        // Q14: --no-redact together with these secrets is refused, and what the refusal prints is searched like every other output
+        await keep(['probe', probeUrl(), ...PROBE, '--no-redact', '--out', 'refused.sse-capture'])
         // a connection that cannot be made, with a secret in its URL: the error must not repeat it
         await keep(['probe', `http://127.0.0.1:1/x?token=${secretPart(C['urlToken']!.value)}`, '--duration', '2', '--auth-env', 'STREAM_SWEEP_AUTH'])
     }, 240_000)
 
     const haystack = (): string => everything.map((r) => `${r.out}\n${r.err}\n${Object.values(r.files).join('\n')}`).join('\n=====\n')
 
-    // Found by this sweep: the scrub of registered secrets that every output gets cut into the base64 of the wire bytes of the --no-redact capture
+    // Found by this sweep: the scrub of registered secrets that every output gets cut into the base64 of the wire bytes of a full local capture
     // (an echoed secret's base64 form was replaced by a placeholder), so the file the CLI had just written could not be read back, redacted or replayed.
-    it('the --no-redact capture is the recording as it is: valid base64 in every chunk, a matching hash, and the commands that read it work', async () => {
+    it('a full local capture (the recording as it is) holds valid base64 in every chunk, a matching hash, and the commands that read it work', async () => {
         const { base64ToBytes } = await import('../../core/capture/base64')
         const { parseCapture } = await import('../../core/capture/format')
         const local = files['local.sse-capture']!
@@ -113,8 +121,8 @@ describe('E1 (CLI): every output of every command, searched for what was planted
 
     for (const k of planted) {
         it(`${k.placement}: not in any output of any command, in any form`, () => {
-            // the local capture (written with --no-redact, on purpose) and the commands told to read it as-is are the one place secrets may stay
-            const shareable = everything.filter((r) => !r.argv.includes('--no-redact') && !(r.argv[0] === 'curl' && r.argv[1] === 'local.sse-capture'))
+            // the full local capture and the command told to read it as-is are the one place secrets may stay (no run of the command line writes one with secrets in it any more)
+            const shareable = everything.filter((r) => !(r.argv[0] === 'curl' && r.argv[1] === 'local.sse-capture'))
             const text = shareable.map((r) => `${r.out}\n${r.err}\n${Object.entries(r.files).filter(([name]) => name !== 'local.sse-capture').map(([, t]) => t).join('\n')}`).join('\n=====\n')
             // name the commands and the places that held it (the output, the error text, or a file), never the value
             const where = shareable.flatMap((r) => {
@@ -135,9 +143,12 @@ describe('E1 (CLI): every output of every command, searched for what was planted
         }
     })
 
-    it('the one deliberate exception holds the secrets: --no-redact writes them, with a warning on stderr', () => {
-        const raw = everything.find((r) => r.argv.includes('--no-redact'))!
-        expect(raw.err).toMatch(/--no-redact writes a capture that may contain secrets/)
+    it('Q14: --no-redact together with these secrets is refused (exit 2), writes no file and prints none of them; the sweep above searched what it printed', () => {
+        const refused = everything.find((r) => r.argv.includes('--no-redact'))!
+        expect(refused.code).toBe(2)
+        expect(refused.files).toEqual({})
+        expect(refused.err).toMatch(/--no-redact/)
+        expect(refused.err).not.toMatch(/may contain secrets\. Do not share it/)
         expect(haystack().length).toBeGreaterThan(1000)
     })
 })
