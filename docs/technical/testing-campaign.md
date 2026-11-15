@@ -28,8 +28,8 @@ The campaign's idea: more tests of the same shape find few bugs, so it uses **in
 | G | Browser end-to-end against the fixture server's own log: healthy and stalled streams (three different findings for three kinds of silence), two tabs on one URL (one connection), three lanes, a reconnect diagnosis checked against the log, the shared worker against the in-page fallback (equal reports), lifecycle (20 open/close rounds with no timer or listener left), the browser canary sweep (every export kind, the dialog preview, the clipboard, local storage), and a production-build smoke test | done, **1 defect**; each spec was run at least three times in the agent's run |
 | H0, H6 (soak) | The existing soak spec (`npm run test:soak`, here with `SOAK_MINUTES=10` on Chrome 157, i5-13450HX, otherwise idle, 2026-11-15): a stream at 200 events/s for 10 minutes. It passed: connected the whole time, event rows present at all 20 checks, no crash. Heap used by the page, sampled every 30 s without forcing a garbage collection: 35-100 MB, no upward trend that can be told from the noise of uncollected garbage (a fit gives 2 MB/min with samples varying by 60 MB); the total heap went from 126 to 154 MB | smoke only. The plan's gate (heap slope under 0.5 MB/min with a **forced** collection before each sample, plus timers, listeners and the SharedWorker's heap) is **not evaluated**: the spec cannot force a collection. The recording is bounded at 8 MiB by design |
 | H4 (overhead harness with arms and CIs), H5 (workloads) | The plan's paired-block harness with an A/A calibration, and the full list of workloads | not started; the existing `scripts/bench.mjs` (above) is what was run |
-| I | The end-to-end journey | handed to an agent (see the next row when it reports) |
-| G9 | Converting the waits in `e2e/doctor.spec.ts` to signals | not done (it edits an existing spec) |
+| I1 | The end-to-end journey (`e2e/journey.spec.ts`, `e2e/support/journeyKit.ts`): a healthy stream; a stalled one (the finding is not raised earlier than the stream's own rhythm allows, and its evidence record is the server's last write to within 100 ms plus slack); the finding read as observation, then deduction; the report, the capture and the scenario taken out of the real export dialog into `test-results/journey/<run>/`; the built command line (a process) analysing the downloaded capture and agreeing with the app's report, a replay of it probed and compared under the D1 policy; the scenario validated against its published schema and run; fail on the faulty stream and pass on the twin (an end-to-end green path for `f06-skips` / `f06-resumes`); and the fix simulated (the scenario byte for byte unchanged, the stall absent, its check evaluated) | done, **1 defect** (19). **Two steps are known gaps and pinned, not hidden:** for the stall itself the scenario passes on the stalled stream (Q4a; the journey step is a Playwright `test.fail`, so it fails loudly the day the gap is closed), and the downloaded capture cannot be replayed by the command line as it is (Q-I1). Each file the journey needs is taken from its own page (a second download on one page did not arrive on CI), so the report and the capture are two recordings of one stream and are compared by what they conclude |
+| G9 | Converting the waits in `e2e/doctor.spec.ts` to signals | done: the 12 `waitForTimeout` calls wait for the health strip's event count, a counted reconnect, a test id, or the live region's text; `src/cli/__tests__/doctorSpecsNoSleep.test.ts` fails if any `e2e/doctor*.spec.ts` (or the journey) calls it again. The repository's older specs still have dozens |
 | Q12, Q13 | The owner's two decisions on stalls: a stall that a later connection recovered from is resolved and kept as history (R05, R13, R04); a gap that was a stall is kept out of the rhythm the next stall is judged by | done, each with the failing test first (see the two sections under "Open decisions"); **2 more defects** of the same shape found on the way: R13 and R04 also stayed open for ever after a recovery |
 
 ## Release readiness (v2 to main)
@@ -81,6 +81,7 @@ Assessed 2026-11-15 on `phase-15-campaign`, which holds everything that would sh
 | 16 | Redaction | A leading byte order mark was dropped from the text of a sanitized capture (the decoder removed it), so a replay lost the `BOM_STRIPPED` note | `e4ccb34` |
 | 14 | CLI | Control characters from argv or a file name (an escape sequence in a URL, an unknown command) reached stderr raw, as S13 closed for streams | `8075ed8` |
 | 10 | CLI | Every value in the URL's query was registered as a secret, so a harmless `?scale=0.05`, `?limit=1000` or `?debug=true` made each `0.05`, `1000` or `true` in the output a placeholder, including inside JSON numbers: `--format json` output and the saved capture could be invalid (found as a flake in the canary sweep). A value is now a secret when its name says so or its shape does (12+ characters mixing letters and digits) | same commit |
+| 19 | CLI scenario runner | After `disconnect: server` the runner's own client reconnects at once, so the events of the new connection arrive while a `reconnect` step with `after_ms` waits; the next `collect_events` counted only events that came after it started and waited for ones already delivered ("the stream ended after 1"). A scenario made from a capture taken in the app (which waits about a second to reconnect) therefore **failed on the healthy twin** of the stream it came from. Found by the journey; the scenarios shipped with the tool use `after_ms: 0`, where the wait is too short to show it | the commit that adds `scenarioReconnectWait.test.ts` |
 | 9 | CLI | `probe --no-redact --out` wrote a capture that could not be read back, redacted or replayed: the scrub of the secrets you gave the command replaced part of the base64 of an echoed secret inside the wire bytes. The capture is now scrubbed field by field before it is written, leaving only the base64 of the wire bytes as recorded | same commit |
 
 ## Open decisions
@@ -100,6 +101,24 @@ It expects the captured status and content type, so it passes on the fault and f
 
 - **Option 1 (recommended):** when the captured response was not a healthy event stream, expect a healthy one (200, `text/event-stream`) and say so in the notes.
 - **Option 2:** keep it and emit a failing check that states the choice.
+
+### Q-I1. The capture to share is documented as replayable by the command line, and the command line refuses it
+
+`docs/guide/stream-doctor.md` says the capture to share "can be analysed and replayed" by the command line. It can be analysed. `sse-doctor replay` refuses it (exit 2, "holds no payload to replay"), because the app records what happened on the wire and not what events said; the app's own **Replay in Mock mode** button first makes a labelled copy with placeholder bodies (`src/doctor/replayCopy.ts`), and the command line does not. Pinned in `e2e/journey.spec.ts` (step 5a); the journey replays that copy.
+
+- **Option 1 (recommended):** `sse-doctor replay` makes the same labelled placeholder copy for a capture without payloads, and says so on stderr.
+- **Option 2:** change the documentation to say what is true (analyse; replay only through the app's button), and make the refusal message say how.
+
+### Q-I2. A scenario's `reconnect` step does not delay the connection or drop the cursor after a server drop
+
+`docs/guide/cli-ci.md`: "`reconnect` waits `after_ms`, then connects again; `resume_from_last_event_id: false` forgets the cursor first." After `disconnect: server` the runner's client has already reconnected, with the cursor, so neither is honoured (defect 19 only fixed the counting). Pinned in `src/cli/__tests__/scenarioReconnectWait.test.ts`.
+
+- **Option 1 (recommended):** hold the client at the drop (stop it), so that the `reconnect` step is the reconnect. Scenarios that put a step other than `reconnect` after a server drop would then need one.
+- **Option 2:** say in the documentation that after a server drop the client reconnects by itself and the step only waits.
+
+### Observation: a capture from the app has no wall-clock start
+
+`clock.startedAtEpochMs` is absent from captures made by the app (`captureOf` does not pass it), so a record's time cannot be placed on a server's log. The journey compares an interval from the first byte instead. Whether to add it (it tells a reader when the recording was made, to the millisecond) is a privacy call for the owner.
 
 ### Q12. A stall that ended with a closed connection stays open after a healthy reconnect: decided and implemented
 
@@ -127,22 +146,6 @@ The command line scrubs every value you give it (`--auth-env`, `--cookie-env`, .
 - **Option 1 (current):** as above, documented in `docs/guide/cli.md`.
 - **Option 2:** refuse `--no-redact` when any secret option was given, and say why.
 - **Option 3:** also scrub the decoded wire bytes and re-encode them, which is redaction under another name and defeats a byte-exact capture.
-
-### Q15. Forged proxy tags
-
-The proxy forwards an upstream's `: sse-proxy hb up_idle=...` comment as it came, and the client labels any comment starting with `sse-proxy` as the proxy's. An upstream behind a proxy running with diagnostics off can make R13 report masking that is really the upstream (the `f04-masked` fixture has this shape). Test: `src/fixtures/__tests__/proxyInTheLoop.test.ts`.
-
-- **Option 1:** the proxy drops or escapes upstream comments that start with `sse-proxy`.
-- **Option 2:** the proxy adds a per-connection nonce to its tags and the client checks it.
-- **Option 3 (current):** accept it: the proxy is a diagnostic aid and its tags are not authenticated.
-
-### Q16. The proxy's `event: error` frame reaches the application as a message
-
-When the upstream connection is reset between events the proxy writes `event: error` into the stream; the application receives it as an ordinary message named `error`. Keep it (the proxy says why it closed) or send it as a comment so event consumers never see it.
-
-### Q17. `PROXY_DIAGNOSTICS=0` still sends `: sse-proxy-ping`
-
-It is labelled as the proxy's, and the client cannot tell the proxy's plain `keep-alive` from the upstream's. An existing test asserts the ping, so it looks intended. Say so if the switch should mean "no `sse-proxy` text at all".
 
 ### Q18. The Timeline's attempt label repeats
 
@@ -173,6 +176,35 @@ Pinned as known gaps in `src/cli/__tests__/security.encodings.test.ts` (each is 
 - Mock replay of a v1 recording emits the recording's internal uuid as the event id and merges the event name into the JSON data's `type` (pinned, "OPEN QUESTION" in `importV1.test.ts`).
 - A duplicate `seq` or a backwards `t` in a capture file is accepted without a warning; analysis does not fail.
 - Real v1 exports are still needed: the four samples were made by the v1 export code path, not downloaded from the running app.
+
+## Decided and implemented
+
+Decided by the owner; each was first written as a failing test, then fixed. What the proxy does now is in [Proxy diagnostics](proxy-diagnostics.md).
+
+### Q15. Forged proxy tags (decided: the proxy rewrites them)
+
+The proxy forwarded an upstream's `: sse-proxy hb up_idle=...` comment as it came, and the client labels any comment starting with `sse-proxy` as the proxy's, so an upstream (with diagnostics off or on) could make R13 report masking and R05 name the origin when the upstream was healthy. **Decision:** the proxy escapes or rewrites upstream comments in the reserved `sse-proxy` namespace before it adds its own tags, so an upstream cannot impersonate a proxy heartbeat, and a real proxy-in-the-loop test proves it.
+
+- **Form chosen:** ` upstream:` is inserted right after the colon (`: sse-proxy hb up_idle=9 n=1` becomes `: upstream: sse-proxy hb up_idle=9 n=1`). It keeps the text readable and every byte of it, it is out of the namespace so nothing labels or parses it as the proxy's, it is applied once (a second proxy does not rewrite it again), and the line count does not change, so framing cannot break. Dropping the line was rejected (it would lose the upstream's bytes and hide the forgery from the user); a nonce in the tags was rejected (the Doctor would have to carry it, and a captured file could not be read without it).
+- **What is matched:** `:`, up to 32 spaces or tabs, then `sse-proxy` in any letter case (the client itself labels only `:` + at most one space + lower case; the proxy is wider on purpose, since the namespace is reserved however it is spelled). Every line of a comment block, a comment inside an event, after a byte order mark, with LF, CR and CRLF, and across network chunks (a comment line is held back only while its first bytes could still be the namespace; everything else is forwarded at once; what is held at the end of the stream is released unchanged).
+- **Tests:** `src/tests/reservedComments.test.ts` (the forms rewritten, the forms left alone byte for byte, every cut point, properties against the specification's parser and a line-by-line oracle, and that the framing the proxy's tracker sees is the parser's at every chunk end); `src/tests/streamProxy.test.ts` (the bytes the proxy writes, diagnostics on and off, with a comment split across two chunks while heartbeats are written); `src/fixtures/__tests__/proxyInTheLoop.test.ts` ("an upstream that writes comments shaped like the proxy's tags": a forging upstream through the real proxy, diagnostics on and off: every forged comment arrives labelled as the upstream's, the proxy's own ping, meta and heartbeats still read as the proxy's, `proxy.masking` and `stall.silent:origin` do not fire, and the forwarded bytes equal the upstream's log with exactly the forged lines rewritten, checked against a regular expression written separately from the proxy's code; the same forger read directly still fires `proxy.masking`, which shows the proxy is what closes the hole; an honest upstream's comments pass byte for byte).
+- **Still true:** the tags are not authenticated against something between the proxy and the browser. A comparison of the forwarded bytes with the upstream's log must now account for the rewritten lines (ten bytes each).
+
+### Q16. The proxy's own error notice is a comment, not an event (decided)
+
+When the upstream connection was reset between events (or the byte limit was reached) the proxy wrote `event: error` into the stream and the application received a message named `error` that the upstream never sent. **Decision:** convert it into an SSE comment; keep the reason available to the inspector through the observation; the proxy must not inject a business event into the upstream's stream.
+
+- **Now:** `: sse-proxy error {"error":"<reason>"}`, written only between events and only with diagnostics on. The client records it as an ordinary `comment` observation (`source: "proxy"`), `parseProxyComment` reads it as `{ kind: 'error', message }` (`src/core/proxyTags.ts`, mirrored from `lib/proxy/diagTags.js` with a contract test), and the Doctor's timeline shows it on the connection it ended ("the proxy said: ..."). It is not counted as a proxy heartbeat. No rule was changed. The `event: error` writer (`errorEvent` in `lib/proxy/guard.js`) was removed.
+- **Tests:** `proxyInTheLoop.test.ts` ("the upstream connection is destroyed": no message named `error` reaches `onMessage`, no `event` record named `error`, one proxy-labelled comment on the lost connection with the reason, the client resumes from the last id; nothing is written into a half event; an `event: error` that the upstream itself sends still reaches the application untouched), `streamProxy.test.ts` (the exact bytes, the byte limit), `framers.agree.test.ts` (a comment adds no event wherever the tracker allows it), `proxyTags.contract.test.ts`, `src/core/diagnostics/__tests__/proxyErrorNotice.test.ts`, `src/doctor/__tests__/timeline.test.ts`.
+- **Diagnostics off:** the stream just ends (see Q17); the client reconnects as for any closed stream.
+
+### Q17. `PROXY_DIAGNOSTICS=0` means no proxy-specific text (decided)
+
+With the switch off the proxy still sent `: sse-proxy-ping`, which the client labels as the proxy's; the existing test asserted it. **Decision:** the switch means no proxy-specific diagnostic text and no diagnostic headers; the tagged ping is not retained.
+
+- **Now with `PROXY_DIAGNOSTICS=0`:** no `X-SSE-*` header; no `sse-proxy*` comment (ping, meta, `hb`, `cap`, `error`); the response starts by flushing the headers, so its first bytes are the upstream's; the keep-alive that holds the connection open stays as a plain `: keep-alive` (outside the namespace; the client cannot tell it from the upstream's, which is the documented meaning of the switch); at the duration cap only `retry: 1000` is written; a started stream that the proxy ends just ends, with no notice.
+- **Tests:** the existing assertion in `streamProxy.test.ts` ("PROXY_DIAGNOSTICS=0 ...") was changed from "starts with the ping" to "no text in the `sse-proxy` namespace at all"; new tests for the flushed headers, the error notice, the cap and the byte limit with diagnostics off; the "PROXY_DIAGNOSTICS=0" block of `proxyInTheLoop.test.ts` now asserts that no comment in the proxy's namespace is read by the client, on a healthy and a silent upstream, and that R13 and `stall.silent:origin` stay silent.
+- **Not verified:** that every hosting platform starts a response whose first body byte arrives later (the headers are flushed, the first byte is the upstream's); the Vercel runtime was not exercised.
 
 ## Not covered
 
