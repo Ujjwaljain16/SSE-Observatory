@@ -16,6 +16,48 @@ import { sessionFromCapture } from '../../../../lib/mock/capturePlan.js'
 const rec = (seq: number, t: number, extra: Record<string, unknown> = {}): CaptureRecord => ({ seq, t, conn: 0, kind: 'comment', text: `c${seq}`, source: 'upstream', ...extra }) as CaptureRecord
 const codes = (records: CaptureRecord[]) => validateCaptureIntegrity(records).map((p) => p.code)
 
+describe('validateCaptureIntegrity: it keeps nothing per record while a capture is healthy', () => {
+    // The documented limit (docs/technical/limitations.md, section 9) is that a 1.2 million record capture is analysed inside a 384 MB heap.
+    // A map from every seq to its position held 1.2 million entries, and the release-candidate run (scripts/perf/large-capture.mjs) found the
+    // command line killed in that heap. A seq that rises beyond every earlier one cannot be a repeat, so a healthy capture needs no such table.
+    it('a rising seq adds nothing to a Map or a Set, however many records there are', () => {
+        const records: CaptureRecord[] = []
+        for (let i = 0; i < 50_000; i++) records.push(rec(i, i))
+        let kept = 0
+        const set = Map.prototype.set
+        const add = Set.prototype.add
+        Map.prototype.set = function (this: Map<unknown, unknown>, ...args: [unknown, unknown]) { kept++; return set.apply(this, args) } as typeof Map.prototype.set
+        Set.prototype.add = function (this: Set<unknown>, value: unknown) { kept++; return add.call(this, value) } as typeof Set.prototype.add
+        try {
+            expect(validateCaptureIntegrity(records)).toEqual([])
+        } finally {
+            Map.prototype.set = set
+            Set.prototype.add = add
+        }
+        expect(kept, 'entries kept while checking a healthy capture').toBe(0)
+    })
+
+    it('a repeat of a seq far back is still found once the order has broken, and reports the first record that had it', () => {
+        const records: CaptureRecord[] = []
+        for (let i = 0; i < 1000; i++) records.push(rec(i, i))
+        records.push(rec(3, 1000)) // a seq the first thousand already used, long before
+        records.push(rec(1000, 1001))
+        const problems = validateCaptureIntegrity(records)
+        expect(problems.map((p) => p.code)).toContain('seq.duplicate')
+        const dup = problems.find((p) => p.code === 'seq.duplicate')!
+        expect(dup.seq).toBe(3)
+        expect(dup.index).toBe(1000)
+        expect(dup.message).toContain('record #1001')
+        expect(dup.message).toContain('record #4')
+    })
+
+    it('an invalid record is not a seq that was used: it neither hides nor causes a duplicate', () => {
+        const records = [rec(0, 0), { kind: 'comment', seq: 'x', t: 1 } as unknown as CaptureRecord, rec(1, 2), rec(0, 3)]
+        // the repeat of seq 0 is one fault (a repeat is not also reported as out of order), and t does not go back
+        expect(codes(records)).toEqual(['record.invalid', 'seq.duplicate'])
+    })
+})
+
 describe('validateCaptureIntegrity: healthy captures are not flagged', () => {
     it('nothing, one record, strictly increasing seq with t that rises or stays equal', () => {
         expect(validateCaptureIntegrity([])).toEqual([])
