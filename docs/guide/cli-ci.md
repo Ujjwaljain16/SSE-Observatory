@@ -76,7 +76,7 @@ The field is optional and additive: the scenario format stays at version 1 and t
 
 ### Scenarios made from a capture
 
-`sse-doctor repro <capture> --scenario <file>` (and the Doctor's "Test scenario" export) writes a scenario from a capture and says in its `meta.notes` what it did:
+`sse-doctor repro <capture> --scenario <file>` (and the Doctor's "Test scenario" export) writes a scenario from a capture and says in its `meta.notes` what it did. With `repro`, the scenario is made from the whole capture you gave it (its events, its response, its stall), not from the shrunken capture that `--output` writes: the shrunken one keeps only what the finding needs (for a stall, no events and no response), and a scenario made from it would pass on the stalled stream it came from.
 
 - **A stall in the capture** (a `stall.silent` finding) sets `expect.max_silence_ms` to the limit the stall rule used for that stream's own rhythm, so the scenario fails on a stream that stalls again. A stream with another rhythm needs another value. Without a stall finding the field is left out.
 - **A response that was not a healthy event stream** (not HTTP 200 with `text/event-stream`) is **not** expected again: the scenario expects HTTP 200 and `text/event-stream`, and a note says so. It is designed to verify the fix, not to reproduce the broken response, so it fails on the response that was captured and passes once the stream is fixed.
