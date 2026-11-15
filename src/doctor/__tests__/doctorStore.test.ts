@@ -180,6 +180,26 @@ describe('a stall that a later connection recovered from', () => {
     })
 })
 
+// Results Q13, second stage (decided): the live view and the batch analysis recognise a changed cadence the same way.
+describe('a cadence that changed for good', () => {
+    it('is recognised in the live view as in a batch analysis: the stall is resolved history, a note says the cadence changed, and nothing is counted as open', async () => {
+        const h = start()
+        const b = steady(12)
+        for (let i = 0; i < 3; i++) b.silence(8000).frame('tick')
+        h.feed(b)
+        await h.store.refresh()
+        h.advance(8000) // the next silence is 8 s old: normal now
+        b.silence(8000)
+        await h.store.refresh()
+        const v = h.view()!
+        const batch = analyze(b.build(), { endT: b.now }).findings
+        for (const key of ['stall.silent:bytes', 'cadence.changed:bytes']) expect(v.findings.find((f) => f.key === key), key).toEqual(batch.find((f) => f.key === key))
+        expect(v.findings.find((f) => f.key === 'stall.silent:bytes')).toMatchObject({ status: 'resolved', occurrences: 3 })
+        expect(v.findings.find((f) => f.key === 'cadence.changed:bytes')).toMatchObject({ severity: 'info', status: 'open' })
+        expect(v.open.warning + v.open.error + v.open.critical).toBe(0)
+    })
+})
+
 // Found by the browser tests (campaign G1): while records keep arriving, an open silence dropped out of the live view. Feeding a record clears the
 // engine's provisional findings (the ones that are only true "so far"), and the tick that puts them back ran only once a second, while the store
 // synced and published every 250 ms. With a heartbeat every 250 ms, most views had no stall finding in them and the finding flickered.
