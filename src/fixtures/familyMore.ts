@@ -7,7 +7,7 @@
  * H05  `/h05`               events 40 s apart with no heartbeat at all, and a profile that says up to 60 s of silence is normal. A declared
  *                           idle is not a stall, so it must be silent. (`f04-silent` is the same shape without the declaration.)
  * H06  `/h06`               only comment lines, one a second from the first byte, then the end event (`?bare=1` closes without it, which
- *                           makes the client reconnect). No event is ever dispatched until the end: nothing is wrong with it.
+ *                           makes the client reconnect every time: reconnect.loop, an error, as pinned in fixturesMore.test.ts). No event is ever dispatched until the end: nothing is wrong with it.
  * F04  `/f04/late-heartbeat` an event, heartbeats a second apart, then one that comes four seconds after the one before (R10). Twin: h06.
  * F11  `/f11/slow-start`    headers at once, the first byte 4 s later (a comment), the first event 7 s after that (R04). `?byteMs=` and
  *                           `?eventMs=` change the two delays. A fixture cannot hold the headers back (the server writes them before the
@@ -49,7 +49,7 @@ const routes: FixtureRoute[] = [
     },
     {
         id: 'h06-comments-only', family: 'H06', path: '/h06', title: 'Healthy: comments only, then the end',
-        description: 'A comment line a second from the first byte, for N seconds, and then the end event. Nothing is dispatched as an event before it.',
+        description: 'A comment line a second from the first byte, for N seconds, and then the end event. Nothing is dispatched as an event before it. With ?bare=1 the end event is left out and the server closes: the client treats that as a drop and reconnects every time, which reconnect.loop reports as an error (the contract here is for the default stream, not for ?bare=1).',
         expectedFindings: [], forbiddenFindings: FINDINGS_NEVER_ON_HEALTHY, healthyTwin: null, defaultN: 4,
     },
     {

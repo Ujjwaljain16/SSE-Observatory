@@ -10,8 +10,16 @@ import { FIXTURE_ROUTES, type FixtureServer } from '../server'
 export interface ObserveOptions {
     /** Keep the wire bytes, so the capture can be replayed byte for byte. */
     captureBytes?: boolean
-    /** Reconnects allowed before the client gives up (a stream that closes without an end event is reconnected). Default 3. */
+    /**
+     * CONSECUTIVE failed attempts before the client gives up (a stream that closes without an end event is reconnected). Default 3. The count starts
+     * again each time a connection opens, so a server that accepts every connection and then closes it is never given up on: that loop is bounded
+     * with `stopAfterConnections`, not with this.
+     */
     maxRetries?: number
+    /** Stop the client as soon as this many connections have ended and it is about to reconnect: the run is bounded by a count, and every connection it saw was ended by the server. */
+    stopAfterConnections?: number
+    /** Give up waiting after this long (default 15 000 ms): the run rejects, and the client is stopped either way. */
+    timeoutMs?: number
     /** Thresholds for the engine. Default: the two hand-picked limits the older fixture tests use (a 400 ms floor and a 500 ms no-cadence limit). A test run at a time scale passes `defaultsAt(scale)`. */
     thresholds?: Partial<Thresholds>
 }
@@ -26,10 +34,14 @@ export async function observeUrl(url: string, rules: Rule[], profile: StreamProf
     let finished!: () => void
     const done = new Promise<void>((resolve) => { finished = resolve })
     let events = 0
+    let reconnecting = 0
     const messages: Array<{ id: string; event: string; dataBytes: number }> = []
     const stream = createObservedStream({
         request: () => ({ url }),
-        sinks: { onMessage: (m) => { events++; messages.push({ id: m.id, event: m.event, dataBytes: new TextEncoder().encode(m.data).length }) }, onPhase: (p) => { if (p === 'ended' || p === 'failed') finished() } },
+        sinks: { onMessage: (m) => { events++; messages.push({ id: m.id, event: m.event, dataBytes: new TextEncoder().encode(m.data).length }) }, onPhase: (p) => {
+            if (p === 'ended' || p === 'failed') finished()
+            if (p === 'reconnecting' && options.stopAfterConnections !== undefined && ++reconnecting >= options.stopAfterConnections) { stream.stop(); finished() }
+        } },
         recording: {
             profile: { ...(profile?.sequence ? { sequence: { useSseId: profile.sequence.useSseId, field: profile.sequence.field } } : {}) },
             ...(options.captureBytes ? { captureBytes: true } : {}),
@@ -39,9 +51,15 @@ export async function observeUrl(url: string, rules: Rule[], profile: StreamProf
         clientOptions: { initialDelayMs: 5, maxDelayMs: 20, jitter: 0, maxRetries: options.maxRetries ?? 3 },
     })
     stream.start()
-    await Promise.race([done, new Promise((_, reject) => setTimeout(() => reject(new Error(`timed out; saw ${observations.length} records`)), 15_000))])
+    const timeoutMs = options.timeoutMs ?? 15_000
+    let timer: ReturnType<typeof setTimeout> | undefined
+    try {
+        await Promise.race([done, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`timed out after ${timeoutMs} ms; saw ${observations.length} records`)), timeoutMs) })])
+    } finally {
+        clearTimeout(timer)
+        stream.stop() // a run that timed out must not leave the client reconnecting
+    }
     stream.flushObservations()
-    stream.stop()
     const endT = observations.at(-1)?.t ?? 0
     engine.tick(endT)
     engine.end(endT)

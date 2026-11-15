@@ -28,13 +28,17 @@ interface RunOptions {
     profile?: 'route' | 'none' | StreamProfile
     maxRetries?: number
     captureBytes?: boolean
+    /** Stop after this many connections have ended and the client is about to come back (see `observeUrl`). */
+    stopAfterConnections?: number
+    timeoutMs?: number
 }
 
-async function run(id: string, { scale, query = {}, profile = 'route', maxRetries, captureBytes }: RunOptions) {
+async function run(id: string, { scale, query = {}, profile = 'route', maxRetries, captureBytes, stopAfterConnections, timeoutMs }: RunOptions) {
     const declared = profile === 'route' ? route(id).profile : profile === 'none' ? undefined : profile
     const before = server.groundTruth.connections.length
     const result = await observeUrl(server.urlFor(id, { scale, ...query }), defaultRules, declared ? scaleProfile(declared, scale) : undefined, {
         thresholds: defaultsAt(scale), ...(maxRetries !== undefined ? { maxRetries } : {}), ...(captureBytes ? { captureBytes } : {}),
+        ...(stopAfterConnections !== undefined ? { stopAfterConnections } : {}), ...(timeoutMs !== undefined ? { timeoutMs } : {}),
     })
     await new Promise((resolve) => setTimeout(resolve, 20)) // the server notes a connection the client closed last
     return { ...result, log: server.groundTruth.connections.slice(before).filter((c) => c.route === id) }
@@ -147,6 +151,94 @@ describe('h06-comments-only: a stream of nothing but comments', () => {
         expect(r.log[0]!.endedBy).toBe('server-end')
         expect(frameLog(r.log[0]!).filter((f) => f.hasData)).toEqual([])
     }, 30_000)
+})
+
+describe('h06-comments-only?bare=1: the client comes back every time (R07, reconnect.loop)', () => {
+    // The owner's decision: the client keeps reconnecting to a stream that closes without ever sending an event, and that is right; it is the loop
+    // the rule exists to report. The loop has no end of its own: the client's retry limit counts CONSECUTIVE failures and starts again whenever a
+    // connection opens, which this server always allows. So the run is bounded by a count of connections (and, as a net, by a time budget), never by
+    // maxRetries; the first test below shows why.
+    const CONNECTIONS = 5
+    const COMMENTS = 3
+    const BUDGET_MS = 10_000
+    const loop = () => run('h06-comments-only', { scale: 0.1, query: { n: COMMENTS, bare: 1 }, stopAfterConnections: CONNECTIONS, timeoutMs: BUDGET_MS })
+
+    it('is bounded by a count, not by the retry limit: a client that may fail only once still opens every connection, because each one opens', async () => {
+        const r = await run('h06-comments-only', { scale: 0.1, query: { n: COMMENTS, bare: 1 }, maxRetries: 1, stopAfterConnections: 4, timeoutMs: BUDGET_MS })
+        expect(r.log).toHaveLength(4)
+        expect(records(r, 'connect')).toHaveLength(4)
+        expect(records(r, 'phase').map((p) => p.phase)).not.toContain('failed') // it never "gave up"; we stopped it
+        expect(records(r, 'phase').at(-1)!.phase).toBe('stopped')
+    }, 20_000)
+
+    it(`${CONNECTIONS} connections, each ended by the server, each only comments; and the loop is reported as an error with evidence that is the connections`, async () => {
+        const started = performance.now()
+        const r = await loop()
+        expect(performance.now() - started, 'the run is bounded: well under the time budget').toBeLessThan(BUDGET_MS)
+
+        // the server's own log is the ground truth: exactly the connections we allowed, every one closed by the server after comments alone
+        expect(r.log).toHaveLength(CONNECTIONS)
+        expect(r.log.map((c) => c.endedBy)).toEqual(Array(CONNECTIONS).fill('server-end'))
+        for (const c of r.log) {
+            expect(c.query.bare).toBe('1')
+            expect(c.requestHeaders['last-event-id'] ?? '', 'no event was ever delivered, so there is no cursor to send').toBe('')
+            const frames = frameLog(c)
+            expect(frames.filter((f) => f.isComment)).toHaveLength(COMMENTS)
+            expect(frames.filter((f) => f.hasData)).toEqual([])
+        }
+        // the client saw the same: one connect and one reconnect per connection, all comments, not one event
+        const connects = records(r, 'connect')
+        const reconnects = records(r, 'reconnect')
+        expect(connects).toHaveLength(r.log.length)
+        expect(reconnects).toHaveLength(r.log.length) // the last is the one it was making when we stopped it
+        expect(reconnects.map((x) => x.reason)).toEqual(Array(CONNECTIONS).fill('Stream closed by server'))
+        expect(records(r, 'comment')).toHaveLength(CONNECTIONS * COMMENTS)
+        expect(records(r, 'event')).toEqual([])
+        expect(r.messages).toEqual([])
+
+        // the finding: the key, the severity (nothing was delivered on any of them: an error), and counts that agree with the log
+        const f = find(r, 'reconnect.loop')!
+        expect(f, `findings were ${withSeverity(r).join(', ') || 'none'}`).toBeDefined()
+        expect(f.severity).toBe('error')
+        expect(f.title).toBe('Reconnecting without getting any data')
+        expect(f.facts[0]!.text).toMatch(new RegExp(`^${CONNECTIONS} connections were opened within [\\d.]+ (ms|s) \\(connections 0 to ${CONNECTIONS - 1}\\); the limit is 3 within 6 s\\.$`))
+        expect(f.facts[1]!.text).toBe('No event was delivered on any of them.')
+        expect(f.facts.map((x) => x.text)).toContain(`${CONNECTIONS} reconnects happened in a row without a single event in between.`)
+        expect(f.facts.map((x) => x.text)).toContain('Reconnect reasons: Stream closed by server.')
+        // its evidence is the connect records themselves: the same sequence numbers, times and connection numbers, one per connection in the server's log
+        expect(f.facts[0]!.evidence).toEqual(connects.map((c) => ({ seq: c.seq, t: c.t, note: `connection ${c.conn}` })))
+        expect(f.facts[0]!.evidence).toHaveLength(r.log.length)
+        // the run of reconnects is anchored on the first and the last reconnect record
+        const runEvidence = f.facts.find((x) => x.text.endsWith('without a single event in between.'))!.evidence
+        expect(runEvidence).toEqual([
+            { seq: reconnects[0]!.seq, t: reconnects[0]!.t, note: 'first reconnect of the run' },
+            { seq: reconnects.at(-1)!.seq, t: reconnects.at(-1)!.t, note: 'latest' },
+        ])
+        // and every piece of evidence in the finding names a record that exists
+        const seqs = new Set(r.observations.map((o) => o.seq))
+        for (const e of f.facts.flatMap((x) => x.evidence)) expect(seqs.has(e.seq)).toBe(true)
+        expect(f.deductions[0]!.basis.every((seq) => connects.some((c) => c.seq === seq))).toBe(true)
+        expect(f.status).toBe('open')
+        expect(f.occurrences).toBeGreaterThanOrEqual(1)
+
+        // what must not fire: the comments keep the connection alive, so there is no stall, no late or absent heartbeat, no slow start, no framing fault
+        expect(records(r, 'violation')).toEqual([])
+        // the only other thing the rule may say is that every connection lasted the same time, which is true of this server (timing-dependent, so not required)
+        expect(keys(r).filter((k) => k !== 'reconnect.loop' && k !== 'reconnect.duration-pattern')).toEqual([])
+    }, 20_000)
+
+    it('the same stream without ?bare=1 (its healthy twin) ends with the end event on the first connection and has no loop', async () => {
+        const r = await run('h06-comments-only', { scale: 0.1, query: { n: COMMENTS }, stopAfterConnections: CONNECTIONS, timeoutMs: BUDGET_MS })
+        expect(r.log).toHaveLength(1)
+        expect(r.log[0]!.endedBy).toBe('server-end')
+        expect(records(r, 'connect')).toHaveLength(1)
+        expect(records(r, 'reconnect')).toEqual([])
+        expect(r.messages.map((m) => m.event)).toEqual(['end'])
+        expect(find(r, 'reconnect.loop')).toBeUndefined()
+        expect(r.findings).toEqual([])
+        // the rule ran: it is silent here because there is nothing to report, not because it was never asked
+        expect(r.coverage.find((c) => c.ruleId === 'reconnect.loop')!.status).toBe('evaluated')
+    }, 20_000)
 })
 
 describe('f04-late-heartbeat: one heartbeat arrives four intervals late (R10)', () => {
