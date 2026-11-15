@@ -7,7 +7,7 @@ import type { StreamProfile } from '../core/diagnostics/thresholds'
 import type { CaptureRecord } from '../core/capture/format'
 import type { PayloadProbeConfig } from '../core/observe/payloadProbe'
 import { createObservedStream } from '../core/sse/observedStream'
-import { safeFetch } from './safeFetch'
+import { createSafeFetch, type CrossOriginRedirectRefused } from './safeFetch'
 import type { Scenario, ScenarioStep } from '../core/scenario/types'
 import { planReplay, sessionFromCapture } from '../../lib/mock/capturePlan.js'
 import { FIXTURE_ROUTES, startFixtureServer } from '../fixtures/server'
@@ -52,6 +52,20 @@ function substitute(text: string, io: CliIo, secrets: SecretRegistry, missing: S
         secrets.register(value)
         return value
     })
+}
+
+/** What a scenario attaches that is a credential, by name and never by value: a header, or a query value, that comes from `${ENV:NAME}`. The address
+ *  alone (`${ENV:STREAM_URL}`) is not a credential. The same rule as the probe's (decision Q6): a redirect to another origin is refused while any is attached. */
+export function scenarioSecretOptions(scenario: Scenario): string[] {
+    const out: string[] = []
+    for (const [name, value] of Object.entries(scenario.target.headers ?? {})) if (new RegExp(ENV_REF.source).test(value)) out.push(`header ${name}`)
+    const raw = scenario.target.url
+    if (raw) {
+        const rest = raw.replace(/^\$\{ENV:[A-Za-z_][A-Za-z0-9_]*\}/, '')
+        for (const m of rest.matchAll(ENV_REF)) out.push(`query value \${ENV:${m[1]}}`)
+        if (/^[a-z][a-z0-9+.-]*:\/\/[^/?#]*@/i.test(raw)) out.push('credentials in the URL')
+    }
+    return out
 }
 
 function profileOf(scenario: Scenario): StreamProfile {
@@ -124,7 +138,7 @@ async function resolveTarget(scenario: Scenario, io: CliIo, secrets: SecretRegis
 
 const mediaType = (value: string): string => value.split(';')[0]!.trim().toLowerCase()
 
-export async function runScenario(scenario: Scenario, file: string, io: CliIo, secrets: SecretRegistry, allowEnv: readonly string[] = []): Promise<ScenarioRun> {
+export async function runScenario(scenario: Scenario, file: string, io: CliIo, secrets: SecretRegistry, allowEnv: readonly string[] = [], followRedirects = false): Promise<ScenarioRun> {
     const cleanup: Array<() => Promise<void>> = []
     const startedAt = Date.now()
     try {
@@ -134,15 +148,25 @@ export async function runScenario(scenario: Scenario, file: string, io: CliIo, s
         const startedClock = performance.now()
         let events = 0
         let phase = ''
+        // A redirect to another origin while the scenario carries a credential is refused unless --follow-redirects opts in (then the credential stays behind).
+        let refusal: CrossOriginRedirectRefused | undefined
+        const fetchImpl = createSafeFetch({
+            secretOptions: scenarioSecretOptions(scenario),
+            followRedirects,
+            onRefused: (error) => { refusal ??= error },
+            onWithheld: (redirect, names) => io.err(`warning: ${redirect.from} redirected to ${redirect.to}, and it was followed because of --follow-redirects. NOT forwarded to ${redirect.to}: ${names.join(', ')}. Credentials are never sent to another origin, so expect that server to answer without them.
+`),
+        })
         const stream = createObservedStream({
             request: () => ({ url: target.url, headers: { Accept: 'text/event-stream', 'Cache-Control': 'no-cache', ...target.headers } }),
             sinks: { onMessage: () => { events++ }, onPhase: (p) => { phase = p } },
             recording: { ...(Object.keys(probeOf(profile)).length > 0 ? { profile: probeOf(profile) } : {}), onObservations: (batch) => { records.push(...batch) }, flushMs: 10 },
-            clientOptions: { initialDelayMs: 20, maxDelayMs: 200, jitter: 0, maxRetries: 5, fetchImpl: safeFetch },
+            clientOptions: { initialDelayMs: 20, maxDelayMs: 200, jitter: 0, maxRetries: 5, fetchImpl },
         })
         const waitFor = async (done: () => boolean, timeoutMs: number): Promise<boolean> => {
             const until = Date.now() + timeoutMs
             while (!done()) {
+                if (refusal) throw new CliError(refusal.message, EXIT.couldNotRun)
                 if (io.signal?.aborted) throw new CliError('Interrupted.', EXIT.interrupted)
                 if (Date.now() > until) return false
                 await sleep(10)
@@ -161,6 +185,7 @@ export async function runScenario(scenario: Scenario, file: string, io: CliIo, s
         let countFrom: number | undefined
         for (const step of scenario.steps as ScenarioStep[]) {
             index++
+            if (refusal) throw new CliError(refusal.message, EXIT.couldNotRun)
             if ('collect_events' in step) {
                 const base = countFrom ?? events
                 countFrom = undefined
@@ -184,6 +209,7 @@ export async function runScenario(scenario: Scenario, file: string, io: CliIo, s
                 check(`step ${index}: reconnect`, true, step.reconnect.resume_from_last_event_id === false ? 'without Last-Event-ID' : `with Last-Event-ID "${stream.lastId}"`)
             } else if ('wait' in step) await sleep(step.wait.ms)
         }
+        if (refusal) throw new CliError(refusal.message, EXIT.couldNotRun)
         // expect.max_silence_ms: a silence needs time to show, and the analysis ends at the last record, so after the last step the
         // connection stays open and observed for that long (plus a margin), and the analysis ends at the end of that time.
         const maxSilence = scenario.expect?.max_silence_ms
