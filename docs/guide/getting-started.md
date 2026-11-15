@@ -21,6 +21,8 @@ Open `http://localhost:3001`. `npm run dev` starts the Vite UI and the local API
 2. **Authentication:** optional bearer token. It is sent as `Authorization: Bearer <token>` and, with the proxy on, in a POST body rather than the URL. Saved profiles do not store the token unless you tick **Remember token**.
 3. **Connect.** While connecting you can cancel; if the connection drops you will see a retry countdown.
 
+If the address is not an event stream at all (a web page or a JSON endpoint answers instead), the connection stops after the first attempt and says so, for example "The address answers with text/html, not text/event-stream, so there is nothing to retry." The same message appears with the proxy on or off. A server that is down, or answers 5xx, is retried with a countdown.
+
 Leave **Use Server Proxy** on for endpoints that do not send CORS headers. Turn it off to connect straight from the browser (the endpoint must allow your origin).
 
 ## Try it with the test servers

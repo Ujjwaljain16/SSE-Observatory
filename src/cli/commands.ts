@@ -468,7 +468,11 @@ export async function reproCommand(io: CliIo, args: ParsedArgs): Promise<number>
     const scenarioFile = stringFlag(args, 'scenario')
     if (scenarioFile) {
         try {
-            const { scenario, notes } = toScenario(redacted, again)
+            // The scenario is made from the ORIGINAL capture (redacted again here, with the same policy), not from the minimal one: a minimal capture
+            // keeps only what the finding needs (a stall's has no events, no response), so a scenario made from it would collect one event and pass
+            // on the stalled stream it came from. Only --output is the minimal capture.
+            const whole = redactCapture(capture, await loadRedactionPolicy(io, args)).capture
+            const { scenario, notes } = toScenario(whole, analysisOf(whole, profile))
             await files.writeText(scenarioFile, serializeScenario(scenario))
             io.out(`Wrote the scenario ${scenarioFile}.\n`)
             for (const note of notes) io.out(`  note: ${note}\n`)

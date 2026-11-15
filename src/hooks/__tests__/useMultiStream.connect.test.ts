@@ -57,6 +57,40 @@ describe('useMultiStream lane connections', () => {
         expect(fetchMock).toHaveBeenCalledTimes(1)
     })
 
+    // #77: the proxy answers 415 for a target that is not an event stream. The lane must stop after one attempt and say why, as the single stream does.
+    it('shows the same message on the lane when the proxy answers 415 for a page, and does not retry', async () => {
+        const fetchMock = vi.fn(async () => new Response(
+            JSON.stringify({ error: 'Target answers with text/html, not text/event-stream', upstreamContentType: 'text/html' }),
+            { status: 415, headers: { 'content-type': 'application/json' } },
+        ))
+        vi.stubGlobal('fetch', fetchMock)
+
+        const { result } = renderHook(() => useMultiStream())
+        let laneId = ''
+        act(() => { laneId = result.current.addStream('Page', 'https://example.com/') })
+        act(() => { result.current.connectStream(laneId) })
+
+        await waitFor(() => expect(result.current.streams[0]!.error).toBe('The address answers with text/html, not text/event-stream, so there is nothing to retry.'))
+        expect(result.current.streams[0]).toMatchObject({ connected: false, isLoading: false })
+        await new Promise((r) => setTimeout(r, 80))
+        expect(fetchMock).toHaveBeenCalledTimes(1)
+        expect(result.current.streams[0]!.error).not.toMatch(/Retrying/)
+    })
+
+    it('a lane whose proxy answers 502 (the target is down) is still retried', async () => {
+        const fetchMock = vi.fn(async () => new Response(JSON.stringify({ error: 'Failed to reach target' }), { status: 502, headers: { 'content-type': 'application/json' } }))
+        vi.stubGlobal('fetch', fetchMock)
+
+        const { result } = renderHook(() => useMultiStream())
+        let laneId = ''
+        act(() => { laneId = result.current.addStream('Down', 'http://api.test/down') })
+        act(() => { result.current.connectStream(laneId) })
+
+        await waitFor(() => expect(result.current.streams[0]!.error).toMatch(/Retrying in/))
+        expect(result.current.streams[0]!.error).toMatch(/HTTP 502/)
+        act(() => { result.current.disconnectStream(laneId) })
+    })
+
     it('disconnecting a lane stops it and clears its state', async () => {
         const never = new Response(new ReadableStream<Uint8Array>({ start() { /* stays open */ } }), { status: 200, headers: { 'content-type': 'text/event-stream' } })
         vi.stubGlobal('fetch', vi.fn(async () => never))

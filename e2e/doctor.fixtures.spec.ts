@@ -286,9 +286,14 @@ test.describe('G5: lanes are judged one at a time', () => {
             await page.getByLabel('Stream URL').fill(url)
             await page.getByRole('button', { name: 'Add', exact: true }).click()
         }
-        // each click turns that lane's button into Disconnect, so the next lane's is the first Connect again
-        for (const [, , route] of lanes) {
-            await page.getByRole('button', { name: 'Connect', exact: true }).first().click()
+        // Each lane's own button, by position. A lane's button stays disabled while it connects and then turns into Disconnect; "the first Connect" keeps
+        // pointing at the lane that is still connecting, and the click that waits for it to be enabled lands on it as a Disconnect (issue 83: lane 1 aborted,
+        // lanes 2 and 3 never started, which failed about one run in three on CI). So: click lane i's button, wait until it reads Disconnect, then the next.
+        const laneButton = (i: number) => page.locator('[aria-label="Connect"], [aria-label="Disconnect"]').nth(i)
+        for (const [i, [, , route]] of lanes.entries()) {
+            await expect(laneButton(i)).toHaveAttribute('aria-label', 'Connect')
+            await laneButton(i).click()
+            await expect(laneButton(i)).toHaveAttribute('aria-label', 'Disconnect', { timeout: 20_000 })
             await expect.poll(() => opened(before, route).length, { timeout: 15_000 }).toBeGreaterThanOrEqual(1)
         }
         await openDoctor(page)

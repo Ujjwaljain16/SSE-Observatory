@@ -34,6 +34,19 @@ function statusGuess(status: number): Deduction | undefined {
     return undefined
 }
 
+/**
+ * The upstream's Content-Type when this response is the Observatory proxy's refusal of a target that answered 200 with something that is not an event
+ * stream (HTTP 415, the proxy's tags saying the upstream status was 200); otherwise undefined. A 415 from any other server is an ordinary status.
+ */
+export function proxyRefusedContentType(response: { status: number; headers: Record<string, string> } | undefined): string | undefined {
+    if (!response || response.status !== 415) return undefined
+    const h = response.headers
+    if (h['x-sse-proxy'] === undefined || (h['x-sse-upstream-status'] ?? '').trim() !== '200') return undefined
+    const upstreamType = h['x-sse-upstream-content-type']
+    if (upstreamType === undefined || mediaType(upstreamType) === 'text/event-stream') return undefined
+    return upstreamType
+}
+
 interface Seen { count: number; firstSeenT: number; firstEvidence: Evidence[] }
 
 export const contentTypeAndStatus: Rule = {
@@ -78,7 +91,26 @@ export const contentTypeAndStatus: Rule = {
                     })
                 }
 
-                if (o.kind === 'violation' && o.code === 'HTTP_STATUS_NOT_200') {
+                // Through the Observatory proxy, a target that answers 200 with something that is not an event stream comes back as 415 (the client then stops: #77).
+                // The failure is the content type, so it is reported as that, from the proxy's X-SSE-Upstream-* headers; it is not also reported as "did not answer 200".
+                const refusedType = o.kind === 'violation' && o.code === 'HTTP_STATUS_NOT_200' ? proxyRefusedContentType(c?.response) : undefined
+                if (o.kind === 'violation' && o.code === 'HTTP_STATUS_NOT_200' && refusedType !== undefined) {
+                    const media = mediaType(refusedType)
+                    const evidence = [...responseEvidence(c, 'response headers'), ev(o.seq, o.t, o.code)]
+                    const s = bump('type', o.t, evidence)
+                    out.push({
+                        key: ID_CONTENT_TYPE, severity: 'error', title: 'Response is not an event stream',
+                        summary: `The server answered with Content-Type "${refusedType || 'none'}", not text/event-stream; a conforming EventSource fails the connection. The proxy refused it with HTTP 415, so the client stops instead of retrying.`,
+                        facts: [
+                            { text: `The proxy reports the upstream answered HTTP 200 with Content-Type "${refusedType || 'none'}", not text/event-stream.`, evidence },
+                            { text: `The proxy answered the client HTTP ${c?.response?.status}, which the client does not retry.`, evidence },
+                        ],
+                        deductions: [{ statement: contentTypeGuess(media), confidence: 'low', basis: evidence.map((e) => e.seq), alternatives: ['A proxy or CDN rewrote the header.', 'The wrong URL was requested.'] }],
+                        nextCheck: { description: 'Request the URL with curl and read the response headers.', command: 'curl -sS -D - -o /dev/null -H "Accept: text/event-stream" "$URL"' },
+                        limits: ['Only the headers the browser lets the page read are recorded.', 'Read from the proxy\'s X-SSE-Upstream-* headers, so it needs the proxy\'s diagnostics on.'],
+                        status: 'open', firstSeenT: s.firstSeenT, lastSeenT: o.t, occurrences: s.count,
+                    })
+                } else if (o.kind === 'violation' && o.code === 'HTTP_STATUS_NOT_200') {
                     const status = c?.response?.status
                     const evidence = [...responseEvidence(c, 'response'), ev(o.seq, o.t, o.code)]
                     const s = bump('status', o.t, evidence)

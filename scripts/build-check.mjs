@@ -9,6 +9,7 @@
 // real build.
 
 import { spawnSync } from 'node:child_process'
+import http from 'node:http'
 import assert from 'node:assert/strict'
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
@@ -310,5 +311,40 @@ describe('E7: the CLI runs from a clean directory that cannot be written to, wit
         assert.deepEqual(listing(work), [])
         assert.deepEqual(listing(install), ['sse-doctor.mjs'])
         assert.equal(existsSync(gone), false)
+    })
+})
+
+// ------------------------------------------------------------------------------------------------------------------------------ the version it says
+
+describe('#79: the version the build says it is, is the version in package.json, everywhere it writes it down', () => {
+    const VERSION = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version
+    const run = (args) => spawnSync(process.execPath, [BIN, ...args], { cwd: tmp, encoding: 'utf8', timeout: 60_000, windowsHide: true, env: { ...process.env, NO_COLOR: '1' } })
+
+    it('--version and the generated package manifest both equal the root package.json version (one source, no drift)', () => {
+        assert.match(VERSION, /^\d+\.\d+\.\d+/)
+        assert.equal(run(['--version']).stdout.trim(), VERSION)
+        assert.equal(JSON.parse(readFileSync(path.join(DIST, 'package.json'), 'utf8')).version, VERSION)
+    })
+
+    it('a capture written by probe, and the reports made from it, say which version wrote them (not "dev")', async () => {
+        const server = http.createServer((_, res) => { res.writeHead(200, { 'Content-Type': 'text/event-stream' }); res.write('data: a\n\n'); setTimeout(() => res.end(), 100) })
+        await new Promise((r) => server.listen(0, '127.0.0.1', r))
+        try {
+            const url = `http://127.0.0.1:${server.address().port}/s`
+            const out = path.join(tmp, 'version.sse-capture')
+            const probe = run(['probe', url, '--duration', '2', '--max-events', '1', '--out', out])
+            assert.ok(existsSync(out), `probe wrote no capture (exit ${probe.status})\n${probe.stdout}\n${probe.stderr}`)
+            const header = JSON.parse(readFileSync(out, 'utf8').split('\n')[0])
+            assert.deepEqual(header.tool, { name: 'sse-observatory', version: VERSION })
+            for (const format of ['md', 'html', 'json', 'issue']) {
+                const report = run(['report', out, '--format', format])
+                assert.equal(report.status, 0, `${format}: ${report.stderr}`)
+                assert.ok(report.stdout.includes(VERSION), `${format} report does not say ${VERSION}`)
+                assert.ok(!/sse-observatory dev|"version":\s*"dev"/.test(report.stdout), `${format} report still says dev`)
+            }
+        } finally {
+            server.closeAllConnections?.()
+            server.close()
+        }
     })
 })

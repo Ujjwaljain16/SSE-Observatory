@@ -73,11 +73,50 @@ describe('streamProxy', () => {
         expect(r.headers['access-control-allow-origin']).toBeUndefined()
     })
 
-    it('refuses upstreams that are not event streams (no generic download relay)', async () => {
+    // #77: this answered 502 (retryable), so a client retried a web page for ever. A 200 that is not an event stream is the target's
+    // answer, not a failure of the proxy or the target, and asking again changes nothing: 415, which the client treats as final.
+    it('refuses upstreams that are not event streams (no generic download relay) with 415, naming the content type and never the body', async () => {
         upstreamHandler = (_req, res) => { res.writeHead(200, { 'Content-Type': 'application/octet-stream' }); res.end('x'.repeat(1000)) }
         const r = await get(portOf(proxy), target())
-        expect(r.status).toBe(502)
+        expect(r.status).toBe(415)
         expect(r.body).not.toContain('xxxx')
+        expect(r.headers['content-type']).toContain('application/json')
+        expect(JSON.parse(r.body)).toEqual({ error: 'Target answers with application/octet-stream, not text/event-stream', upstreamContentType: 'application/octet-stream' })
+    })
+
+    it('415 names the media type without its parameters, says "none" when the target sent no Content-Type, and never echoes the page', async () => {
+        upstreamHandler = (_req, res) => { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); res.end('<html><body>secret-page-text</body></html>') }
+        const html = await get(portOf(proxy), target())
+        expect(html.status).toBe(415)
+        expect(JSON.parse(html.body)).toEqual({ error: 'Target answers with text/html, not text/event-stream', upstreamContentType: 'text/html' })
+        expect(html.body).not.toContain('secret-page-text')
+        upstreamHandler = (_req, res) => { res.writeHead(200); res.end('plain') }
+        const none = await get(portOf(proxy), target())
+        expect(none.status).toBe(415)
+        expect(JSON.parse(none.body).upstreamContentType).toBe('none')
+        expect(none.body).not.toContain('plain')
+    })
+
+    it('415 keeps the X-SSE-* headers (what the upstream answered), and with diagnostics off carries none of them', async () => {
+        upstreamHandler = (_req, res) => { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); res.end('<html>') }
+        const on = await get(portOf(proxy), target())
+        expect(on.status).toBe(415)
+        expect(on.headers['x-sse-proxy']).toBe('observatory/1')
+        expect(on.headers['x-sse-upstream-status']).toBe('200')
+        expect(on.headers['x-sse-upstream-content-type']).toBe('text/html; charset=utf-8')
+        proxyConfig = devConfig({ diagnostics: false })
+        const off = await get(portOf(proxy), target())
+        expect(off.status).toBe(415)
+        expect(Object.keys(off.headers).filter((h) => h.startsWith('x-sse-'))).toEqual([])
+        expect(JSON.parse(off.body).upstreamContentType).toBe('text/html')
+    })
+
+    it('a header-injecting Content-Type cannot reach the JSON error or the headers unclean', async () => {
+        upstreamHandler = (_req, res) => { res.writeHead(200, { 'Content-Type': `text/html;${'a'.repeat(400)}` }); res.end('x') }
+        const r = await get(portOf(proxy), target())
+        expect(r.status).toBe(415)
+        expect(JSON.parse(r.body).upstreamContentType).toBe('text/html')
+        expect(String(r.headers['x-sse-upstream-content-type']).length).toBeLessThanOrEqual(256)
     })
 
     it('passes target client errors (401/403/404) through and maps target failures to 502', async () => {

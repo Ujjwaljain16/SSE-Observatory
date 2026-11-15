@@ -12,6 +12,8 @@ On Vercel Hobby the proxy function is limited by the platform (the project confi
 
 In production it relays only to `ALLOWED_HOSTS` (or any public host when `PROXY_OPEN=1`), never to private, loopback, link-local or metadata addresses, and only for requests from the app's own origin. Targets that need cookies or custom request headers other than a bearer token are not supported. For local services, turn the proxy off and connect directly (the target must allow CORS), or self-host with `ALLOW_PRIVATE_TARGETS=1`.
 
+A target that answers 200 with something that is not an event stream (a web page, JSON) comes back from the proxy as HTTP 415 and is not retried. The proxy only looks at the status and `Content-Type`: a target that labels a stream `text/event-stream` but sends something else is relayed as a stream, and a target that sends a stream under a wrong label is refused. With `PROXY_DIAGNOSTICS=0` the Doctor does not see the target's content type (the headers are off), so it reports the 415 as a status finding; the message the client shows still names the type.
+
 ## 4. SharedWorker support varies
 
 Some browsers and embedded webviews do not provide a working SharedWorker. The app then runs the connection in the page itself; connections are not shared between tabs in that case.

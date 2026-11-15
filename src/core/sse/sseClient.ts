@@ -184,7 +184,13 @@ export class SSEClient {
                     let detail = ''
                     try { detail = (await res.text()).slice(0, 200) } catch { /* ignore */ }
                     let message = `HTTP ${res.status}${res.statusText ? ' ' + res.statusText : ''}`
-                    try { const j = JSON.parse(detail); if (j?.error) message += ` – ${j.error}` } catch { if (detail) message += ` – ${detail}` }
+                    try {
+                        const j = JSON.parse(detail)
+                        if (res.status === 415 && typeof j?.upstreamContentType === 'string' && j.upstreamContentType) {
+                            // The proxy's answer for a target that is not an event stream (a web page, JSON): asking again changes nothing, so say why it stops.
+                            message = `The address answers with ${j.upstreamContentType.slice(0, 100)}, not text/event-stream, so there is nothing to retry.`
+                        } else if (j?.error) message += ` – ${j.error}`
+                    } catch { if (detail) message += ` – ${detail}` }
                     throw new HttpError(res.status, message, !RETRYABLE_STATUS.has(res.status))
                 }
                 const type = res.headers.get('content-type') || ''

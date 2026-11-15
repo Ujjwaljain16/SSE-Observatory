@@ -14,6 +14,7 @@ import type { EngineInput } from '../diagnostics/streamModel'
 import { CAPABILITY_EVIDENCE, type Capability } from '../diagnostics/rule'
 import type { StreamProfile } from '../diagnostics/thresholds'
 import type { ObservationKind } from '../observe/observation'
+import { toolVersion } from '../version'
 import { sha256Hex } from './sha256'
 import { recordShapeProblem, validateCaptureIntegrity, type CaptureProblem } from './integrity'
 
@@ -102,7 +103,7 @@ export function newHeader(init: Partial<CaptureHeader> & Pick<CaptureHeader, 'ki
         format: CAPTURE_FORMAT,
         version: CAPTURE_VERSION,
         createdAt: new Date().toISOString(),
-        tool: { name: 'sse-observatory', version: 'dev' },
+        tool: { name: 'sse-observatory', version: toolVersion() },
         clock: { origin: 'monotonic' },
         capabilities: [],
         ...init,
