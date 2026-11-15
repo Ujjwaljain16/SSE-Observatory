@@ -30,6 +30,8 @@ const TWINS: Array<{ id: string; query?: Record<string, string | number>; ceilin
     { id: 'f06-resumes', ceilingMs: 20_000 },
     { id: 'f03-steady', ceilingMs: 40_000 },
     { id: 'f11-steady', ceilingMs: 20_000 },
+    // h06-comments-only is the healthy twin of f04-late-heartbeat: the first run of the release-candidate workflow found it missing from this list.
+    { id: 'h06-comments-only', ceilingMs: 30_000 },
     { id: 'h02', ceilingMs: 150_000 },
 ]
 
