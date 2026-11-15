@@ -120,7 +120,8 @@ export interface HeartbeatStats {
     intervals: RollingStats
 }
 
-const isProxyHeartbeat = (text: string): boolean => text.startsWith('sse-proxy') && !text.startsWith('sse-proxy cap') && !text.startsWith('sse-proxy-meta')
+// The cap tag, the meta line and the error notice are the proxy speaking, but they are not its heartbeat.
+const isProxyHeartbeat = (text: string): boolean => text.startsWith('sse-proxy') && !text.startsWith('sse-proxy cap') && !text.startsWith('sse-proxy-meta') && !text.startsWith('sse-proxy error')
 
 export class StreamModel {
     phase: SSEPhase | 'idle' = 'idle'

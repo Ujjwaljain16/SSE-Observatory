@@ -5,6 +5,7 @@ export const PING_TEXT = 'sse-proxy-ping'
 export const HEARTBEAT_TEXT_PREFIX = 'sse-proxy hb '
 export const CAP_TEXT_PREFIX = 'sse-proxy cap '
 export const META_TEXT_PREFIX = 'sse-proxy-meta '
+export const ERROR_TEXT_PREFIX = 'sse-proxy error '
 
 export const PROXY_ID = 'observatory/1'
 export const PROXY_HEADER = {
@@ -22,6 +23,8 @@ export type ProxyComment =
     | { kind: 'hb'; upIdleMs: number; n: number }
     | { kind: 'cap'; durationMs: number }
     | { kind: 'meta'; meta: Record<string, unknown> }
+    /** The proxy's notice that it ended the stream, and why ("Upstream connection lost", "Stream byte limit reached"). A comment, never an event. */
+    | { kind: 'error'; message: string }
 
 const HB_RE = /^sse-proxy hb up_idle=(\d+) n=(\d+)$/
 const CAP_RE = /^sse-proxy cap duration=(\d+)$/
@@ -38,6 +41,12 @@ export function parseProxyComment(text: string): ProxyComment | null {
             const meta: unknown = JSON.parse(text.slice(META_TEXT_PREFIX.length))
             if (meta && typeof meta === 'object' && !Array.isArray(meta)) return { kind: 'meta', meta: meta as Record<string, unknown> }
         } catch { /* malformed meta is not a proxy tag */ }
+    }
+    if (text.startsWith(ERROR_TEXT_PREFIX)) {
+        try {
+            const body: unknown = JSON.parse(text.slice(ERROR_TEXT_PREFIX.length))
+            if (body && typeof body === 'object' && !Array.isArray(body) && typeof (body as { error?: unknown }).error === 'string') return { kind: 'error', message: (body as { error: string }).error }
+        } catch { /* a malformed notice is not a proxy tag */ }
     }
     return null
 }

@@ -127,22 +127,6 @@ The command line scrubs every value you give it (`--auth-env`, `--cookie-env`, .
 - **Option 2:** refuse `--no-redact` when any secret option was given, and say why.
 - **Option 3:** also scrub the decoded wire bytes and re-encode them, which is redaction under another name and defeats a byte-exact capture.
 
-### Q15. Forged proxy tags
-
-The proxy forwards an upstream's `: sse-proxy hb up_idle=...` comment as it came, and the client labels any comment starting with `sse-proxy` as the proxy's. An upstream behind a proxy running with diagnostics off can make R13 report masking that is really the upstream (the `f04-masked` fixture has this shape). Test: `src/fixtures/__tests__/proxyInTheLoop.test.ts`.
-
-- **Option 1:** the proxy drops or escapes upstream comments that start with `sse-proxy`.
-- **Option 2:** the proxy adds a per-connection nonce to its tags and the client checks it.
-- **Option 3 (current):** accept it: the proxy is a diagnostic aid and its tags are not authenticated.
-
-### Q16. The proxy's `event: error` frame reaches the application as a message
-
-When the upstream connection is reset between events the proxy writes `event: error` into the stream; the application receives it as an ordinary message named `error`. Keep it (the proxy says why it closed) or send it as a comment so event consumers never see it.
-
-### Q17. `PROXY_DIAGNOSTICS=0` still sends `: sse-proxy-ping`
-
-It is labelled as the proxy's, and the client cannot tell the proxy's plain `keep-alive` from the upstream's. An existing test asserts the ping, so it looks intended. Say so if the switch should mean "no `sse-proxy` text at all".
-
 ### Q18. The Timeline's attempt label repeats
 
 After a connection that opened, the client's retry counter restarts, so `f05-drops` rows read `#1, #2, #2, #2`. Pinned in `e2e/doctor.fixtures.spec.ts`. Option 1: number the rows by connection and show the retry counter in its own column. Option 2: rename the column "Retry".
@@ -173,7 +157,34 @@ Pinned as known gaps in `src/cli/__tests__/security.encodings.test.ts` (each is 
 - A duplicate `seq` or a backwards `t` in a capture file is accepted without a warning; analysis does not fail.
 - Real v1 exports are still needed: the four samples were made by the v1 export code path, not downloaded from the running app.
 
-## Decided and done
+## Decided and implemented
+
+Decided by the owner; each was first written as a failing test, then fixed. What the proxy does now is in [Proxy diagnostics](proxy-diagnostics.md).
+
+### Q15. Forged proxy tags (decided: the proxy rewrites them)
+
+The proxy forwarded an upstream's `: sse-proxy hb up_idle=...` comment as it came, and the client labels any comment starting with `sse-proxy` as the proxy's, so an upstream (with diagnostics off or on) could make R13 report masking and R05 name the origin when the upstream was healthy. **Decision:** the proxy escapes or rewrites upstream comments in the reserved `sse-proxy` namespace before it adds its own tags, so an upstream cannot impersonate a proxy heartbeat, and a real proxy-in-the-loop test proves it.
+
+- **Form chosen:** ` upstream:` is inserted right after the colon (`: sse-proxy hb up_idle=9 n=1` becomes `: upstream: sse-proxy hb up_idle=9 n=1`). It keeps the text readable and every byte of it, it is out of the namespace so nothing labels or parses it as the proxy's, it is applied once (a second proxy does not rewrite it again), and the line count does not change, so framing cannot break. Dropping the line was rejected (it would lose the upstream's bytes and hide the forgery from the user); a nonce in the tags was rejected (the Doctor would have to carry it, and a captured file could not be read without it).
+- **What is matched:** `:`, up to 32 spaces or tabs, then `sse-proxy` in any letter case (the client itself labels only `:` + at most one space + lower case; the proxy is wider on purpose, since the namespace is reserved however it is spelled). Every line of a comment block, a comment inside an event, after a byte order mark, with LF, CR and CRLF, and across network chunks (a comment line is held back only while its first bytes could still be the namespace; everything else is forwarded at once; what is held at the end of the stream is released unchanged).
+- **Tests:** `src/tests/reservedComments.test.ts` (the forms rewritten, the forms left alone byte for byte, every cut point, properties against the specification's parser and a line-by-line oracle, and that the framing the proxy's tracker sees is the parser's at every chunk end); `src/tests/streamProxy.test.ts` (the bytes the proxy writes, diagnostics on and off, with a comment split across two chunks while heartbeats are written); `src/fixtures/__tests__/proxyInTheLoop.test.ts` ("an upstream that writes comments shaped like the proxy's tags": a forging upstream through the real proxy, diagnostics on and off: every forged comment arrives labelled as the upstream's, the proxy's own ping, meta and heartbeats still read as the proxy's, `proxy.masking` and `stall.silent:origin` do not fire, and the forwarded bytes equal the upstream's log with exactly the forged lines rewritten, checked against a regular expression written separately from the proxy's code; the same forger read directly still fires `proxy.masking`, which shows the proxy is what closes the hole; an honest upstream's comments pass byte for byte).
+- **Still true:** the tags are not authenticated against something between the proxy and the browser. A comparison of the forwarded bytes with the upstream's log must now account for the rewritten lines (ten bytes each).
+
+### Q16. The proxy's own error notice is a comment, not an event (decided)
+
+When the upstream connection was reset between events (or the byte limit was reached) the proxy wrote `event: error` into the stream and the application received a message named `error` that the upstream never sent. **Decision:** convert it into an SSE comment; keep the reason available to the inspector through the observation; the proxy must not inject a business event into the upstream's stream.
+
+- **Now:** `: sse-proxy error {"error":"<reason>"}`, written only between events and only with diagnostics on. The client records it as an ordinary `comment` observation (`source: "proxy"`), `parseProxyComment` reads it as `{ kind: 'error', message }` (`src/core/proxyTags.ts`, mirrored from `lib/proxy/diagTags.js` with a contract test), and the Doctor's timeline shows it on the connection it ended ("the proxy said: ..."). It is not counted as a proxy heartbeat. No rule was changed. The `event: error` writer (`errorEvent` in `lib/proxy/guard.js`) was removed.
+- **Tests:** `proxyInTheLoop.test.ts` ("the upstream connection is destroyed": no message named `error` reaches `onMessage`, no `event` record named `error`, one proxy-labelled comment on the lost connection with the reason, the client resumes from the last id; nothing is written into a half event; an `event: error` that the upstream itself sends still reaches the application untouched), `streamProxy.test.ts` (the exact bytes, the byte limit), `framers.agree.test.ts` (a comment adds no event wherever the tracker allows it), `proxyTags.contract.test.ts`, `src/core/diagnostics/__tests__/proxyErrorNotice.test.ts`, `src/doctor/__tests__/timeline.test.ts`.
+- **Diagnostics off:** the stream just ends (see Q17); the client reconnects as for any closed stream.
+
+### Q17. `PROXY_DIAGNOSTICS=0` means no proxy-specific text (decided)
+
+With the switch off the proxy still sent `: sse-proxy-ping`, which the client labels as the proxy's; the existing test asserted it. **Decision:** the switch means no proxy-specific diagnostic text and no diagnostic headers; the tagged ping is not retained.
+
+- **Now with `PROXY_DIAGNOSTICS=0`:** no `X-SSE-*` header; no `sse-proxy*` comment (ping, meta, `hb`, `cap`, `error`); the response starts by flushing the headers, so its first bytes are the upstream's; the keep-alive that holds the connection open stays as a plain `: keep-alive` (outside the namespace; the client cannot tell it from the upstream's, which is the documented meaning of the switch); at the duration cap only `retry: 1000` is written; a started stream that the proxy ends just ends, with no notice.
+- **Tests:** the existing assertion in `streamProxy.test.ts` ("PROXY_DIAGNOSTICS=0 ...") was changed from "starts with the ping" to "no text in the `sse-proxy` namespace at all"; new tests for the flushed headers, the error notice, the cap and the byte limit with diagnostics off; the "PROXY_DIAGNOSTICS=0" block of `proxyInTheLoop.test.ts` now asserts that no comment in the proxy's namespace is read by the client, on a healthy and a silent upstream, and that R13 and `stall.silent:origin` stay silent.
+- **Not verified:** that every hosting platform starts a response whose first body byte arrives later (the headers are flushed, the first byte is the upstream's); the Vercel runtime was not exercised.
 
 ### Q4a. A scenario made from a stall capture did not catch the stall
 
