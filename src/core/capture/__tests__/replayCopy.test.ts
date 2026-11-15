@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { replayCopy } from '../replayCopy'
-import { localCapture } from '../../core/capture/build'
-import { parseCapture, serializeCapture, type CaptureRecord } from '../../core/capture/format'
-import { healthyStart } from '../../core/testing/captureBuilder'
-import { validateSession } from '../../../lib/mock/session.js'
+import { replayCopy, ReplayCopyError } from '../replayCopy'
+import { localCapture } from '../build'
+import { parseCapture, serializeCapture, type CaptureRecord } from '../format'
+import { healthyStart } from '../../testing/captureBuilder'
+import { validateSession } from '../../../../lib/mock/session.js'
 
 const capture = (profile?: Parameters<typeof localCapture>[1]['profile']) => {
     const b = healthyStart()
@@ -47,6 +47,39 @@ describe('replayCopy: a capture the mock server will play', () => {
         const { text } = replayCopy(capture({ sequence: { field: '$.items[0].n', policy: 'consecutive' } }))
         const events = parseCapture(text).capture.records.filter((r) => r.kind === 'event') as unknown as Array<{ data: string }>
         expect(Object.keys(JSON.parse(events[0]!.data) as object).every((k) => k === '')).toBe(true)
+    })
+
+    it('keeps every id, event name, order and time of the events, and counts none as unsized when every size is recorded', () => {
+        const original = parseCapture(capture()).capture.records.filter((r) => r.kind === 'event') as unknown as Array<{ seq: number; t: number; conn: number; event: string; sseId: string }>
+        const out = replayCopy(capture())
+        expect(out.unsized).toBe(0)
+        const copied = parseCapture(out.text).capture.records.filter((r) => r.kind === 'event') as unknown as Array<{ seq: number; t: number; conn: number; event: string; sseId: string }>
+        expect(copied.map((r) => [r.seq, r.t, r.conn, r.event, r.sseId])).toEqual(original.map((r) => [r.seq, r.t, r.conn, r.event, r.sseId]))
+    })
+
+    it('uses the smallest valid body, and counts it, for an event whose recorded size is missing or not a size', () => {
+        const records = (healthyStart().frame('tick', '1', 40).frame('tick', '2').frame('tick', '3').frame('tick', '4').observations() as CaptureRecord[]).map((r) => {
+            if (r.kind !== 'event') return r
+            const id = (r as { sseId: string }).sseId
+            const { dataBytes: _ignored, ...rest } = r as unknown as Record<string, unknown>
+            if (id === '2') return rest as unknown as CaptureRecord
+            if (id === '3') return { ...rest, dataBytes: -5 } as unknown as CaptureRecord
+            if (id === '4') return { ...rest, dataBytes: 'big' } as unknown as CaptureRecord
+            return r
+        })
+        const out = replayCopy(serializeCapture(localCapture(records, { source: { kind: 'browser-app' } })))
+        expect(out.filled).toBe(4)
+        expect(out.unsized).toBe(3)
+        const bodies = (parseCapture(out.text).capture.records.filter((r) => r.kind === 'event') as unknown as Array<{ data: string }>).map((r) => r.data)
+        expect(bodies[0]!.length).toBe(40)
+        expect(bodies.slice(1)).toEqual(['{}', '{}', '{}'])
+    })
+
+    it('refuses sizes that would need more memory than a replay can hold, instead of crashing', () => {
+        const records = (healthyStart().frame('tick', '1', 40).observations() as CaptureRecord[]).map((r) => (r.kind === 'event' ? { ...r, dataBytes: 1e12 } : r)) as CaptureRecord[]
+        const text = serializeCapture(localCapture(records, { source: { kind: 'browser-app' } }))
+        expect(() => replayCopy(text)).toThrow(ReplayCopyError)
+        expect(() => replayCopy(text)).toThrow(/too large/i)
     })
 
     it('is accepted by the mock server, which refuses the same capture without it', () => {
