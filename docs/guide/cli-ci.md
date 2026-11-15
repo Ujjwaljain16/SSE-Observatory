@@ -43,8 +43,10 @@ A redirect to another origin (another scheme, host or port) is treated as for `p
 
 - `collect_events` waits for that many events, or fails at `timeout_ms`.
 - `disconnect` with `mode: "client"` closes the connection; with `mode: "server"` waits for the server (a fixture or a replay with `drop_after`) to drop it.
-- `reconnect` waits `after_ms`, then connects again; `resume_from_last_event_id: false` forgets the cursor first.
+- `reconnect` waits `after_ms` (counted from the moment the step runs), then connects again; `resume_from_last_event_id: false` connects without a `Last-Event-ID` header (the cursor is forgotten first), `true` (the default) sends the last id received. If the connection is still open the step closes it first.
 - `wait` pauses.
+
+**Who reconnects.** A scenario that has a `reconnect` step takes control of the reconnection: the runner holds its client when the server drops an open connection, and nothing connects again until the `reconnect` step does, so `after_ms` and `resume_from_last_event_id` are what the server sees (its own log shows the second connection arriving no earlier than the drop plus `after_ms`). A `collect_events` step that comes after a drop and before the `reconnect` step fails with "the server dropped the connection after N" (it counts only events of the connection it started on). A scenario with **no** `reconnect` step is unchanged: after a server drop the runner's client reconnects by itself, within a fraction of a second and with the last id, and the events of the new connection count for the next `collect_events`. That is the path to use to test what a client really does when it is dropped; use the explicit step to test how the server behaves for a reconnect at a time and with a cursor you choose.
 
 ## Checks and the three outcomes
 
