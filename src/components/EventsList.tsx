@@ -5,7 +5,7 @@ import type { TraceEntry } from '../hooks/useCorrelationTracker'
 import type { EventJump, JumpResult } from '../context/UIContext'
 import { Inbox, Radio, Clock, Hash, Copy, Check, MessageSquare, SplitSquareHorizontal, GitBranch, Layers } from 'lucide-react'
 import { JsonDiffView } from './JsonDiffView'
-import { RawCopyButton } from './RawCopyButton'
+import { RawCopyButton, RawCopyProvider } from './RawCopyButton'
 import { RawValuesLabel } from './RawValuesLabel'
 import { HighlightedJson, JsonTree } from './JsonViewer'
 import { prettyPayload, diffPayload } from '../utils/displayData'
@@ -137,6 +137,7 @@ export const EventsList = memo(function EventsList({
     }, [jumpTarget?.nonce])
 
     return (
+        <RawCopyProvider theme={theme}>
         <div ref={wrapperRef} className={`
             rounded-2xl overflow-hidden animate-slide-up
             backdrop-blur-xl border transition-all duration-300
@@ -484,5 +485,6 @@ export const EventsList = memo(function EventsList({
                 </div>
             )}
         </div>
+        </RawCopyProvider>
     )
 })
