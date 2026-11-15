@@ -9,7 +9,7 @@ import { getRedactionPolicy } from '../../doctor/redactionPolicyStore'
 import RedactionRules from './RedactionRules'
 import { downloadText } from '../../doctor/download'
 import { startMockReplay } from '../../doctor/mockReplay'
-import { replayCopy } from '../../doctor/replayCopy'
+import { replayCopy } from '../../core/capture/replayCopy'
 import { useModalFocus } from '../../hooks/useModalFocus'
 
 interface Props {

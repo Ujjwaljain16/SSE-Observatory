@@ -6,7 +6,6 @@ import { test, expect, type Page } from '@playwright/test'
 import { startFixtureServer, type FixtureServer } from '../src/fixtures/server'
 import { frameLog, type LoggedConnection } from '../src/fixtures/groundTruth'
 import { captureEndT, parseCapture } from '../src/core/capture/format'
-import { replayCopy } from '../src/doctor/replayCopy'
 import type { Finding } from '../src/core/diagnostics/finding'
 import { maskMeasured, normaliseFindings } from '../src/core/testing/normalise'
 import { connectDirect, eventCountOf, findingKeys, framesOf, healthStrip, msSinceLastWrite, openDoctor } from './support/doctorKit'
@@ -29,7 +28,7 @@ import { cli, compareRuns, exportTo, journeyFolder, p95, startReplay, verdictOf 
 
 let fx: FixtureServer
 let dir = ''
-const FILES = { capture: '', replayable: '', report: '', scenario: '', f06Scenario: '' }
+const FILES = { capture: '', report: '', scenario: '', f06Scenario: '' }
 const STATE: {
     capturePageKeys: string[]
     scenarioSha: string
@@ -40,7 +39,6 @@ test.beforeAll(async () => {
     fx = await startFixtureServer({ port: 0 })
     dir = journeyFolder()
     FILES.capture = path.join(dir, 'stall.sse-capture')
-    FILES.replayable = path.join(dir, 'stall.replayable.sse-capture')
     FILES.report = path.join(dir, 'stall.report.json')
     FILES.scenario = path.join(dir, 'stall.scenario.json')
     FILES.f06Scenario = path.join(dir, 'f06-skips.scenario.json')
@@ -268,16 +266,35 @@ test.describe.serial('I1: the journey of a stalled stream', () => {
     })
 
     // -------------------------------------------------------------------------------------------------------- 5 (a replay of the file as downloaded)
-    test('5a. the downloaded capture cannot be replayed by the command line as it is (KNOWN GAP, Q-I1: pinned)', async () => {
-        test.setTimeout(30_000)
-        // docs/guide/stream-doctor.md says the capture to share is a file "which the command line can analyse and replay". It can analyse it (step 5).
-        // The app records what happened on the wire, not what events said, so the file has no event bodies, and `sse-doctor replay` refuses a capture
-        // without a payload. The app's own "Replay in Mock mode" button makes a labelled copy with placeholder bodies first (src/doctor/replayCopy.ts);
-        // the command line does not. Pinned as it is today; step 5 replays that copy. It flips here if the command line learns to do the same.
-        const refused = await cli(['replay', FILES.capture])
-        expect(refused.killed).toBe(false)
-        expect({ code: refused.code, stdout: refused.stdout }).toEqual({ code: 2, stdout: '' })
-        expect(refused.stderr).toContain('holds no payload to replay')
+    test('5a. the command line replays the downloaded capture as it is, labelled a synthetic replay, and leaves the file alone (Q-I1, decided)', async () => {
+        test.setTimeout(60_000)
+        // docs/guide/stream-doctor.md says the capture to share is a file "which the command line can analyse and replay". The app records what
+        // happened on the wire, not what events said, so the file has no event bodies. The owner's decision (Q-I1): `sse-doctor replay` builds a
+        // placeholder copy IN MEMORY (the function the app's own Replay button uses, src/core/capture/replayCopy.ts), keeps the ids, names, order
+        // and timing, makes each body the recorded size, says it is a SYNTHETIC replay (not byte-exact), and never changes the file.
+        const bytesBefore = fs.readFileSync(FILES.capture)
+        const events = parseCapture(bytesBefore.toString('utf8')).capture.records.filter((r) => r.kind === 'event') as unknown as Array<{ event: string; sseId: string; dataBytes: number; data?: string }>
+        expect(events.length, 'the capture has events').toBeGreaterThanOrEqual(12)
+        expect(events.some((e) => e.data !== undefined), 'and no payload, which is what the command line used to refuse').toBe(false)
+
+        const replay = await startReplay(FILES.capture, ['--speed', '50'])
+        try {
+            const res = await fetch(replay.url)
+            const body = await res.text()
+            expect(res.headers.get('x-mock-synthetic'), 'the response says it is synthetic').toBe('placeholder-bodies')
+            expect(replay.stdout(), 'so does the line that gives the address').toMatch(/synthetic replay, not byte-exact/)
+            const frames = body.split('\n\n').filter((f) => f !== '').map((f) => f.split('\n'))
+            const field = (f: string[], name: string) => f.find((l) => l.startsWith(`${name}: `))?.slice(name.length + 2)
+            // every event, in order, with its id, name and size
+            expect(frames.map((f) => ({ id: field(f, 'id') ?? '', event: field(f, 'event') ?? 'message', bytes: (field(f, 'data') ?? '').length }))).toEqual(events.map((e) => ({ id: e.sseId, event: e.event || 'message', bytes: e.dataBytes <= 2 ? 2 : Math.max(e.dataBytes, 7) })))
+            const until = Date.now() + 3000
+            while (!/synthetic/i.test(replay.stderr()) && Date.now() < until) await new Promise((r) => setTimeout(r, 25))
+            expect(replay.stderr(), 'the notice on stderr').toMatch(/note: SYNTHETIC replay, not byte-exact/)
+        } finally {
+            await replay.stop()
+        }
+        expect(fs.readFileSync(FILES.capture).equals(bytesBefore), 'the downloaded file is byte for byte what it was').toBe(true)
+        expect(fs.readdirSync(path.dirname(FILES.capture)).filter((n) => /replayable/.test(n)), 'and no copy was written').toEqual([])
     })
 
     // -------------------------------------------------------------------------------------------------------- 5
@@ -304,11 +321,8 @@ test.describe.serial('I1: the journey of a stalled stream', () => {
         const covered = (list: Array<{ ruleId: string; status: string }>) => list.filter((c) => !KNOWN_PAGE_ONLY.has(c.ruleId)).map((c) => `${c.ruleId}:${c.status}`).sort()
         expect(covered(result.coverage), 'and which checks could run').toEqual(covered(app.coverage))
 
-        // replay the capture (as the app's own replay button prepares it: event bodies are placeholders of the recorded size), and probe the replay
-        const copy = replayCopy(captureText)
-        expect(copy.filled, 'every event got a placeholder body').toBeGreaterThanOrEqual(12)
-        fs.writeFileSync(FILES.replayable, copy.text)
-        const replay = await startReplay(FILES.replayable, ['--end', 'hold']) // the connection stays open, as the stalled stream's did
+        // replay the capture as downloaded (the command line makes the placeholder copy itself, step 5a, and says so), and probe the replay
+        const replay = await startReplay(FILES.capture, ['--end', 'hold']) // the connection stays open, as the stalled stream's did
         try {
             const duration = Math.ceil((captureEndT(capture) / 1000) + 2)
             const probeOut = path.join(path.dirname(FILES.capture), 'stall.replay-probe.sse-capture')
