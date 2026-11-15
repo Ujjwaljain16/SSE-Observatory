@@ -16,9 +16,8 @@ dependencies, and that no canary appears in any output. CI runs it on Ubuntu and
 
 ## Before the first publish
 
-- [ ] **Choose and check the public name.** It is not claimed or checked yet. Look it up on the registry, consider a scope, and
-  change `PACKAGE_NAME` in `scripts/build-cli.mjs`.
-- [ ] **Decide the version policy.** The CLI, the capture format (`2.x`) and the scenario schema (`1`) version separately. A
+- [ ] **Choose and check the public name.** The name `sse-doctor` was looked up on the registry on 2026-11-15 and was not taken (a lookup that finds nothing is not a claim: check again on the day, and consider a scope). To change it, change `PACKAGE_NAME` in `scripts/build-cli.mjs`.
+- [ ] **Decide the version policy.** The build writes version `2.0.0`, the same as the repository's release tag `v2.0.0`. The CLI, the capture format (`2.x`) and the scenario schema (`1`) version separately. A
   breaking change to a format is a major version of that format; the analyzer version is written into every capture.
 - [ ] **Read the package README** (`dist-cli/README.md`) as a stranger would: what it is, one command that works, the exit
   codes, what it cannot tell you.

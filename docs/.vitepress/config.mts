@@ -5,6 +5,8 @@ export default defineConfig({
     title: "SSE Observatory",
     description: "Real-Time Observability for Server-Sent Event Streams",
     base: '/docs/',
+    // Links are written without ".html" (the README and the docs link that way); Vercel and server.js serve a .html file at its clean URL.
+    cleanUrls: true,
     head: [
         ['link', { rel: 'icon', type: 'image/png', href: '/logo.png' }]
     ],
@@ -13,6 +15,7 @@ export default defineConfig({
         logo: '/logo.png',
         nav: [
             { text: 'Home', link: '/' },
+            { text: "What's new", link: '/guide/whats-new' },
             { text: 'Guide', link: '/guide/getting-started' },
             { text: 'Technical', link: '/technical/architecture' }
         ],
@@ -22,6 +25,7 @@ export default defineConfig({
                 {
                     text: 'Introduction',
                     items: [
+                        { text: "What's new in 2.0", link: '/guide/whats-new' },
                         { text: 'Getting Started', link: '/guide/getting-started' }
                     ]
                 },

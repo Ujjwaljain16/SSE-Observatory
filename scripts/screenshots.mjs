@@ -122,6 +122,9 @@ if (ONLY !== 'doctor') {
     const base = `http://127.0.0.1:${server.address().port}`
     const open = async (path) => {
         const page = await newPage()
+        // these streams are on 127.0.0.1 with CORS open: connect straight from the page, so the shots need no API server (the hosted proxy refuses private addresses anyway)
+        const proxy = page.getByRole('switch', { name: 'Use server proxy' })
+        if ((await proxy.getAttribute('aria-checked')) === 'true') await proxy.click()
         await page.getByTestId('url-input').fill(`${base}${path}`)
         await page.getByTestId('connect-button').click()
         await page.locator('text=Connected').first().waitFor()
