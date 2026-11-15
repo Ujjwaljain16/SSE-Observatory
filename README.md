@@ -44,7 +44,7 @@ Upload an exported `.sse-record`, get a private replay URL (0.5x, 1x or 2x, opti
 ![Mock Server](./public/screenshots/mock-server.png)
 
 ### 🩺 Stream Doctor
-Says what looks wrong with a stream and shows the evidence: a stream that went quiet, with what was measured, what is only inferred ("Likely: …", with the other explanations) and what the check cannot know.
+Open the Doctor with nothing connected and choose **Try the Failure lab** to see it work on known faulty streams and their healthy twins, with no backend. It says what looks wrong with a stream and shows the evidence: a stream that went quiet, with what was measured, what is only inferred ("Likely: …", with the other explanations) and what the check cannot know.
 
 ![Stream Doctor findings](./public/screenshots/doctor-findings.png)
 
