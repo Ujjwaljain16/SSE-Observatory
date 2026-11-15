@@ -57,7 +57,8 @@ describe('what is rewritten (each form a forging upstream could use)', () => {
             expect(labelledProxy(out), 'the client no longer labels any of it as the proxy\'s').toEqual([])
             // the forms the client itself labels as the proxy's (a colon, at most one space, lower case) really were labelled before; the others are rewritten
             // as well, because the namespace is reserved however it is spelled, but the client would not have been fooled by them today
-            if (/(^|[\r\n])﻿?: ?sse-proxy/.test(input)) expect(labelledProxy(enc(input)).length, 'the input really was labelled proxy before').toBeGreaterThan(0)
+            // (an unterminated last line is never a comment to the parser, so it is only checked when the stream ends with a line ending)
+            if (/(^|[\r\n])﻿?: ?sse-proxy/.test(input) && /[\r\n]$/.test(input)) expect(labelledProxy(enc(input)).length, 'the input really was labelled proxy before').toBeGreaterThan(0)
         })
     }
 })
