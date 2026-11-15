@@ -18,7 +18,7 @@ import { createObservedStream } from '../core/sse/observedStream'
 import { redactUrl } from '../core/observe/redactUrl'
 import { parseProfile, probeConfigOf } from '../core/diagnostics/profile'
 import { numberFlag, stringFlag, type ParsedArgs } from './args'
-import { safeFetch } from './safeFetch'
+import { createSafeFetch, type CrossOriginRedirectRefused } from './safeFetch'
 import { CliError, EXIT, requireFiles, type CliIo } from './io'
 import { parseFailOn, parseFormat, render, gate, type Result } from './output'
 import type { SecretRegistry } from './secretRegistry'
@@ -199,6 +199,35 @@ export function isSecretQueryValue(name: string, value: string): boolean {
     return value.length >= 12 && /[A-Za-z]/.test(value) && /\d/.test(value) && !/^\d{4}-\d{2}-\d{2}/.test(value)
 }
 
+/**
+ * The options of one request that supply a secret, by name and never by value: the list `requestFor` feeds the secret registry from (credentials
+ * in the URL, a secret-looking query value in the URL, --auth-env, --cookie-env, --header-env, --header, --query-env). Used by the two refusals that
+ * depend on it: a redirect to another origin (without --follow-redirects) and --no-redact. A parameter name typed in the URL is not printed,
+ * because a name can itself be the token. For env-diff, `args` is one side's (see `sideArgs`) and the side's own option is named (`--auth-env-a`).
+ */
+export function secretOptionsIn(args: ParsedArgs, url: string): string[] {
+    const side = typeof args.flags['side'] === 'string' ? `-${args.flags['side']}` : ''
+    const label = (name: string): string => (side && (typeof args.flags[`${name}${side}`] === 'string' || (args.multi[`${name}${side}`]?.length ?? 0) > 0) ? `--${name}${side}` : `--${name}`)
+    const names: string[] = []
+    try {
+        const parsed = new URL(url)
+        if (parsed.username || parsed.password) names.push('credentials in the URL (user:password@)')
+        if ([...parsed.searchParams].some(([name, value]) => isSecretQueryValue(name, value))) names.push('a secret value in the URL query')
+    } catch { /* a URL that cannot be read is refused by requestFor with its own message */ }
+    if (stringFlag(args, 'auth-env')) names.push(label('auth-env'))
+    if (stringFlag(args, 'cookie-env')) names.push(label('cookie-env'))
+    for (const spec of args.multi['header-env'] ?? []) if (spec.indexOf('=') > 0) names.push(`${label('header-env')} ${spec.slice(0, spec.indexOf('='))}`)
+    for (const spec of args.multi['header'] ?? []) if (spec.indexOf(':') > 0) names.push(`--header ${spec.slice(0, spec.indexOf(':')).trim()}`)
+    for (const spec of args.multi['query-env'] ?? []) if (spec.indexOf('=') > 0) names.push(`${label('query-env')} ${spec.slice(0, spec.indexOf('='))}`)
+    return [...new Set(names)]
+}
+
+/** Q14: a capture written with --no-redact keeps the wire bytes as recorded, and a server may echo a credential back into the stream. */
+export function refuseNoRedactWithSecrets(args: ParsedArgs, secretOptions: readonly string[]): void {
+    if (args.flags['no-redact'] !== true || secretOptions.length === 0) return
+    throw new CliError(`--no-redact was refused because this command was given secrets (${secretOptions.join(', ')}). A capture written with --no-redact keeps the stream's bytes exactly as received, and a server can echo a credential back into its stream, so the file could hold secrets that no scrub is able to find. Run it without --no-redact (the capture is then redacted and safe to share), or without the secret options (--no-redact then writes a byte-exact local capture of a request that carries none).`, EXIT.usage)
+}
+
 function requestFor(io: CliIo, args: ParsedArgs, url: string, secrets: SecretRegistry): { url: string; headers: Record<string, string>; sentNames: string[] } {
     const headers: Record<string, string> = { Accept: 'text/event-stream', 'Cache-Control': 'no-cache' }
     // Secrets typed into the URL itself (user:password@, ?token=) are secrets too: registered, so no message can echo them. A URL the
@@ -272,6 +301,15 @@ export async function observe(io: CliIo, args: ParsedArgs, target: string, secre
     let lastActivity = Date.now()
     let finish!: (reason: string) => void
     const done = new Promise<string>((resolve) => { finish = resolve })
+    // Q6: a redirect to another origin while an option carries a secret is refused (the probe stops, exit 3) unless --follow-redirects opts in; then it is
+    // followed, the secrets stay behind, and the warning says which. With no secret option every redirect is followed as before.
+    let refusal: CrossOriginRedirectRefused | undefined
+    const fetchImpl = createSafeFetch({
+        secretOptions: secretOptionsIn(args, target),
+        followRedirects: args.flags['follow-redirects'] === true,
+        onRefused: (error) => { refusal ??= error; finish('redirect-refused') },
+        onWithheld: (redirect, names) => io.err(`warning: ${redirect.from} redirected to ${redirect.to}, and it was followed because of --follow-redirects. NOT forwarded to ${redirect.to}: ${names.join(', ')}. Credentials are never sent to another origin, so expect that server to answer without them.\n`),
+    })
     const stream = createObservedStream({
         request: () => ({ url: req.url, headers: req.headers }),
         sinks: {
@@ -294,7 +332,7 @@ export async function observe(io: CliIo, args: ParsedArgs, target: string, secre
             flushMs: 25,
         },
         // redirects are followed by hand, and a header that carries a key is not sent to another origin
-        clientOptions: { maxRetries: 2, fetchImpl: safeFetch },
+        clientOptions: { maxRetries: 2, fetchImpl },
     })
     const timer = setTimeout(() => finish('duration'), durationMs)
     // --timeout: how long to wait for the server to answer at all
@@ -310,6 +348,7 @@ export async function observe(io: CliIo, args: ParsedArgs, target: string, secre
     io.signal?.removeEventListener('abort', onAbort)
     stream.flushObservations()
     stream.stop()
+    if (refusal) throw new CliError(refusal.message, EXIT.couldNotRun)
 
     const endT = records.at(-1)?.t ?? 0
     const capture = localCapture(records, {
@@ -348,6 +387,7 @@ export async function probeCommand(io: CliIo, args: ParsedArgs, secrets: SecretR
     const target = args.positionals[1]
     if (!target || !/^https?:\/\//i.test(target)) throw new CliError('Usage: sse-doctor probe <http(s) url> [--duration s] [--max-events n] [--idle-timeout s] [--timeout s] [--max-mb n] [--out capture]', EXIT.usage)
     const out = stringFlag(args, 'out')
+    refuseNoRedactWithSecrets(args, secretOptionsIn(args, target))
     if (out && args.flags['no-redact'] === true) io.err('warning: --no-redact writes a capture that may contain secrets. Do not share it.\n')
     const { capture, profile, events, endT, reason, answered, maxBytes } = await observe(io, args, target, secrets)
     if (out) await saveObserved(io, args, capture, out)

@@ -12,7 +12,7 @@ const FLAGS: Record<string, FlagKind> = {
     summary: 'string', 'label-a': 'string', 'label-b': 'string', 'out-a': 'string', 'out-b': 'string',
     'auth-env-a': 'string', 'auth-env-b': 'string', 'cookie-env-a': 'string', 'cookie-env-b': 'string',
     'header-env-a': 'multi', 'header-env-b': 'multi', 'query-env-a': 'multi', 'query-env-b': 'multi',
-    'allow-inconclusive': 'bool', end: 'string', shell: 'string', finding: 'string', scenario: 'string', test: 'string',
+    'follow-redirects': 'bool', 'allow-inconclusive': 'bool', end: 'string', shell: 'string', finding: 'string', scenario: 'string', test: 'string',
 }
 
 export interface ParsedArgs {

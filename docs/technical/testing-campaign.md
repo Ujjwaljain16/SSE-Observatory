@@ -83,9 +83,37 @@ Assessed 2026-11-15 on `phase-15-campaign`, which holds everything that would sh
 | 19 | CLI scenario runner | After `disconnect: server` the runner's own client reconnects at once, so the events of the new connection arrive while a `reconnect` step with `after_ms` waits; the next `collect_events` counted only events that came after it started and waited for ones already delivered ("the stream ended after 1"). A scenario made from a capture taken in the app (which waits about a second to reconnect) therefore **failed on the healthy twin** of the stream it came from. Found by the journey; the scenarios shipped with the tool use `after_ms: 0`, where the wait is too short to show it | the commit that adds `scenarioReconnectWait.test.ts` |
 | 9 | CLI | `probe --no-redact --out` wrote a capture that could not be read back, redacted or replayed: the scrub of the secrets you gave the command replaced part of the base64 of an echoed secret inside the wire bytes. The capture is now scrubbed field by field before it is written, leaving only the base64 of the wire bytes as recorded | same commit |
 
+## Owner decisions (2026-11-15) and their status
+
+The owner decided every open question below. Each decision is implemented in its own pull request into `v2`, test first (a failing test, then the smallest fix), with the faulty and the healthy path tested. The sections under "Open decisions" keep the options as they were put; the decision and the status are here, and each implementing pull request moves its own section from open to decided. Nothing here has been merged to `main`, tagged or released.
+
+| | Decision | Priority | Status |
+|---|---|---|---|
+| Q4a | Option 1: optional `expect.max_silence_ms` in the scenario schema (additive, version stays 1), generated from stall findings; the runner keeps observing after the last step. A scenario from a stall capture must fail on the stalled fixture and pass on its healthy twin; scenarios without the field are unchanged | P0 | implemented, PR 55 open (stacked on the journey PR 52) |
+| Q4b | Option 1: a scenario from an unhealthy captured response expects a healthy one (200, `text/event-stream`), with an explicit note that it verifies the fix and does not reproduce the broken response | P0 | implemented, PR 55 open (stacked on the journey PR 52) |
+| Q12 | Option 1: a later connection that delivers an event resolves the stall finding; the original stall stays as history (duration, connection, occurrence count); a recovered stream no longer fails an active-health gate, a capture that ends in a stall still does | P0 | implemented, PR 53 open |
+| Q13 | Option 1: a gap already classified as a stall is kept out of the baseline later stalls are judged by (test: about 12 gaps, an 8 s stall, another 8 s stall) | P0 | implemented as controlled adaptive cadence (the owner decided: exclude stalls, then recognise a shift after three consistent stalls, never against a declared `expected.maxSilenceMs`), PR 53 open |
+| Q15 | Option 1: the proxy escapes or rewrites upstream comments in the reserved `sse-proxy` namespace before adding its own tags; tested with the real proxy in the loop | P0 | done: merged (PR 54) |
+| Q16 | The proxy's error notice becomes an SSE comment, not an application event; the reason stays readable by the inspector through the observation | P0 | done: merged (PR 54) |
+| Q17 | `PROXY_DIAGNOSTICS=0` means no proxy diagnostic text and no proxy diagnostic headers at all, the ping included; the test that allowed the ping is changed | P0 | done: merged (PR 54) |
+| Q6 | Option 1: refuse a cross-origin redirect when secret-bearing options are present; `--follow-redirects` is an explicit opt-in with a warning that names the credentials not forwarded; same-origin redirects continue; authorization and custom secret headers are never forwarded to another origin | P0 | implemented, PR 57 open; `sse-doctor test` (scenario runner) still follows a cross-origin redirect silently: to be closed with the runner work |
+| Q14 | Option 2: refuse `--no-redact` when secret-bearing options are supplied, with a clear explanation; keep the warning; a byte-exact local capture stays possible when it is safe | P0 | implemented, PR 57 open |
+| Q18 | Number Timeline connection rows by connection attempt and show the retry counter separately | P1 | not started |
+| R10 | The declared longest silence also informs the no-heartbeat evaluation (already implemented; kept consistent with R05 and R13) | P1 | done |
+| Fixture | `f04-late-heartbeat` is approved and kept; its healthy twin `h06-comments-only` is now in the nightly twins list | P1 | done (this pull request) |
+| `h06-comments-only?bare=1` | Keep the reconnect behaviour; make its test bounded and verify the reconnect-loop finding explicitly | P1 | not started |
+| E2 | Document in the command-line guide the encodings the scrub does not cover and the exact scope of the secret registry, with no claim of complete detection; the gap tests stay | P1 | docs written, PR 57 open |
+| v1 mock replay | Never use the internal storage id as the SSE `id:`; keep a v1 recording's original SSE id and event name apart where it has them; say in the docs which a v1 recording did not retain; do not invent either | P1 | not started |
+| Capture integrity | A duplicate `seq` or a `t` that goes backwards must not pass as healthy: a capture-integrity check returns a clear diagnostic (an invalid capture) | P1 | not started |
+| Q19 | Label the live views "Raw values — as received, not redacted." and warn before copying a sensitive value; the values stay exactly as received | P2 | not started |
+| Real v1 corpus | Optional: add real v1 recordings if any are provided; no claim of real-world compatibility from generated samples | P2 | waiting for samples |
+| Q20 | No new inputs in the UI for v2.0 | P2 | decided, nothing to build |
+
+The release itself (the pull request from `v2` to `main`, the tag, the package, the deploy) is not authorised until the owner says so.
+
 ## Open decisions
 
-None of these is fixed (Q4a and Q4b were decided and are done: see "Decided and done" below). Each is pinned by a test so the behaviour is visible, and each needs a decision.
+The sections below are the questions as they were put, each pinned by a test so the behaviour is visible. The decisions are in the table above. Q4a and Q4b are decided and done: see "Decided and implemented" below.
 
 ### Q-I1. The capture to share is documented as replayable by the command line, and the command line refuses it
 
@@ -119,13 +147,13 @@ The limit is three times the 95th-percentile gap of the stream's own history. Wi
 - **Option 1 (recommended):** keep a gap that was itself reported as a stall out of the baseline it is judged by.
 - **Option 2:** document it in the known limitations.
 
-### Q14. A `--no-redact` capture keeps the wire bytes as recorded, so the secrets you gave may be in them
+### Q14. A `--no-redact` capture keeps the wire bytes as recorded, so the secrets you gave may be in them (DECIDED, IMPLEMENTED)
 
-The command line scrubs every value you give it (`--auth-env`, `--cookie-env`, ...) from everything it writes. For `--no-redact` that corrupted the file (defect 9). The capture is now scrubbed field by field, except the base64 of the wire bytes, which is the point of a byte-exact local capture. The flag already says "may contain secrets, do not share". Test: `src/cli/__tests__/security.canary.test.ts`, and `security.url.test.ts` for the URL's own secrets.
+**Decision (owner):** refuse `--no-redact` when secret-bearing options are supplied, with a clear explanation; keep the warning; preserve the byte-exact local capture for the cases where it is safe.
 
-- **Option 1 (current):** as above, documented in `docs/guide/cli.md`.
-- **Option 2:** refuse `--no-redact` when any secret option was given, and say why.
-- **Option 3:** also scrub the decoded wire bytes and re-encode them, which is redaction under another name and defeats a byte-exact capture.
+**Implemented.** `probe` and `env-diff` refuse `--no-redact` when any option supplies a secret (`--auth-env`, `--cookie-env`, `--header-env`, `--query-env`, a literal `--header`, the per-side `-a`/`-b` forms, credentials in the URL, a secret-looking query value in the URL; the list is `secretOptionsIn` in `src/cli/commands.ts` and is stated in `docs/guide/cli.md`). The refusal is a usage error (exit 2), happens before any connection or file, names the options (never a value) and gives the two ways out (run without `--no-redact`, or without the secret options). With no secret option the flag works as before: a byte-exact local capture and the "may contain secrets, do not share" warning. Tests: `src/cli/__tests__/security.noredact.test.ts` (each option refused alone; URL secrets; no connection, no file; env-diff per side; the allowed case is byte-exact and still warns), `security.canary.test.ts` (the refusal's output is searched like every other output; the full-local-capture sweep now builds its capture from the observation, since the command no longer writes one with secrets in it), `security.url.test.ts`.
+
+Not done: option 3 (also scrub the decoded wire bytes), which is redaction under another name and defeats a byte-exact capture. The field-by-field scrub in `saveObserved` stays as a second layer; with the refusal it has nothing to scrub in practice.
 
 ### Q18. The Timeline's attempt label repeats
 
@@ -139,15 +167,23 @@ The Sequence view lists event ids as received, so a JWT used as an event id is o
 
 The app has no input for them, so the browser sweep cannot plant them; the unit and command-line sweeps do. Add inputs if the browser should cover them.
 
-### Q6 (plan). A redirect to another origin drops the secrets silently
+### Q6. A redirect to another origin drops the secrets silently (DECIDED, IMPLEMENTED)
 
-`probe` follows a cross-origin redirect with the secret headers stripped, exits 0 and says nothing. Pinned in `src/cli/__tests__/security.redirect.test.ts`.
+**Decision (owner):** refuse cross-origin redirects when secret-bearing options are present; provide `--follow-redirects` as an explicit opt-in with a warning that names the credentials that will not be forwarded; same-origin redirects continue; never forward authorization headers or custom secret headers to an untrusted origin.
 
-- **Option 1:** refuse the redirect when a secret option is present, with a clear message, and a `--follow-redirects` to opt in.
-- **Option 2 (cheapest):** keep following, and print a note saying which headers were withheld from which origin.
-- **Option 3 (current):** keep as is.
+**Implemented** in `src/cli/safeFetch.ts` (`createSafeFetch`) and `observe` in `src/cli/commands.ts`, so it applies to `probe`, `env-diff` and `validate`. A redirect to another origin (scheme, host or port differs):
+- with no secret option: followed, as before, silently;
+- with a secret option and no flag: **refused**, exit 3 (could not run), before the other origin is contacted; the message names the options (never a value) and the origin, and says how to opt in;
+- with `--follow-redirects`: followed, the credentials are still not sent, and one warning per origin on stderr names the options that were not forwarded;
+- inside the same origin: followed with the credentials, as before.
 
-### Secret encodings the command line's scrub does not cover (E2)
+Tests: `src/cli/__tests__/security.redirect.test.ts` (refused for every status and every option alone, URL secrets, another port and another scheme, `--format json`; opt-in with its warning once per origin; same origin with secrets; no secrets with and without the flag; env-diff per side), `hardening.test.ts`. The existing "B receives none of the secrets" tests now run with `--follow-redirects`, with their assertions unchanged.
+
+**Open:** `sse-doctor test` (`src/cli/scenarioRunner.ts`) calls the plain `safeFetch`, which has no secret list: a scenario's cross-origin redirect is still followed without its credentials and silently. Passing `createSafeFetch({ secretOptions, followRedirects })` there and accepting `--follow-redirects` in `testCommand` closes it; the file was owned by another change, so it was left alone.
+
+### Secret encodings the command line's scrub does not cover (E2) (DECIDED: DOCUMENT, KEEP THE GAP TESTS; DOCUMENTED)
+
+**Decision (owner):** update the CLI guide with the known unsupported encodings and the exact scope of the `SecretRegistry`; do not claim complete detection; keep the gap tests. **Done:** `docs/guide/cli.md` ("What the scrub covers, and what it does not") lists the exact forms scrubbed (raw, `encodeURIComponent`, lower-case percent, base64 padded and unpadded, base64url, JSON-escaped, the value behind a scheme), how values are registered, the minimum length, the unsupported forms below, and says plainly that detection is not complete and what to do about it. Every gap test in `security.encodings.test.ts` is unchanged.
 
 Pinned as known gaps in `src/cli/__tests__/security.encodings.test.ts` (each is a pair: a test that the form survives today and an `it.fails` for the wanted behaviour): hex (either case); a space written as `+`; `! ' ( ) * ~` percent-encoded; JSON unicode escapes of non-ASCII and surrogate pairs; PHP `\/`; Go's escaped angle brackets; HTML entities; double percent-encoding; base64 of `user:secret`; the secret inside a larger base64 value at an unaligned offset; a secret split across two writes; and two secrets that overlap without one containing the other.
 
