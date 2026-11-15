@@ -72,7 +72,7 @@
     "@vitest/coverage-v8": "4.0.18",
     "ajv": "^8.20.0",
     "autoprefixer": "^10.4.17",
-    "concurrently": "^9.2.1",
+    "concurrently": "^10.0.7",
     "eslint": "^9.39.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "fake-indexeddb": "^6.2.6",
