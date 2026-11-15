@@ -122,9 +122,10 @@ describe('the nightly workflow', () => {
 
 describe('the release-candidate workflow', () => {
     const rc = read('.github/workflows/release-candidate.yml')
-    it('is run by hand only, and changes nothing: it publishes, tags and deploys nothing', () => {
+    it('is run by hand, or by a pull request that changes the file itself, never on a schedule or a push; and changes nothing: it publishes, tags and deploys nothing', () => {
         expect(rc).toMatch(/on:\n  workflow_dispatch:/)
-        expect(rc).not.toMatch(/\n\s+schedule:/)
+        expect(rc).toMatch(/pull_request:\n    paths:\n      - '\.github\/workflows\/release-candidate\.yml'/)
+        expect(rc).not.toMatch(/\n  (schedule|push):/)
         expect(rc).toMatch(/permissions:\n  contents: read\n/)
         expect(rc, 'no publish, release or deploy step').not.toMatch(/npm publish|gh release|vercel (deploy|--prod)|git push|git tag/)
     })

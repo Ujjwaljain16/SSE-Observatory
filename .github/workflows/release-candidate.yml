@@ -11,6 +11,11 @@ on:
         description: 'Branch, tag or commit to test (default: the branch the run is started on)'
         required: false
         default: ''
+  # GitHub only starts a manual run from the default branch, so a pull request that changes this file (and the release pull request that first brings it
+  # to the default branch) runs it as well: that is how it is tested before it can be started by hand.
+  pull_request:
+    paths:
+      - '.github/workflows/release-candidate.yml'
 
 permissions:
   contents: read
