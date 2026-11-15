@@ -2,6 +2,12 @@
 
 All notable changes are written here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/). The command line, the capture format (`2.x`) and the scenario schema (`1`) are versioned separately; the release notes of each [GitHub release](https://github.com/Ujjwaljain16/SSE-Observatory/releases) say which changed.
 
+## [Unreleased]
+
+### Fixed
+
+- A stream connected through the app's server proxy exported a curl command of `POST '/api/sse'`, a report and issue body with the same, and a scenario note that said the URL could not be parsed. These now say that the stream went through the app's proxy, that its address was not recorded because it may carry a secret, and to set `STREAM_URL` to the address given to the app; the curl command is `curl -N -H 'Accept: text/event-stream' "$STREAM_URL"`. Captures with a real URL (the command line's own) are unchanged.
+
 ## [2.0.0] - 2026-11-15
 
 The Stream Doctor release: the app and a command line that say **why** a stream is stuck, late or losing events, with the evidence, and turn the diagnosis into a repeatable test. Full account: [What's new in 2.0](https://sse-observatory.vercel.app/docs/guide/whats-new). How it was tested, and what was not: [the testing campaign](docs/technical/testing-campaign.md).

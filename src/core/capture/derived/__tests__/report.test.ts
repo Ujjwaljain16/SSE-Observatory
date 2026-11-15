@@ -5,7 +5,7 @@ import { analyze, type Analysis, type RuleCoverage } from '../../../diagnostics'
 import type { Finding } from '../../../diagnostics/finding'
 import { newHeader } from '../../format'
 import { capture, healthyStart } from '../../../testing/captureBuilder'
-import { captureOf, redacted, textCapture } from './helpers'
+import { captureOf, redacted, textCapture, proxiedCapture, PROXY_CANARY } from './helpers'
 
 const HOSTILE = `<script>alert("x")</script> & 'q' "d"`
 
@@ -181,6 +181,52 @@ describe('buildReport json', () => {
         expect(findings).toHaveLength(1)
         expect(findings[0]!.deductions[0]!.statement).toBe('Likely: plain guess')
         expect((json.coverage as RuleCoverage[]).map((c) => c.status)).toEqual(['not-evaluated', 'evaluated'])
+    })
+})
+
+// #76: for a capture made through the app's server proxy the Reproduce text must say the address was not recorded and what to set,
+// in every format that has the section, and the command inside must be the runnable one.
+describe('buildReport for a capture made through the app proxy', () => {
+    const SAYS = "This stream went through the app's server proxy, so its address was not recorded"
+    const proxied = () => proxiedCapture()
+    const direct = () => withRequest(captureOf(healthyStart()))
+
+    it('says so in the Reproduce section of the Markdown report, and lists STREAM_URL as the variable to set', () => {
+        const md = buildReport(proxied(), analysisOf([]))
+        const section = md.slice(md.indexOf('## Reproduce'))
+        expect(section).toContain(SAYS)
+        expect(section).toContain('Set STREAM_URL to the address you gave the app.')
+        expect(section).toContain('`STREAM_URL`')
+        expect(section).toContain('"${STREAM_URL}"')
+        expect(section).toContain('"$env:STREAM_URL"')
+        expect(section).not.toContain('/api/sse')
+        expect(section).not.toContain('Header and query values are not in it')
+    })
+
+    it('says so in the issue body and in the HTML report', () => {
+        const issue = buildReport(proxied(), analysisOf([]), { format: 'issue' })
+        const reproduce = issue.slice(issue.indexOf('### How to reproduce'), issue.indexOf('<details>'))
+        expect(reproduce).toContain(SAYS)
+        expect(reproduce).toContain('"${STREAM_URL}"')
+        expect(reproduce).not.toContain('/api/sse')
+        const html = buildReport(proxied(), analysisOf([]), { format: 'html' })
+        const section = html.slice(html.indexOf('<h2>Reproduce</h2>'))
+        expect(section).toContain(SAYS.replace("'", '&#39;'))
+        expect(section).toContain('STREAM_URL')
+        expect(section).not.toContain('/api/sse')
+    })
+
+    it('holds none of the values the request had, in any format', () => {
+        for (const format of ['md', 'issue', 'html', 'json'] as const) expect(buildReport(proxied(), analysisOf([]), { format }), format).not.toContain(PROXY_CANARY)
+    })
+
+    it('leaves a direct capture exactly as it was: its own wording, its real URL, no proxy sentence', () => {
+        for (const format of ['md', 'issue', 'html'] as const) {
+            const out = buildReport(direct(), analysisOf([]), { format })
+            expect(out, format).not.toContain('went through')
+            expect(out, format).toContain('Header and query values are not in it')
+            expect(out, format).toContain('https://api.test/s?token=')
+        }
     })
 })
 

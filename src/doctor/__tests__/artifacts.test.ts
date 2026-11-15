@@ -70,6 +70,60 @@ describe('what the Doctor can export', () => {
         expect(prepare('curl', leaky()).text).toMatch(/^curl -N/)
     })
 
+    // #76: what the Doctor exports for a stream that went through the app's server proxy must say so and be runnable, and carry no secret.
+    describe('for a recording made through the app proxy', () => {
+        const CANARY = ['canary', 'proxied', 'upstream', 'secret', '4417'].join('-')
+        const SAYS = "This stream went through the app's server proxy, so its address was not recorded"
+        const proxied = (headers: Record<string, string> = { 'x-sse-proxy': 'observatory/1' }) => {
+            const b = build().connect({ url: '/api/sse', method: 'POST', headerNames: ['content-type', 'x-trace'] }).response({ headers }).at(200).frame('tick', '1').silence(100).frame('tick', '2')
+            return localCapture(b.observations() as CaptureRecord[], {
+                source: { kind: 'browser-app', client: 'browser-fetch' },
+                request: { url: '/api/sse', method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Trace': CANARY } },
+                captureId: 'proxied-0001',
+            })
+        }
+
+        it('curl is the runnable command with the comment, in both shells', () => {
+            const posix = prepare('curl', proxied()).text
+            expect(posix).toMatch(/^# This stream went through the app's server proxy/)
+            expect(posix).toContain(`curl -N \\\n  -H 'Accept: text/event-stream' \\\n  "\${STREAM_URL}"`)
+            expect(posix).not.toContain('/api/sse')
+            const ps = prepare('curl', proxied(), { shell: 'powershell' }).text
+            expect(ps).toContain('"$env:STREAM_URL"')
+            expect(ps).not.toContain('/api/sse')
+        })
+
+        it('the scenario, the report and the issue body say the same, and the scenario still validates', () => {
+            const scenario = prepare('scenario', proxied())
+            expect(validateScenario(JSON.parse(scenario.text))).toEqual([])
+            expect(scenario.text).toContain(SAYS)
+            expect(scenario.text).not.toContain('could not be parsed')
+            expect(scenario.notes.join(' ')).toContain(SAYS)
+            for (const kind of ['report-md', 'report-issue'] as const) {
+                const text = prepare(kind, proxied()).text
+                expect(text, kind).toContain(SAYS)
+                expect(text, kind).toContain('"${STREAM_URL}"')
+            }
+            expect(prepare('report-html', proxied()).text).toContain('STREAM_URL')
+        })
+
+        it('recognises the proxy from the path alone when the response header was not readable', () => {
+            expect(prepare('curl', proxied({})).text).toContain('"${STREAM_URL}"')
+        })
+
+        it('no shareable export holds what the request carried', () => {
+            for (const kind of SHARED) expect(prepare(kind, proxied()).text, kind).not.toContain(CANARY)
+            expect(prepare('curl', proxied(), { shell: 'powershell' }).text).not.toContain(CANARY)
+        })
+
+        it('a direct recording keeps its real URL in the curl command', () => {
+            const cmd = prepare('curl', leaky()).text
+            expect(cmd).toContain(`"https://stream.test/events?room=\${STREAM_ROOM}"`)
+            expect(cmd).not.toContain('went through')
+            expect(cmd).not.toMatch(/^#/)
+        })
+    })
+
     it('says when something that still looks secret is left, without printing it', () => {
         // a long random-looking token in a comment matches no named secret format, so redaction keeps it and the scan flags it
         const token = 'q7Zr4KpX9vLm2NcB8wTy5HsJ3dFg6A1e'

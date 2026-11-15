@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process'
 import { toCurl, envNameFor } from '../curl'
 import { newHeader, type CaptureHeader } from '../../format'
 import { capture } from '../../../testing/captureBuilder'
-import { redacted } from './helpers'
+import { redacted, proxiedCapture, PROXY_CANARY } from './helpers'
 
 function make(request: CaptureHeader['request'] | undefined, connect: Parameters<ReturnType<typeof capture>['connect']>[0] = {}) {
     const b = capture().connect(connect).response()
@@ -114,6 +114,57 @@ describe('toCurl (powershell)', () => {
     it('keeps a variable apart from a word character that follows it', () => {
         const cmd = toCurl(make(request({ url: 'https://h.test/s?a=[redacted]', headers: {} })), { shell: 'powershell' })
         expect(cmd).toContain('$env:STREAM_A"')
+    })
+})
+
+// #76: a capture made through the app's server proxy has no address of its own (the request is `POST /api/sse`), so the command must say so
+// instead of printing a relative path that cannot be run.
+describe('toCurl for a capture made through the app proxy', () => {
+    it('writes a runnable command on $STREAM_URL, with a comment that says why and what to set', () => {
+        const cmd = toCurl(proxiedCapture())
+        expect(cmd).toBe([
+            `# This stream went through the app's server proxy, so its address was not recorded (it may carry a secret). Set STREAM_URL to the address you gave the app.`,
+            `curl -N \\\n  -H 'Accept: text/event-stream' \\\n  "\${STREAM_URL}"`,
+        ].join('\n'))
+        expect(cmd).not.toContain('/api/sse')
+        expect(cmd).not.toContain('-X')
+        expect(cmd).not.toContain('Content-Type')
+    })
+
+    it('does the same in PowerShell, with $env: and a # comment', () => {
+        const cmd = toCurl(proxiedCapture(), { shell: 'powershell' })
+        expect(cmd.split('\n')[0]).toMatch(/^# This stream went through the app's server proxy/)
+        expect(cmd).toContain('curl.exe -N')
+        expect(cmd).toContain('"$env:STREAM_URL"')
+        expect(cmd).not.toContain('/api/sse')
+    })
+
+    it('recognises the proxy by its path alone, and by its response header alone', () => {
+        expect(toCurl(proxiedCapture({ viaHeader: false }))).toContain('"${STREAM_URL}"')
+        expect(toCurl(proxiedCapture({ url: '/somewhere/else' }))).toContain('"${STREAM_URL}"')
+        expect(toCurl(proxiedCapture({ url: '/api/sse?x=1' }))).toContain('"${STREAM_URL}"')
+    })
+
+    it('holds none of the values the request had', () => {
+        for (const shell of ['posix', 'powershell'] as const) expect(toCurl(proxiedCapture(), { shell })).not.toContain(PROXY_CANARY)
+    })
+
+    it('keeps the real URL when the stream did not go through the proxy, exactly as before', () => {
+        const direct = redacted({ header: newHeader({ kind: 'sanitized', source: { kind: 'fixture' }, request: request() }), records: capture().connect({ url: 'https://api.test/stream?token=[redacted]&room=[redacted]' }).response().build() })
+        const cmd = toCurl(direct)
+        expect(cmd).not.toContain('went through')
+        expect(cmd).not.toContain('# ')
+        expect(cmd).toContain('"https://api.test/stream?token=${STREAM_TOKEN}&room=${STREAM_ROOM}"')
+        expect(cmd).toContain('-H "Authorization: ${STREAM_AUTHORIZATION}"')
+        // a relative path of the user's own, without the proxy's path or header, is also left alone
+        expect(toCurl(make(request({ url: '/events?x=[redacted]', headers: {} })))).toContain('"/events?x=${STREAM_X}"')
+    })
+
+    it('keeps an absolute URL even when the response carries the proxy header (a proxy the person runs and addressed directly)', () => {
+        const c = redacted({ header: newHeader({ kind: 'sanitized', source: { kind: 'cli' }, request: request({ url: 'https://proxy.test/api/sse?u=[redacted]', headers: {} }) }), records: capture().connect({ url: 'https://proxy.test/api/sse?u=[redacted]' }).response({ headers: { 'x-sse-proxy': 'observatory/1' } }).build() })
+        const cmd = toCurl(c)
+        expect(cmd).toContain('"https://proxy.test/api/sse?u=${STREAM_U}"')
+        expect(cmd).not.toContain('went through')
     })
 })
 
