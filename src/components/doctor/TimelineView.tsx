@@ -6,6 +6,7 @@ import { observationRegistry } from '../../doctor/observationRegistry'
 import { buildTimeline } from '../../doctor/timeline'
 import { addBookmark, deleteBookmark, listBookmarks, type Bookmark } from '../../doctor/captureLibrary'
 import { keepOnMark } from '../../doctor/flightRecorder'
+import { RawValuesLabel } from '../RawValuesLabel'
 import { fmtDuration } from './format'
 
 interface Props {
@@ -65,10 +66,12 @@ export default function TimelineView({ theme, streamId, view }: Props) {
     return (
         <section aria-label="Reconnect timeline" className="space-y-3" data-testid="doctor-timeline">
             <p className={`text-sm ${muted}`}>
-                One row per connection attempt. The bar is how long the connection lived; each tick is an event, each dot a comment line
+                One row per connection, numbered in the order the client made them (#1, #2, ...). The bar is how long the connection lived; each tick is an event, each dot a comment line
                 (filled: from the origin, hollow: from the proxy). The dashed line is the wait before the next attempt. The table below
-                says the same in words.
+                says the same in words. <strong>Retry</strong> is the client's own counter of retries in a row: 0 for the first connection, and it starts
+                again after a connection that opened, so it can repeat from row to row; it is not the row number.
             </p>
+            <RawValuesLabel theme={theme} />
             {timeline.connections.length > shown.length && (
                 <p className={`text-sm ${muted}`}>Showing the latest {shown.length} of {timeline.connections.length} attempts.</p>
             )}
@@ -94,7 +97,7 @@ export default function TimelineView({ theme, streamId, view }: Props) {
                         const next = shown[i + 1]
                         return (
                             <g key={c.conn}>
-                                <text x={4} y={y + 11} className={label_} fontSize="11">#{c.attempt + 1}</text>
+                                <text x={4} y={y + 11} className={label_} fontSize="11">#{c.number}</text>
                                 <rect x={x(c.startT)} y={y} width={Math.max(2, x(end) - x(c.startT))} height={14} rx={3} className={ok ? bar : failed} opacity={ok ? 0.55 : 0.8} />
                                 {!ok && <text x={x(c.startT) + 4} y={y + 11} className={label_} fontSize="10">{c.status}</text>}
                                 {c.events.slice(0, 600).map((t, k) => <line key={k} x1={x(t)} x2={x(t)} y1={y} y2={y + 14} className={tick} strokeWidth="1" />)}
@@ -137,13 +140,14 @@ export default function TimelineView({ theme, streamId, view }: Props) {
                 <caption className="sr-only">Every connection attempt and what happened to it</caption>
                 <thead>
                     <tr className={`text-left ${muted}`}>
-                        {['Attempt', 'Started', 'Response', 'First event', 'Lived', 'Events', 'Comments', 'Longest wait for bytes', 'Ended', 'Resumed from id', 'Then waited'].map((h) => <th key={h} scope="col" className="py-1 pr-3 align-bottom">{h}</th>)}
+                        {['Connection', 'Retry', 'Started', 'Response', 'First event', 'Lived', 'Events', 'Comments', 'Longest wait for bytes', 'Ended', 'Resumed from id', 'Then waited'].map((h) => <th key={h} scope="col" className="py-1 pr-3 align-bottom">{h}</th>)}
                     </tr>
                 </thead>
                 <tbody className={strong}>
                     {shown.map((c) => (
                         <tr key={c.conn} className={`border-t ${dark ? 'border-slate-700' : 'border-slate-200'}`}>
-                            <th scope="row" className="py-1 pr-3 text-left font-semibold">#{c.attempt + 1}</th>
+                            <th scope="row" className="py-1 pr-3 text-left font-semibold">#{c.number}</th>
+                            <td className="py-1 pr-3 tabular-nums" data-testid="timeline-retry">{c.retry ?? '–'}</td>
                             <td className="py-1 pr-3 tabular-nums">{fmtDuration(c.startT)}</td>
                             <td className="py-1 pr-3 tabular-nums">{c.status !== undefined ? `${c.status}${c.responseT !== undefined ? ` after ${fmtDuration(c.responseT - c.startT)}` : ''}` : 'none'}</td>
                             <td className="py-1 pr-3 tabular-nums">{c.firstEventT !== undefined ? `after ${fmtDuration(c.firstEventT - c.startT)}` : 'none'}</td>
@@ -152,7 +156,7 @@ export default function TimelineView({ theme, streamId, view }: Props) {
                             <td className="py-1 pr-3 tabular-nums">{c.heartbeats.length.toLocaleString()}</td>
                             <td className="py-1 pr-3 tabular-nums">{c.bytes > 0 ? fmtDuration(c.longestGapMs) : '–'}</td>
                             <td className="py-1 pr-3">{c.endT === undefined ? 'still open' : (c.endReason ?? 'closed')}</td>
-                            <td className="py-1 pr-3 tabular-nums">{c.sentLastEventId || (c.attempt === 0 ? '–' : 'none sent')}</td>
+                            <td className="py-1 pr-3 tabular-nums">{c.sentLastEventId || (c.number === 1 ? '–' : 'none sent')}</td>
                             <td className="py-1 tabular-nums">{c.reconnectDelayMs !== undefined ? fmtDuration(c.reconnectDelayMs) : '–'}{c.serverRetryMs !== undefined ? ` (server asked ${fmtDuration(c.serverRetryMs)})` : ''}</td>
                         </tr>
                     ))}

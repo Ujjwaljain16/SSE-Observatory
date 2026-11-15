@@ -8,7 +8,13 @@ import { parseProxyComment } from '../core/proxyTags'
 
 export interface TimelineConnection {
     conn: number
-    attempt: number
+    /** The connection this row is, counting from 1 in the order the client made them: the label of the row. Not the retry counter. */
+    number: number
+    /**
+     * The client's retry counter when it made this connection: 0 for the first, 1 for the first retry, and so on. It starts again
+     * after a connection that opened, so it repeats from row to row; undefined when the recording no longer has the connect record.
+     */
+    retry?: number | undefined
     /** When the request was made. */
     startT: number
     /** When the response headers arrived. */
@@ -49,7 +55,7 @@ export function buildTimeline(records: readonly Observation[], nowT?: number): T
     const ensure = (conn: number, t: number): TimelineConnection => {
         let c = byConn.get(conn)
         if (!c) {
-            c = { conn, attempt: conn, startT: t, sentLastEventId: '', events: [], heartbeats: [], bytes: 0, longestGapMs: 0 }
+            c = { conn, number: conn + 1, startT: t, sentLastEventId: '', events: [], heartbeats: [], bytes: 0, longestGapMs: 0 }
             byConn.set(conn, c)
         }
         return c
@@ -60,7 +66,7 @@ export function buildTimeline(records: readonly Observation[], nowT?: number): T
         const c = ensure(r.conn, r.t)
         switch (r.kind) {
             case 'connect':
-                c.attempt = r.attempt
+                c.retry = r.attempt
                 c.startT = r.t
                 c.sentLastEventId = r.sentLastEventId
                 break
@@ -113,7 +119,7 @@ export function buildTimeline(records: readonly Observation[], nowT?: number): T
 /** One short sentence per connection for the table and for assistive technology. */
 export function describeConnection(c: TimelineConnection, timelineEnd: number): string {
     const lifetime = (c.endT ?? timelineEnd) - c.startT
-    const parts = [`attempt ${c.attempt + 1}`, c.status !== undefined ? `status ${c.status}` : 'no response']
+    const parts = [`connection ${c.number}`, ...(c.retry !== undefined ? [`retry ${c.retry}`] : []), c.status !== undefined ? `status ${c.status}` : 'no response']
     parts.push(`${c.events.length} event${c.events.length === 1 ? '' : 's'} in ${Math.round(lifetime)} ms`)
     parts.push(c.endT === undefined ? 'still open' : `ended: ${c.endReason ?? 'closed'}`)
     if (c.proxyNotice) parts.push(`the proxy said: ${c.proxyNotice}`)

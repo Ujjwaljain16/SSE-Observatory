@@ -7,7 +7,10 @@ import type { Observation } from '../core/observe/observation'
 
 export interface RequestInfo {
     conn: number
-    attempt: number
+    /** The connection this is, counting from 1 in the order the client made them: its label. Not the retry counter. */
+    number: number
+    /** The client's retry counter at this connection (0 for the first); it starts again after a connection that opened. Undefined when the connect record is gone. */
+    retry?: number | undefined
     /** The URL as it was recorded (credentials and query values are already replaced). */
     url: string
     method: string
@@ -50,7 +53,7 @@ export function inspectRequests(records: readonly Observation[], endT: number): 
     const ensure = (conn: number, t: number) => {
         let c = byConn.get(conn)
         if (!c) {
-            c = { conn, attempt: conn, url: '', method: 'GET', requestHeaderNames: [], sentLastEventId: '', timing: { totalMs: 0 }, viaAppProxy: false, open: true, chunks: 0, bytes: 0, events: 0, _start: t }
+            c = { conn, number: conn + 1, url: '', method: 'GET', requestHeaderNames: [], sentLastEventId: '', timing: { totalMs: 0 }, viaAppProxy: false, open: true, chunks: 0, bytes: 0, events: 0, _start: t }
             byConn.set(conn, c)
         }
         return c
@@ -61,7 +64,7 @@ export function inspectRequests(records: readonly Observation[], endT: number): 
         switch (r.kind) {
             case 'connect':
                 c._start = r.t
-                c.attempt = r.attempt
+                c.retry = r.attempt
                 c.url = r.url
                 c.method = r.method
                 c.requestHeaderNames = [...r.headerNames]
