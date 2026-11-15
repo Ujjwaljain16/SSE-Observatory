@@ -96,6 +96,47 @@ describe('SSEClient', () => {
         expect(t.phases.find(([p]) => p === 'failed')![1].reason).toMatch(/did not return an event stream/)
     })
 
+    // #77: the proxy answers a target that is not an event stream with 415 and the target's content type. That will not change on the next attempt.
+    it('a 415 from the proxy ("the target answers text/html") is fatal after ONE attempt and the message says why', async () => {
+        let hits = 0
+        const url = await serve((_req, res) => {
+            hits++
+            res.writeHead(415, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ error: 'Target answers with text/html, not text/event-stream', upstreamContentType: 'text/html' }))
+        })
+        const t = run(url, { maxRetries: 5 })
+        t.client.start()
+        await t.until(() => t.names().includes('failed'))
+        await wait(60)
+        expect(hits).toBe(1)
+        expect(t.names()).toEqual(['connecting', 'failed'])
+        const info = t.phases.find(([p]) => p === 'failed')![1]
+        expect(info.status).toBe(415)
+        expect(info.reason).toBe('The address answers with text/html, not text/event-stream, so there is nothing to retry.')
+        expect(t.client.isRunning).toBe(false)
+    })
+
+    it('a 415 with no content type named (any other server) is fatal too, with the plain HTTP message', async () => {
+        let hits = 0
+        const url = await serve((_req, res) => { hits++; res.writeHead(415, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'nope' })) })
+        const t = run(url, { maxRetries: 5 })
+        t.client.start()
+        await t.until(() => t.names().includes('failed'))
+        await wait(40)
+        expect(hits).toBe(1)
+        expect(t.phases.find(([p]) => p === 'failed')![1].reason).toBe('HTTP 415 Unsupported Media Type – nope')
+    })
+
+    it('a 502 that only looks similar (the proxy\'s "Failed to reach target") is still retried', async () => {
+        let hits = 0
+        const url = await serve((_req, res) => { hits++; res.writeHead(502, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Failed to reach target' })) })
+        const t = run(url, { maxRetries: 2 })
+        t.client.start()
+        await t.until(() => t.names().includes('failed'))
+        expect(hits).toBe(3)
+        expect(t.names().filter((p) => p === 'reconnecting')).toHaveLength(2)
+    })
+
     it('retries 5xx with backoff, then gives up after maxRetries', async () => {
         let hits = 0
         const url = await serve((_req, res) => { hits++; res.writeHead(503); res.end('busy') })

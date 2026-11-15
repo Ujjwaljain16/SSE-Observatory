@@ -208,6 +208,102 @@ describe('a healthy upstream through the proxy (h01)', () => {
     })
 })
 
+// #77: through the proxy, a target that answers 200 with a web page used to come back as a retryable 502, and the client asked again for ever.
+describe('an upstream that is not an event stream (f01-text-html) through the proxy: one attempt, then a final failure that says why', () => {
+    const WHY = 'The address answers with text/html, not text/event-stream, so there is nothing to retry.'
+    let seen: Seen
+    let log: LoggedConnection[]
+    beforeAll(async () => {
+        const proxy = await startProxy()
+        const before = fixture.groundTruth.connections.length
+        seen = await observe(proxy.via(fixture.urlFor('f01-text-html')), { maxRetries: 5 })
+        await wait(80) // a retry, if there were one, would show here (the backoff in this harness is 5 to 20 ms)
+        log = lastUpstreamLog('f01-text-html', before)
+    }, 20_000)
+
+    it('the client makes exactly ONE attempt (one connect, one response, no reconnect) and the upstream is asked exactly once', () => {
+        expect(of(seen.observations, 'connect')).toHaveLength(1)
+        expect(of(seen.observations, 'response')).toHaveLength(1)
+        expect(of(seen.observations, 'reconnect')).toEqual([])
+        expect(log).toHaveLength(1)
+    })
+
+    it('it ends "failed" (never "reconnecting") with the content type in the message, and the status is the proxy\'s 415', () => {
+        const phases = of(seen.observations, 'phase')
+        expect(phases.map((p) => p.phase)).toEqual(['connecting', 'failed'])
+        expect(phases.at(-1)!.info).toMatchObject({ attempt: 0, status: 415, reason: WHY })
+        expect(of(seen.observations, 'response')[0]).toMatchObject({ status: 415 })
+        expect(seen.messages).toEqual([])
+    })
+
+    it('the response record still carries what the upstream answered (X-SSE-Upstream-*), and the Doctor still names the wrong content type from it', () => {
+        const response = of(seen.observations, 'response')[0]!
+        expect(response.headers['x-sse-proxy']).toBe('observatory/1')
+        expect(response.headers['x-sse-upstream-status']).toBe('200')
+        expect(response.headers['x-sse-upstream-content-type']).toMatch(/^text\/html/)
+        const finding = seen.findings.find((f) => f.key === 'proto.content-type')
+        expect(finding, `findings: ${keys(seen).join(', ')}`).toBeDefined()
+        expect(finding!.severity).toBe('error')
+        expect(finding!.facts.map((f) => f.text).join(' ')).toMatch(/text\/html/)
+        expect(finding!.deductions.map((d) => d.statement).join(' ')).toMatch(/HTML page/)
+    })
+
+    it('the proxy refusing it is not "the proxy hid a failing origin": no upstream-mismatch finding, no masking, no stall', () => {
+        expect(keys(seen)).not.toContain('proxy.upstream-mismatch')
+        expect(keys(seen)).not.toContain('proxy.masking')
+        expect(keys(seen).filter((k) => k.startsWith('stall.'))).toEqual([])
+    })
+
+    it('the same upstream read directly (no proxy) is unchanged: one attempt, "Server did not return an event stream", and the same finding', async () => {
+        const direct = await observe(fixture.urlFor('f01-text-html'), { maxRetries: 5 })
+        expect(of(direct.observations, 'connect')).toHaveLength(1)
+        expect(of(direct.observations, 'phase').at(-1)!.info).toMatchObject({ status: 200, reason: 'Server did not return an event stream (Content-Type: text/html)' })
+        expect(keys(direct)).toContain('proto.content-type')
+    })
+})
+
+describe('an upstream that is down or answers 5xx through the proxy is STILL retried (the fix is for a wrong content type only)', () => {
+    it.each([[502], [503], [500]])('upstream HTTP %i: every attempt reaches the upstream, the client backs off and gives up only after maxRetries', async (status) => {
+        const upstream = await startUpstream((_req, res) => { res.writeHead(status, { 'Content-Type': 'text/html' }); res.end('<html>busy</html>') })
+        const proxy = await startProxy()
+        const seen = await observe(proxy.via(upstream.url), { maxRetries: 3 })
+        expect(upstream.requests).toHaveLength(4)
+        expect(of(seen.observations, 'reconnect')).toHaveLength(3)
+        expect(of(seen.observations, 'response').every((r) => r.status === 502)).toBe(true)
+        expect(of(seen.observations, 'phase').at(-1)!.info.reason).toMatch(/^Gave up after 3 attempts\. Last error: HTTP 502/)
+    }, 20_000)
+
+    it('an upstream that closes the connection without answering: retried', async () => {
+        const upstream = await startUpstream((req) => { req.socket.destroy() })
+        const proxy = await startProxy()
+        const seen = await observe(proxy.via(upstream.url), { maxRetries: 2 })
+        expect(upstream.requests).toHaveLength(3)
+        expect(of(seen.observations, 'reconnect')).toHaveLength(2)
+        expect(of(seen.observations, 'phase').at(-1)!.info.reason).toMatch(/^Gave up after 2 attempts/)
+    }, 20_000)
+
+    it('a refused connection (nothing listens on the upstream port): retried', async () => {
+        const closed = await startUpstream((_req, res) => res.end())
+        const dead = closed.url
+        await new Promise<void>((resolve) => { const s = upstreams.pop()!; s.closeAllConnections(); s.close(() => resolve()) })
+        const proxy = await startProxy()
+        const seen = await observe(proxy.via(dead), { maxRetries: 2 })
+        expect(of(seen.observations, 'reconnect')).toHaveLength(2)
+        expect(of(seen.observations, 'phase').at(-1)!.info.status).toBe(502)
+    }, 20_000)
+
+    it('an upstream that is not an event stream the first time but IS on the next attempt is not retried (415 is final even if the page later changes)', async () => {
+        const upstream = await startUpstream((_req, res, nth) => {
+            if (nth === 0) { res.writeHead(200, { 'Content-Type': 'text/html' }); res.end('<html>') } else { res.writeHead(200, SSE_HEAD); res.end('id: 1\ndata: a\n\nevent: end\ndata: done\n\n') }
+        })
+        const proxy = await startProxy()
+        const seen = await observe(proxy.via(upstream.url), { maxRetries: 3 })
+        await wait(60)
+        expect(upstream.requests).toHaveLength(1)
+        expect(of(seen.observations, 'phase').map((p) => p.phase)).toEqual(['connecting', 'failed'])
+    }, 20_000)
+})
+
 describe('the proxy must not write inside an event (f09-buffered: the upstream cuts its writes at 4096 bytes, in the middle of events)', () => {
     it('with the proxy heartbeating every 40 ms across the cuts, no tag lands inside a frame and the bytes are the upstream\'s', async () => {
         const proxy = await startProxy()

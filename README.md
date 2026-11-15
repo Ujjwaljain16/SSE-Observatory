@@ -58,7 +58,7 @@ Export a report, a shareable capture, a curl command or a test scenario. Redacti
 
 ## 3. Key Features
 
-- **Spec-compliant SSE client:** fetch-based, with named events, `Last-Event-ID` resume, exponential backoff with jitter, and a clear difference between retryable failures and fatal ones (wrong URL, 401/403/404, wrong content type). `event: end` or a 204 stops a stream for good.
+- **Spec-compliant SSE client:** fetch-based, with named events, `Last-Event-ID` resume, exponential backoff with jitter, and a clear difference between retryable failures and fatal ones (wrong URL, 401/403/404, wrong content type, also through the proxy, which answers 415 and names the content type). `event: end` or a 204 stops a stream for good.
 - **Multi-Stream:** any number of lanes, each with an optional bearer token, merged into one list.
 - **Bounded, responsive pipeline:** the newest 1,000 events live in memory, the newest 100,000 in IndexedDB. Bursts are parsed and ingested in time-boxed slices, so a 20,000-event burst never blocks the page.
 - **Query language:** `==`, `!=`, `>`, `>=`, `<`, `<=`, `contains`, `matches`, `in [..]`, `exists`, `AND`, `OR`, `NOT` and parentheses over event fields or payload paths (for example `type == "payment_failed" AND data.amount >= 100`).
