@@ -52,8 +52,11 @@ env-diff options: the probe options below apply to both sides; --label-a/--label
 
 probe options:
   --duration <s>  --max-events <n>  --idle-timeout <s>   when to stop (default 30 s)
-  --out <file>                    save the capture (redacted unless --no-redact)
-  --auth-env VAR                  send Authorization: Bearer $VAR
+  --out <file>                    save the capture (redacted unless --no-redact; --no-redact is refused when any secret option below is given)
+  --follow-redirects              follow a redirect to another origin even though credentials are attached (without it that redirect is refused);
+                                  the credentials are still never sent to the other origin, and a warning names the ones that were not forwarded.
+                                  Also for env-diff and validate. A redirect inside the same origin is always followed.
+  --auth-env VAR                 send Authorization: Bearer $VAR
   --header-env Name=VAR           send a header from an environment variable (repeatable)
   --query-env param=VAR           add a query parameter from an environment variable (repeatable)
   --cookie-env VAR                send a Cookie header from an environment variable

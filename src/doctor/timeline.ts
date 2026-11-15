@@ -4,6 +4,7 @@
  */
 
 import type { Observation } from '../core/observe/observation'
+import { parseProxyComment } from '../core/proxyTags'
 
 export interface TimelineConnection {
     conn: number
@@ -26,6 +27,8 @@ export interface TimelineConnection {
     bytes: number
     /** The longest wait between two byte arrivals on this connection. */
     longestGapMs: number
+    /** The reason the proxy gave when it ended this connection itself (its `sse-proxy error` comment), if it did. */
+    proxyNotice?: string | undefined
     /** What the client did before the next attempt: delay and reason. */
     reconnectDelayMs?: number | undefined
     reconnectReason?: string | undefined
@@ -77,9 +80,12 @@ export function buildTimeline(records: readonly Observation[], nowT?: number): T
                 c.firstEventT ??= r.t
                 c.events.push(r.t)
                 break
-            case 'comment':
-                c.heartbeats.push({ t: r.t, source: r.source })
+            case 'comment': {
+                const notice = r.source === 'proxy' ? parseProxyComment(r.text) : null
+                if (notice?.kind === 'error') c.proxyNotice = notice.message // a notice, not a heartbeat
+                else c.heartbeats.push({ t: r.t, source: r.source })
                 break
+            }
             case 'heartbeatSeries':
                 c.heartbeats.push({ t: r.firstT, source: r.source }, ...(r.count > 1 ? [{ t: r.lastT, source: r.source }] : []))
                 break
@@ -110,6 +116,7 @@ export function describeConnection(c: TimelineConnection, timelineEnd: number): 
     const parts = [`attempt ${c.attempt + 1}`, c.status !== undefined ? `status ${c.status}` : 'no response']
     parts.push(`${c.events.length} event${c.events.length === 1 ? '' : 's'} in ${Math.round(lifetime)} ms`)
     parts.push(c.endT === undefined ? 'still open' : `ended: ${c.endReason ?? 'closed'}`)
+    if (c.proxyNotice) parts.push(`the proxy said: ${c.proxyNotice}`)
     if (c.sentLastEventId) parts.push(`resumed from id ${c.sentLastEventId}`)
     return parts.join(', ')
 }

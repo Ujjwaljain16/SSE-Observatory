@@ -92,23 +92,36 @@ describe('E5: a secret typed into the URL never comes back out', () => {
     }, 30_000)
 
     // The checks above pass for two reasons: the registry knows the values typed in the URL, AND the shape redaction of the capture removes a URL's
-    // userinfo and query by itself. With --no-redact the capture is written as recorded, so only the registry stands between the URL's secrets and
-    // the file: this is the case that fails if `requestFor` stops registering what the URL carries (shown by removing those lines, see the report).
-    it('--no-redact (the capture is written as recorded): the registry alone still keeps the URL\'s user name, password and query values out of every sink', async () => {
+    // userinfo and query by itself. `--no-redact` used to write the capture as recorded, with only the registry between the URL's secrets and the
+    // file. Q14 (decided): it is refused when the URL carries a secret, so no file is made and no connection is opened; the registry is the second layer.
+    it('--no-redact with a secret in the URL (user name, password, query value) is refused: exit 2, no request, no file, and the refusal does not quote the URL', async () => {
         const seen: Seen[] = []
         const { port } = await serve(seen)
         const closed = await closedPort()
         for (const base of [`127.0.0.1:${closed}`, `127.0.0.1:${port}`]) {
             const url = `http://${CANARY}:${CANARY2}@${base}/s?token=${CANARY2}`
             const r = await probe(url, ['--no-redact', '--out', 'raw.sse-capture'])
-            const file = r.h.written['raw.sse-capture']!
-            expect(file, 'the capture was written as recorded: the URL and the platform\'s error message are in it').toMatch(/"url":"http:\/\/.*@?127\.0\.0\.1/)
-            // a mask is where the values were: the registry's "[REDACTED]", or the client's own "[redacted]" (a URL quoted in a browser or fetch error
-            // message is now masked where it is stored, a second layer in front of the registry)
-            expect(file).toMatch(/\[REDACTED\]|\[redacted\]/)
+            expect(r.code, base).toBe(EXIT.usage)
+            expect(r.h.written, 'no file').toEqual({})
+            expect(r.h.err).toMatch(/--no-redact/)
+            expect(r.h.err).toMatch(/URL/)
+            expect(r.ms, 'refused before any connection').toBeLessThan(1000)
             noCanary(r, `--no-redact ${base}`)
         }
+        expect(seen, 'nothing was requested').toEqual([])
     }, 40_000)
+
+    it('--no-redact with a URL that carries no secret (a plain query) is allowed and writes the capture as recorded, with the warning', async () => {
+        const seen: Seen[] = []
+        const { port } = await serve(seen)
+        const r = await probe(`http://127.0.0.1:${port}/s?scale=0.05&limit=1000&debug=true`, ['--no-redact', '--out', 'raw.sse-capture'])
+        expect(r.code).toBe(EXIT.ok)
+        expect(r.h.err).toMatch(/--no-redact writes a capture that may contain secrets/)
+        const file = r.h.written['raw.sse-capture']!
+        expect(file).toMatch(/"url":"http:\/\/127\.0\.0\.1:\d+\/s/)
+        expect(file, 'the stream\'s own bytes are in it, as received').toContain('"kind":"chunk"')
+        expect(r.h.out).toContain('NOT redacted')
+    }, 30_000)
 
     it('CANARY as the user name alone, percent-encoded in the password, and in the query: all stay out', async () => {
         const port = await closedPort()

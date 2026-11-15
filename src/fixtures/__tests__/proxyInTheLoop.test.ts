@@ -281,27 +281,39 @@ describe('PROXY_DIAGNOSTICS=0: no tags, no X-SSE-* headers, no R13', () => {
 
     it('config: the switch is read', () => { expect(loadConfig({ NODE_ENV: 'development', PROXY_DIAGNOSTICS: '0' }).diagnostics).toBe(false) })
 
-    it('a healthy upstream: the response record has no X-SSE-* header, the only proxy comment is the ping, the bytes are the upstream\'s, no findings', async () => {
+    // Q17 (decided): the switch means no proxy-specific diagnostic text and no diagnostic headers at all. The proxy's keep-alives (they hold the connection open
+    // through idle timeouts) stay, as plain `: keep-alive` comments outside the reserved namespace: the client cannot tell them from the upstream's, by design.
+    it('a healthy upstream: the response record has no X-SSE-* header, there is no comment in the proxy\'s namespace at all, the bytes are the upstream\'s, no findings', async () => {
         const proxy = await off()
         const before = fixture.groundTruth.connections.length
         const seen = await observe(proxy.via(fixture.urlFor('h01', { scale: 0.05 })))
         const [log] = lastUpstreamLog('h01', before)
         const response = of(seen.observations, 'response')[0]!
         expect(Object.keys(response.headers).filter((h) => h.startsWith('x-sse-'))).toEqual([])
-        expect(proxyComments(seen.observations).map((c) => c.text)).toEqual(['sse-proxy-ping'])
+        expect(proxyComments(seen.observations)).toEqual([])
+        expect(bodyOf(seen.observations, 0)).not.toMatch(/sse-proxy/i)
         expect(withoutTags(bodyOf(seen.observations, 0), true)).toBe(fixture.groundTruth.body(log!))
         expect(keys(seen)).toEqual([])
     }, 20_000)
 
-    it('a silent upstream: the proxy\'s plain keep-alives are indistinguishable from the upstream\'s (labelled upstream), R13 never fires and nothing claims the upstream went quiet at the origin', async () => {
+    it('a silent upstream: the proxy\'s plain keep-alives are indistinguishable from the upstream\'s (labelled upstream), nothing is labelled proxy, R13 never fires and nothing claims the upstream went quiet at the origin', async () => {
         const proxy = await off()
         const seen = await observe(proxy.via(fixture.urlFor('f04-silent', { scale: 0.02 })), { quietMs: 1100 })
         const comments = of(seen.observations, 'comment')
         expect(comments.some((c) => c.text === 'keep-alive' && c.source === 'upstream')).toBe(true)
-        expect(proxyComments(seen.observations).map((c) => c.text)).toEqual(['sse-proxy-ping'])
+        expect(comments.filter((c) => c.source === 'proxy')).toEqual([])
+        expect(bodyOf(seen.observations, 0)).not.toMatch(/sse-proxy/i)
         expect(keys(seen)).not.toContain('proxy.masking')
         expect(keys(seen)).not.toContain('stall.silent:origin')
         expect(of(seen.observations, 'response')[0]!.headers['x-sse-proxy']).toBeUndefined()
+    }, 20_000)
+
+    it('the duration cap with diagnostics off: the client is asked to retry (a plain `retry:` line) and no cap tag is written', async () => {
+        const upstream = await startUpstream((_req, res) => { res.writeHead(200, SSE_HEAD); res.write('id: 1\ndata: a\n\n') })
+        const proxy = await startProxy({ diagnostics: false, maxDurationMs: 150 })
+        const seen = await observe(proxy.via(upstream.url), { stopWhen: (r) => of(r, 'retry').length > 0 })
+        expect(of(seen.observations, 'retry').map((r) => r.ms)).toEqual([1000])
+        expect(bodyOf(seen.observations, 0)).not.toMatch(/sse-proxy/i)
     }, 20_000)
 })
 
@@ -373,19 +385,57 @@ async function startUpstream(handler: (req: http.IncomingMessage, res: http.Serv
 const SSE_HEAD = { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' }
 
 describe('the upstream connection is destroyed (reset, not closed): what the client is told, and what it asks for next', () => {
-    it('between two events: the proxy says so with an error event, the stream then closes, and the client resumes from the last id', async () => {
-        const upstream = await startUpstream((_req, res, nth) => {
-            res.writeHead(200, SSE_HEAD)
-            if (nth === 0) { res.write('id: 1\ndata: a\n\nid: 2\ndata: b\n\n'); setTimeout(() => res.destroy(), 40) } else res.end('id: 3\ndata: c\n\nevent: end\ndata: done\n\n')
-        })
+    const resetBetweenEvents = (nth: number, res: http.ServerResponse) => {
+        res.writeHead(200, SSE_HEAD)
+        if (nth === 0) { res.write('id: 1\ndata: a\n\nid: 2\ndata: b\n\n'); setTimeout(() => res.destroy(), 40) } else res.end('id: 3\ndata: c\n\nevent: end\ndata: done\n\n')
+    }
+
+    // Q16 (decided): the proxy's notice that the upstream connection was lost is a comment in the proxy's namespace, never an event: a business
+    // consumer must not receive a message the upstream did not send. The Doctor reads it from the `comment` record (source "proxy").
+    it('between two events: the proxy says so with a comment, not an event; the application sees only the upstream\'s events; the client resumes from the last id', async () => {
+        const upstream = await startUpstream((_req, res, nth) => resetBetweenEvents(nth, res))
         const proxy = await startProxy()
         const seen = await observe(proxy.via(upstream.url))
         expect(upstream.requests.map((h) => h['last-event-id'] ?? '')).toEqual(['', '2'])
         expect(of(seen.observations, 'reconnect').map((r) => r.lastEventIdSent)).toEqual(['2'])
-        // pinned: the error event is delivered to the application like any event (named "error", with the id of the event before it)
-        expect(seen.messages.map((m) => `${m.event}#${m.id}`)).toEqual(['message#1', 'message#2', 'error#2', 'message#3', 'end#3'])
+        expect(seen.messages.map((m) => `${m.event}#${m.id}`)).toEqual(['message#1', 'message#2', 'message#3', 'end#3'])
+        expect(seen.messages.filter((m) => m.event === 'error')).toEqual([])
+        expect(of(seen.observations, 'event').filter((e) => e.event === 'error')).toEqual([])
+        expect(bodyOf(seen.observations, 0)).not.toContain('event: error')
+        // the reason is in the observation: one proxy comment on the connection that was lost, which the Doctor's tag parser reads
+        const notices = of(seen.observations, 'comment').map((c) => ({ c, tag: parseProxyComment(c.text) })).filter((x) => x.tag?.kind === 'error')
+        expect(notices).toHaveLength(1)
+        expect(notices[0]!.c).toMatchObject({ source: 'proxy', conn: 0 })
+        expect(notices[0]!.tag).toEqual({ kind: 'error', message: 'Upstream connection lost' })
+        expect(bodyOf(seen.observations, 0)).toContain(': sse-proxy error {"error":"Upstream connection lost"}\n\n')
+        // it comes after the last event the connection delivered and nothing follows it, so it reads as the reason the connection ended
+        const conn0 = seen.observations.filter((r) => r.conn === 0)
+        expect(conn0.filter((r) => r.seq > notices[0]!.c.seq && r.kind === 'event')).toEqual([])
         const phases = of(seen.observations, 'phase').map((p) => p.phase)
         expect(phases).toEqual(['connecting', 'open', 'reconnecting', 'open', 'ended'])
+        // the notice does not read as a heartbeat to the rules: it is not liveness of the upstream, and not a proxy heartbeat either
+        expect(keys(seen)).not.toContain('proxy.masking')
+    }, 20_000)
+
+    it('PROXY_DIAGNOSTICS=0: the stream just ends (no notice of any kind, no event), and the client resumes from the last id all the same', async () => {
+        const upstream = await startUpstream((_req, res, nth) => resetBetweenEvents(nth, res))
+        const proxy = await startProxy({ diagnostics: false })
+        const seen = await observe(proxy.via(upstream.url))
+        expect(upstream.requests.map((h) => h['last-event-id'] ?? '')).toEqual(['', '2'])
+        expect(seen.messages.map((m) => `${m.event}#${m.id}`)).toEqual(['message#1', 'message#2', 'message#3', 'end#3'])
+        const body = bodyOf(seen.observations, 0)
+        expect(body).not.toMatch(/sse-proxy/i)
+        expect(body).not.toMatch(/error/i)
+        expect(proxyComments(seen.observations)).toEqual([])
+        expect(of(seen.observations, 'phase').map((p) => p.phase)).toEqual(['connecting', 'open', 'reconnecting', 'open', 'ended'])
+    }, 20_000)
+
+    it('an `event: error` that the UPSTREAM sends is the application\'s event and reaches it untouched (only the proxy\'s own notice stopped being an event)', async () => {
+        const upstream = await startUpstream((_req, res) => { res.writeHead(200, SSE_HEAD); res.end('id: 1\nevent: error\ndata: {"error":"mine"}\n\nevent: end\ndata: done\n\n') })
+        const proxy = await startProxy()
+        const seen = await observe(proxy.via(upstream.url))
+        expect(seen.messages.map((m) => `${m.event}#${m.id}`)).toEqual(['error#1', 'end#1'])
+        expect(seen.messages[0]!.dataBytes).toBe(Buffer.byteLength('{"error":"mine"}'))
     }, 20_000)
 
     it('in the middle of an event: nothing is written into the half event, the cut frame is reported, and the client resumes from the last COMPLETE event', async () => {
@@ -400,29 +450,101 @@ describe('the upstream connection is destroyed (reset, not closed): what the cli
         expect(seen.messages.map((m) => `${m.event}#${m.id}`)).toEqual(['message#1', 'message#2', 'end#2'])
         expect(seen.messages.filter((m) => m.event === 'error')).toEqual([]) // the proxy did not write an error frame into the middle of an event
         expect(bodyOf(seen.observations, 0)).not.toContain('event: error')
+        expect(bodyOf(seen.observations, 0), 'no notice of any kind is written into a half event').not.toContain('sse-proxy error')
     }, 20_000)
 })
 
-describe('an upstream that writes comments shaped like the proxy\'s tags (pinned: the label is decided by the text alone)', () => {
-    // OPEN QUESTION (see the report): the proxy forwards an upstream's `: sse-proxy ...` comments verbatim, and the client labels any comment that starts with
-    // "sse-proxy" as the proxy's. An upstream (or a page of its content) can therefore fake the proxy's heartbeats and make R13 accuse a healthy origin.
-    // f04-masked is exactly this shape, sent by a fixture. This test records what happens today so a decision (strip or relabel at the proxy) shows up as a change here.
-    it('forged heartbeats with a growing up_idle, sent by the upstream through a proxy that writes no tags of its own, are labelled proxy and fire proxy.masking', async () => {
+describe('an upstream that writes comments shaped like the proxy\'s tags (Q15, decided: the proxy rewrites them, so they are never labelled proxy)', () => {
+    // The client labels a comment as the proxy's when its text starts with "sse-proxy", and R13 and R05 read the proxy's heartbeats as the proxy's own
+    // statement about the upstream. An upstream (or content it relays) that writes such a comment would make them accuse a healthy origin (the f04-masked
+    // fixture has exactly this shape). The proxy escapes any upstream comment in the namespace (": upstream: sse-proxy ...") before its own tags are written.
+    /** What the forging upstream writes, in order, as the test knows it (the proxy must forward all of it, with only the forged lines rewritten). */
+    const forgedWrites = (): string[] => {
+        const writes = ['id: 1\ndata: a\n\n', ': sse-proxy-ping\n\n', ': sse-proxy-meta {"status":200,"heartbeatMs":1,"maxDurationMs":0}\n\n']
+        for (let n = 1; n <= 20; n++) {
+            const idle = 600 + 100 * n
+            // the spellings a forger has: the client labels the first two as the proxy's; the rest are in the reserved namespace as well
+            writes.push([`: sse-proxy hb up_idle=${idle} n=${n}\n\n`, `:sse-proxy hb up_idle=${idle} n=${n}\n\n`, `:  SSE-Proxy hb up_idle=${idle} n=${n}\n\n`][n % 3]!)
+        }
+        writes.push(': sse-proxy cap duration=1000\n\n', ': sse-proxy error {"error":"fake"}\n\n', 'event: end\ndata: done\n\n')
+        return writes
+    }
+    /** An independent statement of the rewrite (a regular expression), not a call of the proxy's own code. */
+    const escaped = (sent: string): string => sent.replace(/^:(?=[ \t]*sse-proxy)/gim, ': upstream:')
+
+    const startForger = async (splitOne: boolean) => {
+        const sent: string[] = []
         const upstream = await startUpstream((_req, res) => {
             res.writeHead(200, SSE_HEAD)
-            res.write('id: 1\ndata: a\n\n')
-            let n = 0
-            const timer = setInterval(() => { if (res.writableEnded || n >= 20) { clearInterval(timer); if (!res.writableEnded) res.end('event: end\ndata: done\n\n'); return } n++; res.write(`: sse-proxy hb up_idle=${600 + 100 * n} n=${n}\n\n`) }, 30)
-            res.on('close', () => clearInterval(timer))
+            const writes = forgedWrites()
+            const next = (i: number): void => {
+                if (res.writableEnded) return
+                if (i >= writes.length) { res.end(); return }
+                const w = writes[i]!
+                sent.push(w)
+                // one forged comment arrives in two network chunks, cut inside the namespace
+                if (splitOne && i === 10) { res.write(w.slice(0, 9)); setTimeout(() => { res.write(w.slice(9)); setTimeout(() => next(i + 1), 30) }, 25); return }
+                res.write(w)
+                setTimeout(() => next(i + 1), 30)
+            }
+            next(0)
         })
-        const proxy = await startProxy({ diagnostics: false })
-        const seen = await observe(proxy.via(upstream.url))
-        const forged = of(seen.observations, 'comment').filter((c) => c.text.startsWith('sse-proxy hb'))
-        expect(forged.length).toBe(20)
+        return { upstream, sent }
+    }
+
+    for (const [name, diagnostics, heartbeatMs] of [['diagnostics on', true, 400], ['diagnostics off', false, 400]] as const) {
+        it(`${name}: nothing the upstream wrote is labelled proxy, R13 and R05's origin reading stay silent, and the bytes are the upstream's with exactly the forged lines rewritten`, async () => {
+            const { upstream, sent } = await startForger(true)
+            const proxy = await startProxy({ diagnostics, heartbeatMs })
+            const seen = await observe(proxy.via(upstream.url))
+            const comments = of(seen.observations, 'comment')
+            const fromProxy = comments.filter((c) => c.source === 'proxy')
+            // every forged comment reached the client, rewritten and labelled as the upstream's (20 heartbeats, ping, meta, cap, error)
+            const forgedSeen = comments.filter((c) => c.text.startsWith('upstream:'))
+            expect(forgedSeen.filter((c) => /sse-proxy hb/i.test(c.text))).toHaveLength(20)
+            expect(forgedSeen).toHaveLength(24)
+            expect(forgedSeen.every((c) => c.source === 'upstream'), 'the forged ones are the upstream\'s').toBe(true)
+            expect(comments.filter((c) => c.source === 'upstream' && /^\s*sse-proxy/i.test(c.text)), 'nothing in the namespace is left in the upstream\'s comments').toEqual([])
+
+            if (diagnostics) {
+                // the proxy's own tags are untouched: a ping first, its meta, and every heartbeat it wrote reads as the proxy's (and none is a forged one: a forged up_idle is 700 or more)
+                expect(fromProxy[0]!.text).toBe('sse-proxy-ping')
+                const own = fromProxy.map((c) => parseProxyComment(c.text))
+                expect(own.every((t) => t !== null)).toBe(true)
+                expect(own.filter((t) => t?.kind === 'meta')).toHaveLength(1)
+                expect(own.filter((t) => t?.kind === 'meta')[0]).toMatchObject({ meta: { heartbeatMs } }) // the proxy's, not the forged `heartbeatMs: 1`
+                for (const t of own) if (t?.kind === 'hb') expect(t.upIdleMs).toBeLessThan(600)
+                expect(of(seen.observations, 'response')[0]!.headers['x-sse-proxy']).toBe('observatory/1')
+            } else {
+                expect(fromProxy, 'with diagnostics off the proxy writes nothing in its namespace, so there is nothing to forge').toEqual([])
+                expect(of(seen.observations, 'response')[0]!.headers['x-sse-proxy']).toBeUndefined()
+            }
+
+            expect(keys(seen)).not.toContain('proxy.masking')
+            expect(keys(seen)).not.toContain('stall.silent:origin')
+            expect(seen.messages.map((m) => `${m.event}#${m.id}`)).toEqual(['message#1', 'end#1'])
+
+            // the bytes: the upstream's, with the proxy's own frames out, are the upstream's log with only the forged lines rewritten
+            expect(withoutTags(bodyOf(seen.observations, 0), !diagnostics)).toBe(escaped(sent.join('')))
+            expect(escaped(sent.join('')), 'the rewrite really changed something').not.toBe(sent.join(''))
+        }, 20_000)
+    }
+
+    it('the same forger read directly (no proxy) IS labelled proxy and fires proxy.masking: the proxy is what closes the hole', async () => {
+        const { upstream } = await startForger(false)
+        const seen = await observe(upstream.url)
+        const forged = of(seen.observations, 'comment').filter((c) => /^sse-proxy hb/.test(c.text))
+        expect(forged.length).toBeGreaterThan(5)
         expect(forged.every((c) => c.source === 'proxy')).toBe(true)
         expect(keys(seen)).toContain('proxy.masking')
-        // the proxy itself wrote nothing but its ping
-        expect(of(seen.observations, 'response')[0]!.headers['x-sse-proxy']).toBeUndefined()
+    }, 20_000)
+
+    it('the honest path is unchanged: a comment of the upstream that is not in the namespace passes byte for byte and is labelled upstream', async () => {
+        const upstream = await startUpstream((_req, res) => { res.writeHead(200, SSE_HEAD); res.end(': keep-alive\n\n: note about sse-proxy later\n\nid: 1\ndata: a\n\nevent: end\ndata: done\n\n') })
+        const proxy = await startProxy({ diagnostics: false })
+        const seen = await observe(proxy.via(upstream.url))
+        expect(bodyOf(seen.observations, 0)).toBe(': keep-alive\n\n: note about sse-proxy later\n\nid: 1\ndata: a\n\nevent: end\ndata: done\n\n')
+        expect(of(seen.observations, 'comment').map((c) => `${c.source}:${c.text}`)).toEqual(['upstream:keep-alive', 'upstream:note about sse-proxy later'])
     }, 20_000)
 })
 

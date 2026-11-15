@@ -15,7 +15,8 @@
 import type { Observation, Stamp } from '../observe/observation'
 import type { SSEPhase } from '../sse/sseClient'
 import { RollingStats, type StatSnapshot } from './stats'
-import type { Thresholds } from './thresholds'
+import { CADENCE_RUN, consistentCadence, stallLimit } from './stallLimit'
+import type { StreamProfile, Thresholds } from './thresholds'
 
 /** Raised by a host that noticed the clock jump (a laptop woke up, a tab was frozen). Not an `Observation` kind: records of unknown kind are allowed to pass through a capture. */
 export interface ClockDiscontinuityRecord extends Stamp {
@@ -66,9 +67,27 @@ export interface HeartbeatClose {
     intervalsBefore: number
 }
 
+/** One gap of a run of stalls, as the model keeps it. */
+export interface StallRunGap { conn: number; startT: number; startSeq: number; endT: number; endSeq: number; lengthMs: number }
+
+/**
+ * A changed cadence that was recognised on a clock: three consecutive gaps that were each a stall and agree with one another. The baseline of
+ * that clock was rebuilt from them. `before` is the baseline as it was, and `hbMedianMs` the heartbeat median at the time.
+ */
+export interface CadenceShift {
+    clock: ClockName
+    conn: number
+    before: StatSnapshot
+    hbMedianMs?: number | undefined
+    medianMs: number
+    gaps: StallRunGap[]
+}
+
 export interface Delta {
     gaps: GapInfo[]
     heartbeat?: HeartbeatClose | undefined
+    /** Cadence changes recognised by the update (at most one per clock). */
+    shifts?: CadenceShift[] | undefined
 }
 
 export interface ConnectionState {
@@ -120,7 +139,8 @@ export interface HeartbeatStats {
     intervals: RollingStats
 }
 
-const isProxyHeartbeat = (text: string): boolean => text.startsWith('sse-proxy') && !text.startsWith('sse-proxy cap') && !text.startsWith('sse-proxy-meta')
+// The cap tag, the meta line and the error notice are the proxy speaking, but they are not its heartbeat.
+const isProxyHeartbeat = (text: string): boolean => text.startsWith('sse-proxy') && !text.startsWith('sse-proxy cap') && !text.startsWith('sse-proxy-meta') && !text.startsWith('sse-proxy error')
 
 export class StreamModel {
     phase: SSEPhase | 'idle' = 'idle'
@@ -139,7 +159,16 @@ export class StreamModel {
     lastOriginByteT: number | undefined
     lastCompleteEventT: number | undefined
 
+    /** Every gap that ended with a byte, stalls included: what the longest silence was, and the typical gap, for the rules that only describe. */
     readonly gaps: Record<ClockName, RollingStats> = { byte: new RollingStats(), origin: new RollingStats(), event: new RollingStats() }
+    /**
+     * The stream's own rhythm, which is what a stall is judged against: `gaps` without the gaps that were stalls. A gap is left out when it
+     * was longer than the limit that applied while it was open (the rule's own verdict, see `stallLimit`), so a failure that was already
+     * reported does not teach the detector to tolerate the same failure again.
+     */
+    readonly baseline: Record<ClockName, RollingStats> = { byte: new RollingStats(), origin: new RollingStats(), event: new RollingStats() }
+    /** The latest consecutive gaps on each clock that were stalls (at most CADENCE_RUN), with no normal gap since and all on one connection. */
+    private readonly stallRuns: Record<ClockName, StallRunGap[]> = { byte: [], origin: [], event: [] }
     readonly heartbeats: Record<HeartbeatSource, HeartbeatStats> = {
         proxy: { count: 0, intervals: new RollingStats() },
         upstream: { count: 0, intervals: new RollingStats() },
@@ -150,7 +179,7 @@ export class StreamModel {
     /** What changed in the most recent `update`. */
     delta: Delta = { gaps: [] }
 
-    constructor(private readonly thresholds: Thresholds) {}
+    constructor(private readonly thresholds: Thresholds, private readonly profile: StreamProfile = {}) {}
 
     /** The connection of the latest `connect` record (or the one a stray record names). */
     current(): ConnectionState | undefined { return this.conns.get(this.latest) }
@@ -185,7 +214,7 @@ export class StreamModel {
     private describeGap(c: ConnectionState, clock: ClockName, start: Mark & { kind: StartKind }): GapInfo {
         return {
             clock, conn: c.conn, startT: start.t, startSeq: start.seq, startKind: start.kind,
-            stats: this.gaps[clock].snapshot(), hbMedianMs: this.originHeartbeatMedian(),
+            stats: this.baseline[clock].snapshot(), hbMedianMs: this.originHeartbeatMedian(),
             proxyCount: c.proxySinceOrigin, aliveChunks: c.chunksSinceEvent, lastByteT: c.lastByte?.t, maxByteGapMs: c.maxByteGapSinceEvent,
         }
     }
@@ -200,7 +229,38 @@ export class StreamModel {
         gap.via = via
         if (aliveChunks !== undefined) gap.aliveChunks = aliveChunks
         this.delta.gaps.push(gap)
-        if (via === 'next' && start.kind === 'byte') this.gaps[clock].push(o.t - start.t)
+        if (via === 'next' && start.kind === 'byte') {
+            const length = o.t - start.t
+            this.gaps[clock].push(length)
+            // The limit that applied while the gap was open is the one the snapshot taken above gives (the baseline before this gap).
+            if (length <= stallLimit(gap.stats, gap.hbMedianMs ?? this.profile.expected?.heartbeatMs, this.thresholds, this.profile).warnMs) {
+                this.baseline[clock].push(length)
+                this.stallRuns[clock].length = 0 // a normal gap: the stalls before it were sporadic
+            } else this.noteStall(clock, gap, { conn: c.conn, startT: start.t, startSeq: start.seq, endT: o.t, endSeq: o.seq, lengthMs: length })
+        } else this.stallRuns[clock].length = 0 // the connection ended, or the gap began at a clock jump or at the connection's opening: not consecutive stalls
+    }
+
+    /**
+     * A gap that was a stall. Three consecutive ones on a connection that agree with one another are a cadence that changed (results Q13): the
+     * baseline is rebuilt from them and counted as a rhythm to trust. A declared longest silence is never overridden: if any of the three is
+     * beyond it, nothing is learned and they stay stalls. A reconnect starts the count again (the new connection may be another server).
+     */
+    private noteStall(clock: ClockName, gap: GapInfo, entry: StallRunGap): void {
+        const run = this.stallRuns[clock]
+        if (run.length > 0 && run[0]!.conn !== entry.conn) run.length = 0
+        run.push(entry)
+        if (run.length > CADENCE_RUN) run.shift()
+        if (run.length < CADENCE_RUN) return
+        const lengths = run.map((g) => g.lengthMs)
+        const medianMs = consistentCadence(lengths)
+        if (medianMs === undefined) return
+        const declared = this.profile.expected?.maxSilenceMs
+        if (declared !== undefined && lengths.some((l) => l > Math.max(declared, this.thresholds.stallMinSilenceMs))) return
+        const fresh = new RollingStats()
+        for (const l of lengths) fresh.push(l)
+        fresh.trusted = true
+        this.baseline[clock] = fresh
+        ;(this.delta.shifts ??= []).push({ clock, conn: entry.conn, before: gap.stats, hbMedianMs: gap.hbMedianMs, medianMs, gaps: run.splice(0) })
     }
 
     /** Gaps still going on the connection that is currently open. */
