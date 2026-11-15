@@ -31,6 +31,37 @@ describe('R01 content type and status', () => {
         expect(f.facts[0]!.text).toContain(String(status))
     })
 
+    // #77: through the proxy a target that answers 200 with a page comes back as 415 (and the client stops). The content type is still what is reported.
+    const refusal = (headers: Record<string, string> = {}, status = 415) => capture().connect().response({ status, contentType: 'application/json', headers: { 'x-sse-proxy': 'observatory/1', 'x-sse-upstream-status': '200', 'x-sse-upstream-content-type': 'text/html; charset=utf-8', ...headers } })
+
+    it('the proxy\'s 415 for a target that is not an event stream still raises proto.content-type, from what the proxy reported, and not also http.status', () => {
+        const a = run(refusal())
+        const f = find(a.findings, 'proto.content-type')!
+        expect(f.severity).toBe('error')
+        expect(f.title).toBe('Response is not an event stream')
+        expect(f.facts[0]!.text).toContain('text/html; charset=utf-8')
+        expect(f.facts[0]!.evidence.length).toBeGreaterThan(0)
+        expect(f.deductions[0]!.statement).toMatch(/HTML page/)
+        expect(find(a.findings, 'http.status')).toBeUndefined()
+    })
+
+    it('a 415 that is NOT the proxy\'s refusal stays an ordinary http.status error: no proxy tag, an upstream status that was not 200, or an upstream that did send an event stream', () => {
+        const plain = capture().connect().response({ status: 415, contentType: 'application/json' })
+        const upstream502 = refusal({ 'x-sse-upstream-status': '502' })
+        const eventStream = refusal({ 'x-sse-upstream-content-type': 'text/event-stream' })
+        for (const b of [plain, upstream502, eventStream]) {
+            const a = run(b)
+            expect(find(a.findings, 'http.status')!.severity).toBe('error')
+            expect(find(a.findings, 'proto.content-type')).toBeUndefined()
+        }
+    })
+
+    it('a 502 through the proxy is still http.status (retryable failures are unchanged)', () => {
+        const a = run(refusal({ 'x-sse-upstream-status': '200' }, 502))
+        expect(find(a.findings, 'http.status')!.severity).toBe('error')
+        expect(find(a.findings, 'proto.content-type')).toBeUndefined()
+    })
+
     it('keeps error for the spec-defined failures only: a charset or a redirect is never an error', () => {
         const a = run(capture().connect().response({ contentType: 'text/event-stream; charset=latin1', redirected: true }))
         expect(find(a.findings, 'proto.content-type:charset')!.severity).toBe('warning')

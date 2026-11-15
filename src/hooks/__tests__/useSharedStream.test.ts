@@ -90,6 +90,14 @@ describe('useSharedStream (SharedWorker transport)', () => {
         expect(result.current.error).toMatch(/ended the stream/)
     })
 
+    it('#77: a target that is not an event stream (the proxy\'s 415) shows its message as a final failure, not as "Retrying in..."', () => {
+        const { result } = setup()
+        status('failed', { attempt: 0, status: 415, reason: 'The address answers with text/html, not text/event-stream, so there is nothing to retry.' })
+        expect(result.current).toMatchObject({ connected: false, isLoading: false, reconnecting: false, status: 'failed' })
+        expect(result.current.error).toBe('The address answers with text/html, not text/event-stream, so there is nothing to retry.')
+        expect(result.current.error).not.toMatch(/Retrying/)
+    })
+
     it('never leaves the UI stuck in "loading" after a failed first attempt', () => {
         const { result } = setup()
         status('failed', { reason: 'HTTP 404' })

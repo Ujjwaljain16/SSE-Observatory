@@ -88,6 +88,15 @@ describe('R13 proxy.upstream-mismatch', () => {
         expect(f.deductions[0]!.statement).toMatch(/^Likely: the origin is not serving a valid event stream/)
     })
 
+    // #77: the proxy answering 415 for a target that is not an event stream states what the upstream sent; it presents nothing as a stream (R01 reports the content type).
+    it('is silent about the proxy\'s own 415 for a non-event-stream target, but still flags a 415 that hides something else', () => {
+        const refusal = (headers: Record<string, string | undefined>, status = 415) => capture().connect().response({ status, contentType: 'application/json', headers: { 'x-sse-proxy': 'observatory/1', 'x-sse-upstream-status': '200', 'x-sse-upstream-content-type': 'text/html', ...headers } })
+        expect(keys(run(refusal({}), proxyMasking).findings)).not.toContain(MISMATCH)
+        expect(keys(run(refusal({ 'x-sse-upstream-status': '502' }), proxyMasking).findings)).toContain(MISMATCH)
+        expect(keys(run(refusal({}, 502), proxyMasking).findings)).toContain(MISMATCH) // a 502 is not the refusal
+        expect(keys(run(refusal({ 'x-sse-upstream-content-type': 'text/event-stream' }), proxyMasking).findings)).toContain(MISMATCH)
+    })
+
     it('flags a content-type difference alone', () => {
         const f = find(run(proxied({ 'x-sse-upstream-content-type': 'application/json' }), proxyMasking).findings, MISMATCH)!
         expect(f.facts).toHaveLength(1)

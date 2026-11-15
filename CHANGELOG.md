@@ -2,6 +2,12 @@
 
 All notable changes are written here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/). The command line, the capture format (`2.x`) and the scenario schema (`1`) are versioned separately; the release notes of each [GitHub release](https://github.com/Ujjwaljain16/SSE-Observatory/releases) say which changed.
 
+## [Unreleased]
+
+### Fixed
+
+- A target that answers 200 with something that is not an event stream (a web page) is no longer retried for ever through the proxy. The proxy answers HTTP 415 with the target's content type instead of a retryable 502, and the client stops after one attempt with "The address answers with text/html, not text/event-stream, so there is nothing to retry." (#77)
+
 ## [2.0.0] - 2026-11-15
 
 The Stream Doctor release: the app and a command line that say **why** a stream is stuck, late or losing events, with the evidence, and turn the diagnosis into a repeatable test. Full account: [What's new in 2.0](https://sse-observatory.vercel.app/docs/guide/whats-new). How it was tested, and what was not: [the testing campaign](docs/technical/testing-campaign.md).

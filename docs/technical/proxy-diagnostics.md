@@ -31,9 +31,21 @@ The client decides that a comment is the proxy's from its text alone, and the Do
 - It is done line by line, wherever the line is: every line of a comment block, a comment inside an event, after a leading byte order mark, with LF, CR or CRLF line ends. A comment cut across network chunks is judged whole: the proxy holds back only the first bytes of a comment line while they could still be the namespace (at most about 40 bytes), and forwards every other line at once. If the stream ends while bytes are held, they are forwarded unchanged.
 - Nothing else is changed: event, id, retry and data lines, and every comment outside the namespace, pass byte for byte. This is true with diagnostics on and off; it is not a diagnostics feature, it protects the labelling.
 
+## A target that is not an event stream: HTTP 415
+
+When the target answers `200` with something that is not `text/event-stream` (a web page, JSON, a download), the proxy answers the client **HTTP 415 (Unsupported Media Type)** with a JSON body that names the target's media type, and nothing from the target's own body:
+
+```json
+{ "error": "Target answers with text/html, not text/event-stream", "upstreamContentType": "text/html" }
+```
+
+The media type is given without its parameters (`text/html; charset=utf-8` becomes `text/html`), `none` when the target sent no `Content-Type`, and is cut to 100 printable characters. It used to be a 502, which the client retries; but the target did answer, and asking again gets the same page, so 415 is **final** for the client: it makes one attempt, ends in the `failed` phase and says "The address answers with text/html, not text/event-stream, so there is nothing to retry." (the single stream, every Multi-Stream lane and the shared worker show the same text). Everything else is unchanged: a target that cannot be reached or answers 5xx is still a 502 and is retried with backoff; 401, 403 and 404 from the target are still passed through as they are.
+
+With diagnostics on, the 415 carries the `X-SSE-Proxy` and `X-SSE-Upstream-*` headers below (the upstream status is `200`, the content type is what the target sent), so the Doctor still raises R01 `proto.content-type` from what was observed. R13 `proxy.upstream-mismatch` does not fire for this answer: the proxy states what it did and presents nothing as a stream. With `PROXY_DIAGNOSTICS=0` there is no `X-SSE-*` header, the client still stops and says why (from the JSON body), and the Doctor sees only the 415 status (`http.status`). A direct connection (proxy off) is unchanged: a wrong content type is fatal and reported as "Server did not return an event stream (Content-Type: ...)".
+
 ## Response headers
 
-Set on the 200 stream response. They are same-origin, so the browser client can read them.
+Set on the 200 stream response, and on the 415 answer above. They are same-origin, so the browser client can read them.
 
 | Header | Value |
 |---|---|
@@ -41,7 +53,7 @@ Set on the 200 stream response. They are same-origin, so the browser client can 
 | `X-SSE-Proxy-Heartbeat-Ms` | heartbeat interval in ms |
 | `X-SSE-Proxy-Max-Duration` | duration cap in ms, `0` when uncapped |
 | `X-SSE-Upstream-Status` | upstream HTTP status |
-| `X-SSE-Upstream-Content-Type` | upstream `Content-Type` (the proxy always answers `text/event-stream`) |
+| `X-SSE-Upstream-Content-Type` | upstream `Content-Type` (on a stream the proxy always answers `text/event-stream`; on the 415 it answers JSON) |
 | `X-SSE-Upstream-Encoding` | upstream `Content-Encoding`, empty when none |
 | `X-SSE-Upstream-Ttfb-Ms` | ms from starting the upstream request to its response headers |
 

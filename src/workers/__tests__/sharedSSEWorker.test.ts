@@ -179,6 +179,33 @@ describe('sharedSSEWorker.ts - multi-tab bookkeeping', () => {
         }
     })
 
+    // #77, through the real client (not the fake): the worker forwards the client's final failure verbatim, to every tab and to one that joins later.
+    it('a 415 from the proxy ends the connection after one request, with the content-type message, for every tab and a late joiner', async () => {
+        const { SSEClient } = await import('../../core/sse/sseClient')
+        vi.useRealTimers()
+        const fetchMock = vi.fn(async () => new Response(
+            JSON.stringify({ error: 'Target answers with text/html, not text/event-stream', upstreamContentType: 'text/html' }),
+            { status: 415, headers: { 'content-type': 'application/json' } },
+        ))
+        vi.stubGlobal('fetch', fetchMock)
+        try {
+            mod._setClientFactoryForTesting((opts) => new SSEClient({ ...opts, initialDelayMs: 5, maxDelayMs: 10, jitter: 0 }) as never)
+            const a = newPort(); const b = newPort()
+            connect(a); connect(b)
+            await vi.waitFor(() => expect(a.received().some((m) => m.type === 'status' && m.phase === 'failed')).toBe(true))
+            await new Promise((r) => setTimeout(r, 60))
+            expect(fetchMock).toHaveBeenCalledTimes(1)
+            const why = 'The address answers with text/html, not text/event-stream, so there is nothing to retry.'
+            for (const p of [a, b]) {
+                expect(p.received().filter((m) => m.type === 'status').map((m) => m.phase)).not.toContain('reconnecting')
+                expect(p.received().filter((m) => m.type === 'status').at(-1)).toMatchObject({ phase: 'failed', status: 415, reason: why })
+            }
+            const late = newPort()
+            connect(late) // a failed connection restarts for a new tab (one more request), and fails the same way
+            await vi.waitFor(() => expect(late.received().filter((m) => m.type === 'status').at(-1)).toMatchObject({ phase: 'failed', reason: why }))
+        } finally { vi.unstubAllGlobals() }
+    })
+
     it('sends a catch-up buffer (max 50) to late joiners, in chronological order', () => {
         const a = newPort()
         connect(a)
