@@ -1,0 +1,187 @@
+name: Release candidate
+
+# Run by hand before a release, on the exact commit that would ship: everything that blocks a pull request, on both operating systems, plus what is
+# otherwise nightly (the healthy twins in real time, each fixture failing without its rule, the same findings at every time scale, the replay timing),
+# the built command line's checks, the packed package, the dependency audit, the documented limits, and a results report. It changes nothing: it does
+# not publish, tag or deploy. A green run is the evidence for the release checklist in docs/technical/testing-campaign.md.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Branch, tag or commit to test (default: the branch the run is started on)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify (${{ matrix.os }}, Node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: [22]
+        include:
+          - os: ubuntu-latest
+            node: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run test:coverage
+      - run: npm run build
+      - run: npm run build:cli
+      - run: npm run doctor:selftest
+      - run: npm run doctor:buildcheck
+      - run: npm run cli:check
+      - run: npm run doctor:scenarios
+      - run: npm run doctor:contract
+      - name: The package, as it would be published
+        run: npm pack --dry-run
+        working-directory: dist-cli
+
+  real-time:
+    name: Real-time checks (twins, sensitivity, scale invariance, replay timing)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx vitest run src/fixtures/__tests__/nightly.twins.test.ts src/fixtures/__tests__/fixtures.sensitivity.test.ts src/fixtures/__tests__/scaleInvariance.test.ts src/fixtures/__tests__/replayTiming.test.ts --maxWorkers=1
+        env:
+          NIGHTLY: '1'
+
+  limits:
+    name: Documented limits
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build:cli
+      - run: node scripts/perf/large-capture.mjs
+
+  audit:
+    name: Dependency audit (runtime, high and above)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm audit --omit=dev --audit-level=high
+
+  docker:
+    name: Docker image builds and starts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+      - run: docker build -t sse-observatory .
+      - name: Smoke test
+        run: |
+          docker run -d --name app -p 3000:3000 sse-observatory
+          for i in $(seq 1 20); do curl -fs http://127.0.0.1:3000/healthz && exit 0; sleep 1; done
+          docker logs app; exit 1
+
+  e2e:
+    name: Browser tests (Chromium)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 14
+
+  other-browsers:
+    name: Browser tests (Firefox, WebKit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    # Informational, as in CI: the result is reported in the checklist, it does not stop the run.
+    continue-on-error: true
+    env:
+      E2E_BROWSERS: firefox,webkit
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps firefox webkit
+      - run: npx playwright test --project=firefox --project=webkit
+
+  report:
+    name: Results report
+    needs: [verify, real-time, limits, audit, docker, e2e]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: What each job concluded
+        run: |
+          {
+            echo "## Release candidate: ${{ github.event.inputs.ref || github.ref }}"
+            echo ""
+            echo "| job | result |"
+            echo "|---|---|"
+            echo "| verify (both systems, Node 20 and 22) | ${{ needs.verify.result }} |"
+            echo "| real-time checks | ${{ needs.real-time.result }} |"
+            echo "| documented limits | ${{ needs.limits.result }} |"
+            echo "| dependency audit | ${{ needs.audit.result }} |"
+            echo "| docker | ${{ needs.docker.result }} |"
+            echo "| browser tests (Chromium) | ${{ needs.e2e.result }} |"
+            echo ""
+            echo "Firefox and WebKit are informational: see the job. Not covered by any job: see docs/technical/testing-campaign.md."
+          } >> "$GITHUB_STEP_SUMMARY"
+      - run: node scripts/campaign/report.mjs --out report.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: results-report
+          path: report.md

@@ -120,6 +120,33 @@ describe('the nightly workflow', () => {
     })
 })
 
+describe('the release-candidate workflow', () => {
+    const rc = read('.github/workflows/release-candidate.yml')
+    it('is run by hand only, and changes nothing: it publishes, tags and deploys nothing', () => {
+        expect(rc).toMatch(/on:\n  workflow_dispatch:/)
+        expect(rc).not.toMatch(/\n\s+schedule:/)
+        expect(rc).toMatch(/permissions:\n  contents: read\n/)
+        expect(rc, 'no publish, release or deploy step').not.toMatch(/npm publish|gh release|vercel (deploy|--prod)|git push|git tag/)
+    })
+    it('holds everything a pull request holds, on both systems and on Node 20, and the real-time and limits checks the nightly has', () => {
+        for (const step of ['npm run lint', 'npm run typecheck', 'npm run test:coverage', 'npm run build', 'npm run build:cli', 'npm run doctor:selftest', 'npm run doctor:buildcheck', 'npm run cli:check', 'npm run doctor:scenarios', 'npm run doctor:contract', 'npm pack --dry-run', 'npm audit --omit=dev --audit-level=high', 'docker build', 'npm run test:e2e', 'large-capture.mjs']) expect(rc, step).toContain(step)
+        expect(rc).toMatch(/os: \[ubuntu-latest, windows-latest\]/)
+        expect(rc).toMatch(/node: 20/)
+        for (const t of ['nightly.twins', 'fixtures.sensitivity', 'scaleInvariance', 'replayTiming']) expect(rc, t).toContain(t)
+        expect(rc).toMatch(/NIGHTLY: '1'/)
+    })
+    it('the Chromium browser job blocks, the other browsers are informational', () => {
+        const j = jobs(rc)
+        expect(j['e2e']).not.toMatch(/continue-on-error:\s*true/)
+        expect(j['other-browsers']).toMatch(/continue-on-error:\s*true/)
+    })
+    it('names only files and scripts that exist', () => {
+        const missing: string[] = []
+        for (const m of rc.matchAll(/\b((?:scripts|src)\/[A-Za-z0-9_./-]+\.(?:mjs|ts))\b/g)) if (!fs.existsSync(path.join(root, m[1]!))) missing.push(m[1]!)
+        expect(missing).toEqual([])
+    })
+})
+
 describe('the scenario action workflow', () => {
     const action = read('.github/workflows/action-test.yml')
     it('runs when the things it tests change, and can be run by hand', () => {

@@ -189,7 +189,9 @@ describe('E5: a hostile or odd URL cannot make the probe hang, crash or echo it'
         const { port } = await serve(seen)
         const r = await probe(`http://127.0.0.1:${port}/${'b'.repeat(100 * 1024)}`)
         bounded(r, '100 KB live')
-        expect([EXIT.ok, EXIT.couldNotRun]).toContain(r.code)
+        // 0 if the server accepted it, 3 if the connection failed, and 1 if the server answered with a refusal (Node's HTTP server limits the request line
+        // and says 431 on some platforms): the probe saw a failed stream and says so. All three are an answer in time; a hang or a crash is what is excluded.
+        expect([EXIT.ok, EXIT.gateFailed, EXIT.couldNotRun]).toContain(r.code)
     }, 30_000)
 
     it('control characters in the path are percent-encoded on the wire: a CR LF cannot start a second header or request', async () => {
