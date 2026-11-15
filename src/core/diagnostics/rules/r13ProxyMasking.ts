@@ -2,6 +2,7 @@ import type { Fact, FindingDraft, Severity } from '../finding'
 import type { Rule, RuleContext } from '../rule'
 import type { StreamModel } from '../streamModel'
 import { parseProxyComment } from '../../proxyTags'
+import { proxyRefusedContentType } from './r01ContentTypeStatus'
 import { ev, fmtMs, plural } from './util'
 
 /**
@@ -33,6 +34,7 @@ const header = (headers: Record<string, string>, name: string): string | undefin
     return undefined
 }
 const mediaType = (value: string): string => (value.split(';')[0] ?? '').trim().toLowerCase()
+const lowerCased = (headers: Record<string, string>): Record<string, string> => Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v]))
 
 export const proxyMasking: Rule = {
     id: 'proxy.masking',
@@ -95,6 +97,8 @@ export const proxyMasking: Rule = {
             onObservation(o, model) {
                 if (o.kind === 'response') {
                     const out: FindingDraft[] = []
+                    // The proxy's own refusal of a target that is not an event stream (HTTP 415) states what it did; it presents nothing as a healthy stream, and R01 reports the content type.
+                    if (proxyRefusedContentType({ status: o.status, headers: lowerCased(o.headers) }) !== undefined) return out
                     const upStatus = header(o.headers, 'x-sse-upstream-status')
                     const upType = header(o.headers, 'x-sse-upstream-content-type')
                     const facts: Fact[] = []

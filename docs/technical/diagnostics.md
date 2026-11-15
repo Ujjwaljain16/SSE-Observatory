@@ -24,7 +24,7 @@ Without a contract the checks do not run. The coverage list says continuity coul
 
 | Rule | Finds | Needs |
 |---|---|---|
-| R01 `proto.content-type`, `http.status` | wrong media type or a non-200 status (errors); odd charset or redirect (not errors) | response |
+| R01 `proto.content-type`, `http.status` | wrong media type or a non-200 status (errors); odd charset or redirect (not errors). Through the proxy, a target that is not an event stream arrives as HTTP 415 and is reported as `proto.content-type` from the proxy's `X-SSE-Upstream-*` headers | response |
 | R02 `proto.framing` | what the SSE specification ignores or drops, one finding per kind with counts; severity follows the specification | violations |
 | R03 `proto.headers-hints` | headers that can cause buffering (content encoding, missing `Cache-Control: no-cache`) | response headers |
 | R04 `timing.first-event` | slow first byte or first event, split into connect, headers, first byte, first event | response |

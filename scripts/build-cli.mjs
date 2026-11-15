@@ -11,15 +11,16 @@
 
 import { build } from 'esbuild'
 import { spawnSync } from 'node:child_process'
-import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 // The public npm name is NOT claimed or checked yet; it is decided when you choose to publish.
 const PACKAGE_NAME = 'sse-doctor'
-const VERSION = '2.0.0'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+// The one place the version is written down is the root package.json; the bundle, the generated manifest and the app all read it from there.
+const VERSION = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')).version
 const out = path.join(root, 'dist-cli')
 
 // Clear what is inside, not the folder itself: a folder that is some process's working directory (a terminal left in dist-cli) cannot be removed on Windows (EBUSY), but its contents can.

@@ -1,5 +1,9 @@
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
+import { readFileSync } from 'node:fs'
+
+// Same define as vite.config.ts, so the unit tests see the version the app build would (src/core/version.ts).
+const { version } = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string }
 
 // Two projects: the React app runs under jsdom, while src/core, src/cli and src/fixtures run in plain Node. Core must
 // work without a DOM (it is shared with the CLI), so its tests must not be able to pass by accident because jsdom
@@ -9,6 +13,7 @@ const TEST_FILES = '*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'
 
 export default defineConfig({
     plugins: [react() as never],
+    define: { __APP_VERSION__: JSON.stringify(version) },
     test: {
         globals: true,
         coverage: {
