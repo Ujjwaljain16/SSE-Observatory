@@ -136,6 +136,7 @@ export const SCENARIO_SCHEMA: Schema = {
                 status: { type: 'integer', minimum: 100, maximum: 599 },
                 content_type: { type: 'string', minLength: 1 },
                 first_event_within_ms: { type: 'integer', minimum: 1 },
+                max_silence_ms: { type: 'integer', minimum: 1, description: 'The longest the stream may go without sending any byte, in milliseconds. After the last step the runner keeps the connection open and watches for this long (plus a small margin); a longer silence, or a stall.silent finding that opens, fails the check.' },
             },
             additionalProperties: false,
         },

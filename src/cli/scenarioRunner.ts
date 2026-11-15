@@ -29,6 +29,9 @@ export interface ScenarioRun {
 }
 
 const ENV_REF = /\$\{ENV:([A-Za-z_][A-Za-z0-9_]*)\}/g
+/** After the last step, expect.max_silence_ms keeps the connection open for the limit plus this margin (a tenth of it, at least 100 ms). */
+const SILENCE_MARGIN_MIN_MS = 100
+const SILENCE_MARGIN_FRACTION = 0.1
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
 /**
@@ -128,6 +131,7 @@ export async function runScenario(scenario: Scenario, file: string, io: CliIo, s
         const target = await resolveTarget(scenario, io, secrets, cleanup, new Set(allowEnv))
         const profile = profileOf(scenario)
         const records: CaptureRecord[] = []
+        const startedClock = performance.now()
         let events = 0
         let phase = ''
         const stream = createObservedStream({
@@ -174,10 +178,21 @@ export async function runScenario(scenario: Scenario, file: string, io: CliIo, s
                 check(`step ${index}: reconnect`, true, step.reconnect.resume_from_last_event_id === false ? 'without Last-Event-ID' : `with Last-Event-ID "${stream.lastId}"`)
             } else if ('wait' in step) await sleep(step.wait.ms)
         }
+        // expect.max_silence_ms: a silence needs time to show, and the analysis ends at the last record, so after the last step the
+        // connection stays open and observed for that long (plus a margin), and the analysis ends at the end of that time.
+        const maxSilence = scenario.expect?.max_silence_ms
+        let observedWindow = false
+        if (maxSilence !== undefined && stream.isRunning && !ended()) {
+            const margin = Math.max(SILENCE_MARGIN_MIN_MS, Math.round(maxSilence * SILENCE_MARGIN_FRACTION))
+            observedWindow = !(await waitFor(ended, maxSilence + margin)) // true when the whole time passed with the stream still going
+        }
         stream.flushObservations()
+        const observedEndT = performance.now() - startedClock
+        const finalPhase = phase
         stream.stop()
 
-        const endT = records.at(-1)?.t ?? 0
+        const lastRecordT = records.at(-1)?.t ?? 0
+        const endT = observedWindow ? Math.max(lastRecordT, observedEndT) : lastRecordT
         const analysis = analyze(records as EngineInput[], { profile, endT })
         // Gaps the scenario declares as expected (allow_gaps) are explained: their findings count neither for the gap check nor for
         // the severity gates. A gap finding is explained only if an entry covers every number in every one of its ranges.
@@ -200,6 +215,32 @@ export async function runScenario(scenario: Scenario, file: string, io: CliIo, s
             check('expect first event in time', took !== undefined && took <= exp.first_event_within_ms, took === undefined ? 'no event arrived' : `first event after ${Math.round(took)} ms, limit ${exp.first_event_within_ms} ms`)
         }
 
+        if (maxSilence !== undefined) {
+            // The longest stretch without any byte on one connection (a pause for a reconnect is not a silence), including the one that is still going
+            // when the observation ends. A heartbeat is a byte, so a stream that only sends heartbeats has no byte silence: its stall is the finding.
+            const lastByte = new Map<number, number>()
+            let longest = 0
+            for (const r of records) {
+                if (r.kind !== 'chunk') continue
+                const before = lastByte.get(r.conn)
+                if (before !== undefined) longest = Math.max(longest, r.t - before)
+                lastByte.set(r.conn, r.t)
+            }
+            const currentConn = records.reduce((n, r) => Math.max(n, r.conn), 0)
+            const lastOfCurrent = lastByte.get(currentConn)
+            const trailing = observedWindow && lastOfCurrent !== undefined ? Math.max(0, endT - lastOfCurrent) : 0
+            longest = Math.max(longest, trailing)
+            const stalls = analysis.findings.filter((f) => f.key.startsWith('stall.silent'))
+            const fmt = (ms: number) => `${Math.round(ms)} ms`
+            if (longest > maxSilence || stalls.length > 0) {
+                const parts = [...(longest > maxSilence ? [`no byte for ${fmt(longest)}${trailing === longest ? ' after the last one' : ''}, limit ${maxSilence} ms`] : []), ...stalls.map((f) => `${f.key}: ${f.summary}`)]
+                checks.push({ name: 'expect max silence', status: 'fail', message: parts.join(' | ') })
+            } else if (!observedWindow && finalPhase !== 'ended' && finalPhase !== 'failed') {
+                checks.push({ name: 'expect max silence', status: 'inconclusive', message: `the scenario closed the connection itself, so the silence after the last step could not be observed (longest before it: ${fmt(longest)}, limit ${maxSilence} ms)` })
+            } else {
+                checks.push({ name: 'expect max silence', status: 'pass', message: `longest silence ${fmt(longest)}, limit ${maxSilence} ms${observedWindow ? ', observed to the end of the time after the last step' : `, the stream ${finalPhase} before that time was over`}` })
+            }
+        }
         // what the scenario asks to verify; sequence checks without a declared contract are inconclusive, never a silent pass
         const needContract = (name: string, run: () => CheckResult): void => {
             if (!scenario.target.sequence) checks.push({ name, status: 'inconclusive', message: 'no sequence contract is declared (target.sequence), so continuity cannot be verified' })

@@ -10,7 +10,7 @@ The campaign's idea: more tests of the same shape find few bugs, so it uses **in
 |---|---|---|
 | B | Parser and framing: the parser against the specification (random streams, raw bytes, every 2- and 3-way split of the specification's examples), the proxy's framer against the parser, hostile input, observer on/off identity | done |
 | C | Rules and engine: every threshold at T-1, T and T+1, finding lifecycle, odd threshold values, evidence pointers, rule/fixture/twin coverage, odd sequence ids | done |
-| D3 | A scenario made from a capture, run against the faulty stream and its healthy twin | done, two gaps recorded (below) |
+| D3 | A scenario made from a capture, run against the faulty stream and its healthy twin | done; the two gaps it found (Q4a, Q4b) were decided by the owner and closed (see "Decided and done") |
 | E3 | Hostile text from a stream through every command and format, with a strict XML parser for JUnit | done |
 | F | The built command line as a process: exit codes, clean stdout, no stack traces, always stops, expands its own globs (`npm run doctor:contract`) | done |
 | A1, A5 | The fixture server's own log, and the four-way comparison (server, transport, parser, findings) on ten routes | done |
@@ -54,7 +54,7 @@ Assessed 2026-11-15 on `phase-15-campaign`, which holds everything that would sh
 2. Run the release-candidate workflow by hand on `v2` (Actions, "Release candidate") and read its summary; it publishes and deploys nothing.
 3. Smoke-test the Vercel preview of the release pull request: open the app, connect to a stream, open the Doctor, export a report; check `/docs/` and that the mock API is off.
 4. Decide the version: `package.json` says 0.0.1 and the command line says 2.0.0-dev.0; the tag would be `v2.0.0`.
-5. Decide which open questions to settle first. None is a release blocker by itself: each is pinned by a test and described above. The ones with the most effect on users are Q4 (a scenario made from a stall capture does not catch the stall), Q14 (what `--no-redact` writes) and Q6 (a silent redirect).
+5. Decide which open questions to settle first. None is a release blocker by itself: each is pinned by a test and described above. The ones with the most effect on users are Q14 (what `--no-redact` writes) and Q6 (a silent redirect).
 6. Open the pull request from `v2` to `main`, merge it, tag it, and write the release notes. Say in the notes what is **not** covered (the section "Not covered" below) and that the "under 2% CPU at 500 events/s" target is not demonstrated.
 
 **Rollback.** Revert the merge commit on `main`; Vercel redeploys the previous version (v1). Nothing in v2 changes stored data.
@@ -84,21 +84,7 @@ Assessed 2026-11-15 on `phase-15-campaign`, which holds everything that would sh
 
 ## Open decisions
 
-None of these is fixed. Each is pinned by a test so the behaviour is visible, and each needs a decision.
-
-### Q4a. A scenario made from a stall capture does not catch the stall
-
-A scenario collects the events the capture had and stops, so the silence that followed is never judged: it passes against the stalled stream. Test: `src/cli/__tests__/scenarioRoundTrip.test.ts` (`it.fails`, with a set-up test beside it).
-
-- **Option 1 (recommended):** an optional `expect.max_silence_ms` in the scenario schema (an additive, backward-compatible change), generated from stall findings, with the runner observing for that long after the last step.
-- **Option 2:** leave it, and say in the generated scenario's notes that a stall is not checked.
-
-### Q4b. A scenario made from a bad-response capture expects the bad response
-
-It expects the captured status and content type, so it passes on the fault and fails on the fix. The generated note tells the user to edit `expect`; a regression scenario that has to be edited to mean what it says is not one.
-
-- **Option 1 (recommended):** when the captured response was not a healthy event stream, expect a healthy one (200, `text/event-stream`) and say so in the notes.
-- **Option 2:** keep it and emit a failing check that states the choice.
+None of these is fixed (Q4a and Q4b were decided and are done: see "Decided and done" below). Each is pinned by a test so the behaviour is visible, and each needs a decision.
 
 ### Q12. A stall that ended with a closed connection stays open after a healthy reconnect
 
@@ -168,6 +154,17 @@ Pinned as known gaps in `src/cli/__tests__/security.encodings.test.ts` (each is 
 - A duplicate `seq` or a backwards `t` in a capture file is accepted without a warning; analysis does not fail.
 - Real v1 exports are still needed: the four samples were made by the v1 export code path, not downloaded from the running app.
 
+## Decided and done
+
+### Q4a. A scenario made from a stall capture did not catch the stall
+
+The scenario collected the events the capture had and stopped, so the silence that followed was never judged: it passed against the stalled stream. **Decided (option 1), done:** an optional `expect.max_silence_ms` (integer, 1 or more; the format stays version 1, `docs/public/schemas/sse-scenario-1.json` and `SCENARIO_SCHEMA` changed together), generated from the capture's `stall.silent` findings (the shortest limit among them, read from the finding's own statement of its threshold), and the runner keeps the connection open and observing for that long plus a margin after the last step, then analyses to the end of that time instead of to the last record. The check `expect max silence` fails when the longest stretch without a byte on one connection (the trailing one included) is longer than the limit, or a `stall.silent` finding was raised (this is how a heartbeats-only stall is caught). Scenarios without the field run as before. Tests: `src/cli/__tests__/scenarioRoundTrip.test.ts` (the scenario made from the lab's `f04-silent` and `f04-heartbeats` captures fails on the stalled fixture, with the server's own log showing the connection stayed open and silent for the observation time, and passes on the steady healthy twin `h01` at the same cadence; the same scenario without the field still passes on the stalled stream, as before), `src/cli/__tests__/scenarios.test.ts` (the runner: window, limit, a closed-by-the-scenario stream is inconclusive, a stream the server ends, the shipped `scenarios/ci` files unchanged), `src/core/scenario/__tests__` (schema, Ajv agreement, derivation).
+
+Limits that stay: the stall rule does not hand its limit over as data, so `toScenario` reads it from the finding's text ("The threshold was 1 s ...", `stallLimitMs`); a test pins the wording, and a `data.limitMs` on the finding would replace the parsing (a change in `src/core/diagnostics`, not made here). When a capture has stall findings of several kinds only the shortest limit is used, so a heartbeats-only stall with a longer limit than a byte stall in the same capture is not separately observed for its own length. A scenario's cadence is the capture's: a stream of another rhythm needs another value, and the generated note says so.
+
+### Q4b. A scenario made from a bad-response capture expected the bad response
+
+It expected the captured status and content type, so it passed on the fault and failed on the fix. **Decided (option 1), done:** when the captured response was not HTTP 200 with `text/event-stream`, the scenario expects 200 and `text/event-stream` and says in its notes that it is designed to verify the fix, not to reproduce the broken response. Tests: `scenarioRoundTrip.test.ts` (`f01-text-html` and `f01-404`: fails on the bad response, for the reason it was made for, and passes on `h01`) and `toScenario.test.ts` (every kind of bad response, and no note for a healthy one).
 ## Not covered
 
 - A real screen reader, Safari and mobile; a real CDN or reverse proxy buffering; the Vercel runtime; long soak runs; real network faults; CPU overhead on a quiet machine (the "under 2% CPU at 500 events/s" target is still **not demonstrated**, see the README).

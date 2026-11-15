@@ -69,7 +69,7 @@ describe('a scenario made from a capture fails on the fault it came from and pas
             expect(scenario.expect?.content_type).toBe('text/event-stream')
             const notes = (scenario.meta?.notes ?? []).join(' ')
             expect(notes).toMatch(/verify the fix/)
-            expect(notes).toMatch(/not reproduce/)
+            expect(notes).toMatch(/verify the fix, not to reproduce the broken response/)
         }, 60_000)
 
         it(`${fault}: the scenario made from a bad-response capture fails on the bad response and passes on the healthy twin h01`, async () => {
@@ -105,7 +105,10 @@ describe('a scenario made from a capture fails on the fault it came from and pas
         const connectionsOf = async (route: string, go: () => Promise<unknown>) => {
             const before = fixtures.groundTruth.connections.length
             await go()
-            return fixtures.groundTruth.connections.slice(before).filter((c) => c.route === route)
+            const mine = () => fixtures.groundTruth.connections.slice(before).filter((c) => c.route === route)
+            // the server notices the client's close a moment after the run returns
+            for (let i = 0; i < 100 && mine().some((c) => c.endedBy === 'open'); i++) await new Promise((resolve) => setTimeout(resolve, 20))
+            return mine()
         }
         /** When the server last wrote a complete event, and the writes it made after that. */
         const afterLastEvent = (c: (typeof fixtures.groundTruth.connections)[number]) => {
@@ -171,7 +174,7 @@ describe('a scenario made from a capture fails on the fault it came from and pas
             const { scenario } = scenarioFromLab()
             const { max_silence_ms: _removed, ...rest } = scenario.expect!
             const old = { ...scenario, expect: rest }
-            expect(JSON.stringify(old)).not.toContain('max_silence_ms')
+            expect(JSON.stringify(old.expect)).not.toContain('max_silence_ms')
             const run = await runAt(old, fault)
             expect(run.checks.map((x) => x.name)).not.toContain('expect max silence')
             expect(run.status, run.checks.map((x) => `${x.name}: ${x.status} ${x.message}`).join(' | ')).toBe('pass')
