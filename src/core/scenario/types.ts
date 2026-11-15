@@ -25,6 +25,8 @@ export interface ScenarioExpect {
     status?: number | undefined
     content_type?: string | undefined
     first_event_within_ms?: number | undefined
+    /** The longest the stream may go without a byte; the runner keeps observing for this long after the last step. */
+    max_silence_ms?: number | undefined
 }
 
 export type ScenarioStep =
