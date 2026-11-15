@@ -35,10 +35,22 @@ A full (not redacted) capture served by `replay` is not readable by web pages un
 |---|---|
 | 0 | passed |
 | 1 | an open finding at or above `--fail-on` |
-| 2 | wrong usage, or an input that is not a capture; also `--no-redact` together with a secret option ([why](#no-redact-and-secrets)) |
+| 2 | wrong usage, or an input that is not a capture, or a capture whose records are invalid (see below); also `--no-redact` together with a secret option ([why](#no-redact-and-secrets)) |
 | 3 | could not run (file unreadable, or the server never answered: a probe that got no response exits 3 whatever `--fail-on` says; or a redirect to another origin was refused because credentials are attached, [see](#redirects-to-another-origin)) |
 | 4 | inconclusive: no check failed, but a scenario check could not be decided |
 | 130 | interrupted |
+
+### A capture whose records are invalid
+
+`analyze`, `report`, `redact`, `compare`, `repro`, `curl`, `validate` and `replay` refuse a capture that repeats a `seq`, has a `seq` that goes down, or has a `t` that goes backwards (equal times are fine). They exit **2**, write nothing to stdout (so no JSON document, whatever `--format` says: there are no findings to report, and the schema describes findings), and print the problem to stderr, with the seq and the line of the first offending records:
+
+```
+"capture.sse-capture": Invalid capture: 1 problem in its records.
+  - seq 12 is used twice: line 15 repeats the seq of line 14.
+A capture needs a distinct, increasing seq on every record ... It was not analysed, so nothing can be said about the stream from it. Fix or re-record the capture.
+```
+
+Five problems are listed, then "and N more". The same words appear when the Doctor refuses to open the file. The rules are in [Capture format](/technical/capture-format).
 
 ## JSON output
 

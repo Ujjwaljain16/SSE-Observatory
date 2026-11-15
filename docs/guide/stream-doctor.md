@@ -87,7 +87,9 @@ A library of recordings kept in this browser (up to 20, 20 MB each, **not redact
 - **Open a file** reads an `.sse-capture` (from the command line or a teammate) or an older `.sse-record`; a file that is
   empty, not a capture, over the size limit or damaged is refused or read as far as it goes, with the reason. An older
   recording has event times only, so checks that need more say *not evaluated*. A file whose hash does not match is
-  flagged as changed after it was written.
+  flagged as changed after it was written. A file whose records repeat a `seq`, whose `seq` goes down or whose `t` goes
+  backwards is refused with the same message the command line prints (what is wrong and at which line), not opened as
+  if it were healthy.
 - **Analyse** runs the same checks on a saved or opened capture and lists its findings and what could not be evaluated.
 - **Compare** two captures (tick both) lists where their behaviour differs. Which layer caused a difference cannot be told from two recordings alone, and the page says so.
 

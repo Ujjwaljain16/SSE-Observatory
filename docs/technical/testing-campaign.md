@@ -82,6 +82,8 @@ Assessed 2026-11-15 on `phase-15-campaign`, which holds everything that would sh
 | 10 | CLI | Every value in the URL's query was registered as a secret, so a harmless `?scale=0.05`, `?limit=1000` or `?debug=true` made each `0.05`, `1000` or `true` in the output a placeholder, including inside JSON numbers: `--format json` output and the saved capture could be invalid (found as a flake in the canary sweep). A value is now a secret when its name says so or its shape does (12+ characters mixing letters and digits) | same commit |
 | 19 | CLI scenario runner | After `disconnect: server` the runner's own client reconnects at once, so the events of the new connection arrive while a `reconnect` step with `after_ms` waits; the next `collect_events` counted only events that came after it started and waited for ones already delivered ("the stream ended after 1"). A scenario made from a capture taken in the app (which waits about a second to reconnect) therefore **failed on the healthy twin** of the stream it came from. Found by the journey; the scenarios shipped with the tool use `after_ms: 0`, where the wait is too short to show it | the commit that adds `scenarioReconnectWait.test.ts` |
 | 9 | CLI | `probe --no-redact --out` wrote a capture that could not be read back, redacted or replayed: the scrub of the secrets you gave the command replaced part of the base64 of an echoed secret inside the wire bytes. The capture is now scrubbed field by field before it is written, leaving only the base64 of the wire bytes as recorded | same commit |
+| 19 | Mock replay of a v1 recording | The replay sent the recording's internal storage uuid as the SSE `id:`, dropped the server's own id (`sseId`), never sent `event:`, and merged the event name into the JSON data as a `type` field (so the bytes a client got were not the bytes the recording held). A client that resumed with `Last-Event-ID` sent a uuid that no real server ever issued | the commit that rewrites the "OPEN QUESTION" test in `importV1.test.ts` |
+| 20 | Capture files | A capture whose records repeated a `seq`, whose `seq` went down or whose `t` went backwards was read without a warning and analysed as if it were a recording: a file edited or merged by hand could come out with no findings | the commit that adds `integrity.test.ts` |
 
 ## Owner decisions (2026-11-15) and their status
 
@@ -203,8 +205,7 @@ Pinned as known gaps in `src/cli/__tests__/security.encodings.test.ts` (each is 
 
 ### Other open points from the same slices
 
-- Mock replay of a v1 recording emits the recording's internal uuid as the event id and merges the event name into the JSON data's `type` (pinned, "OPEN QUESTION" in `importV1.test.ts`).
-- A duplicate `seq` or a backwards `t` in a capture file is accepted without a warning; analysis does not fail.
+- (Decided and implemented, see Q21 and Q22 below.) Mock replay of a v1 recording used the internal uuid as the event id and merged the event name into the JSON data; a duplicate `seq` or a backwards `t` in a capture file was accepted.
 - Real v1 exports are still needed: the four samples were made by the v1 export code path, not downloaded from the running app.
 
 ## Decided and implemented
@@ -235,6 +236,26 @@ With the switch off the proxy still sent `: sse-proxy-ping`, which the client la
 - **Now with `PROXY_DIAGNOSTICS=0`:** no `X-SSE-*` header; no `sse-proxy*` comment (ping, meta, `hb`, `cap`, `error`); the response starts by flushing the headers, so its first bytes are the upstream's; the keep-alive that holds the connection open stays as a plain `: keep-alive` (outside the namespace; the client cannot tell it from the upstream's, which is the documented meaning of the switch); at the duration cap only `retry: 1000` is written; a started stream that the proxy ends just ends, with no notice.
 - **Tests:** the existing assertion in `streamProxy.test.ts` ("PROXY_DIAGNOSTICS=0 ...") was changed from "starts with the ping" to "no text in the `sse-proxy` namespace at all"; new tests for the flushed headers, the error notice, the cap and the byte limit with diagnostics off; the "PROXY_DIAGNOSTICS=0" block of `proxyInTheLoop.test.ts` now asserts that no comment in the proxy's namespace is read by the client, on a healthy and a silent upstream, and that R13 and `stall.silent:origin` stay silent.
 - **Not verified:** that every hosting platform starts a response whose first body byte arrives later (the headers are flushed, the first byte is the upstream's); the Vercel runtime was not exercised.
+
+### Q21. A v1 recording replays its own ids and names, never its storage uuid (decided)
+
+**Decision (owner):** the storage uuid is never the SSE `id:`; the original SSE id and event name are preserved independently where the recording has them; where v1 did not retain a field, say so and do not fabricate it.
+
+- **What a v1 event holds:** `id` (the viewer's own uuid), `sseId` (the server's `id:`, absent when it sent none), `type` (the `event:` name, `message` when it sent none), `data`, `deltaMs`. **Now:** `id:` is `sseId` and only that; `event:` is `type` (except `message`); `data` is sent byte for byte, with nothing merged into it. A recording without `sseId` or a name replays with no `id:` and no `event:` line.
+- **Not retained by v1, and so not replayed:** the id of an event the server sent without one; whether an event named `message` had an explicit `event: message` (v1 stores `message` for both, so no `event:` line is written, which a client cannot tell from the explicit one); anything else on the wire (comments, `retry:`, chunking, headers). A hand-written file that has only `id` (the form the mock page used to show) now replays with no id line.
+- **`Last-Event-ID`:** the raw `.sse-record` upload ignores the header (every request replays from the start, whatever the id), so it never pretends to resume. Resumption works through the capture path (a v1 recording imported as a capture, `honorLastEventId=1`), and only on real ids: an id that is not in the recording, and a recording with no ids at all, replay from the start (the default `unknownId`).
+- **Tests:** `importV1.test.ts` ("the mock server's own path for a v1 recording": with ids and names, the data unchanged, without them, the capture path agrees, resumption), `mockSession.test.ts` (over HTTP with a `Last-Event-ID` header), `capturePlan.test.ts`. Three pins that recorded the old behaviour were changed to this one (`importV1.test.ts` "OPEN QUESTION", `mockSession.test.ts` type merge, `capturePlan.test.ts` "keeps old v1 uploads exactly as they were").
+- **Not established:** the four samples were made by running the v1 export code, not downloaded from the running v1 app, so compatibility with every real v1 file is not shown. `e2e/mock.spec.ts` still has a comment saying the type is merged into the payload (the assertion it sits next to does not depend on it).
+
+### Q22. An invalid capture is refused, not analysed (decided)
+
+**Decision (owner):** a duplicate `seq` or a backwards `t` must not pass as healthy; add capture-integrity validation with a clear diagnostic or an invalid-capture result.
+
+- **Rules (exact):** every record has a text `kind` and finite numbers `seq` and `t`; a `seq` is never used twice; `seq` never goes down from one record to the next; `t` never goes down from one record to the next (equal is legal, no tolerance). A seq that skips or does not start at 0 is legal. Defined in `lib/capture/integrity.js` (one implementation for the command line, the Doctor and the mock server) and documented in [Capture format](capture-format.md).
+- **Where it runs:** `parseCapture` still reads the file as far as it goes and returns `problems` (with line numbers); `loadCapture` (CLI) and `loadCaptureText` (Doctor) refuse a capture with problems, and so does `sessionFromCapture` (the mock server and `replay`). CLI: exit 2 ("invalid input"), the message on stderr (what, which seq, which line, "not analysed"), nothing on stdout, so no JSON document and the output schema is unchanged. `analyze`, `report`, `redact`, `compare`, `repro`, `curl`, `validate` and `replay` all do it.
+- **Legitimate captures checked:** every capture in `public/lab`, every v1 sample and the damaged-gap v1 imports, the captures `probe --out` writes for `h01`, `f05-drops` (several connections) and `f06-skips`, and the fixture round trips pass. None tripped the check.
+- **Pins changed:** `fileEdge.test.ts` "a duplicate seq is read as it is... no warning" and "a time that goes backwards is read as it is" now also assert the reported problems. The test that inserts unknown record kinds used `seq` 1 000 000 + i in the middle of the file (a shape no writer produces); it now gives them `r.seq + 0.5`. `captureLibrary.test.ts` tampered a middle record's time to test the hash; that file is now refused for its order, so the hash test tampers the last record and a new test covers the refusal.
+- **Tests:** `integrity.test.ts`, `captureIntegrity.test.ts` (the CLI, per command, with a probe round trip).
 
 ## Not covered
 
