@@ -86,9 +86,20 @@ describe('opening a file', () => {
 
     it('says a tampered file does not match its hash, and still reads it', () => {
         const lines = sample().split('\n')
-        lines[2] = lines[2]!.replace(/"t":\d+/, '"t":999999')
+        // the LAST record is changed to a later time: a tamper that keeps the records in order (changing a middle record would also put the
+        // times out of order, and that file is refused for it: see the next test)
+        const last = lines.map((l, i) => (/"t":\d+/.test(l) ? i : -1)).filter((i) => i > 0).at(-1)!
+        lines[last] = lines[last]!.replace(/"t":\d+/, '"t":999999')
         const r = loadCaptureText(lines.join('\n'))
         expect(r.ok && r.integrity).toBe('mismatch')
+    })
+
+    it('a tampered file whose times now go back is refused for that, in the words the command line uses', () => {
+        const lines = sample().split('\n')
+        lines[2] = lines[2]!.replace(/"t":\d+/, '"t":999999')
+        const r = loadCaptureText(lines.join('\n'))
+        expect(r.ok).toBe(false)
+        expect(!r.ok && r.error).toMatch(/^Invalid capture: .*time goes backwards at seq/s)
     })
 
     it('imports an older .sse-record recording and says what it cannot show', () => {

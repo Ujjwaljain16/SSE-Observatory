@@ -93,7 +93,9 @@ A library of recordings kept in this browser (up to 20, 20 MB each, **not redact
 - **Open a file** reads an `.sse-capture` (from the command line or a teammate) or an older `.sse-record`; a file that is
   empty, not a capture, over the size limit or damaged is refused or read as far as it goes, with the reason. An older
   recording has event times only, so checks that need more say *not evaluated*. A file whose hash does not match is
-  flagged as changed after it was written.
+  flagged as changed after it was written. A file whose records repeat a `seq`, whose `seq` goes down or whose `t` goes
+  backwards is refused with the same message the command line prints (what is wrong and at which line), not opened as
+  if it were healthy.
 - **Analyse** runs the same checks on a saved or opened capture and lists its findings and what could not be evaluated.
 - **Compare** two captures (tick both) lists where their behaviour differs. Which layer caused a difference cannot be told from two recordings alone, and the page says so.
 
@@ -124,7 +126,9 @@ so instead of doing nothing.
 In **Export**, a capture to share or the smallest capture can be played back with **Replay in Mock mode**: the capture
 goes to the app's own mock server and the viewer connects to the replay. The app records what happened on the wire, not what
 events said, so each body is a placeholder of the original size (carrying only the numbers your profile reads); the
-timing, ids, event names and reconnects are the recording's. The Doctor says it is a replay. The mock server is on in
+timing, ids, event names and reconnects are the recording's. The Doctor says it is a replay. The command line makes the
+same placeholder copy: `sse-doctor replay <capture>` replays the downloaded file and says it is a synthetic replay, not
+a byte-exact one. The mock server is on in
 development and off on a public deployment unless it was enabled for it.
 
 ### Privacy and retention
@@ -189,7 +193,7 @@ file is made in your browser and saved to your computer; nothing is uploaded.
 |---|---|
 | Report (Markdown, HTML or JSON) | the findings, the evidence and what could not be determined, ready for a ticket |
 | For an issue or pull request | a short body to paste: the verdict, the findings in a table, what was observed for the worst few, how to reproduce, and the full report folded away. Nothing is posted; you paste it. [Details](/guide/cli#team-reports) |
-| Capture to share | the recording as an `.sse-capture` file with secrets replaced, which the [command line](/guide/cli) can analyse and replay |
+| Capture to share | the recording as an `.sse-capture` file with secrets replaced, which the [command line](/guide/cli) can analyse and replay (a synthetic replay: ids, names, order, timing and body sizes are the recording's, the bodies are placeholders, see [Replaying a capture from the app](/guide/cli#replaying-a-capture-from-the-app-a-synthetic-replay)) |
 | curl command | repeats the request; header and query values are not in it, only the names of the environment variables to set |
 | Test scenario | a [scenario](/guide/cli-ci) made from this capture, so what you saw becomes a check that runs in CI |
 | Smallest capture | removes records until nothing more can go and a finding you pick still shows: the minimal case to attach to a bug |

@@ -46,7 +46,7 @@ export function cli(args: string[], options: { env?: Record<string, string>; lim
     })
 }
 
-export interface Replay { url: string; stop(): Promise<void> }
+export interface Replay { url: string; stop(): Promise<void>; stdout(): string; stderr(): string }
 
 /** `sse-doctor replay <capture>` as a process; resolves when it has printed the address it serves on. */
 export function startReplay(capturePath: string, extra: string[] = []): Promise<Replay> {
@@ -63,7 +63,7 @@ export function startReplay(capturePath: string, extra: string[] = []): Promise<
             const m = /(http:\/\/127\.0\.0\.1:\d+\/)/.exec(stdout)
             if (!m) return
             clearTimeout(timer)
-            resolve({ url: m[1]!, stop: async () => { child.kill('SIGKILL'); await closed } })
+            resolve({ url: m[1]!, stop: async () => { child.kill('SIGKILL'); await closed }, stdout: () => stdout, stderr: () => stderr })
         })
         child.on('error', (e) => { clearTimeout(timer); reject(e) })
         child.on('close', (code) => { clearTimeout(timer); reject(new Error(`replay exited (${code}) before it served: ${stdout} ${stderr}`)) })

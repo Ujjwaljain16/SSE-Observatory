@@ -15,6 +15,7 @@ import { CAPABILITY_EVIDENCE, type Capability } from '../diagnostics/rule'
 import type { StreamProfile } from '../diagnostics/thresholds'
 import type { ObservationKind } from '../observe/observation'
 import { sha256Hex } from './sha256'
+import { recordShapeProblem, validateCaptureIntegrity, type CaptureProblem } from './integrity'
 
 export const CAPTURE_FORMAT = 'sse-capture'
 export const CAPTURE_VERSION = '2.0'
@@ -136,6 +137,12 @@ export interface ParsedCapture {
     integrity: IntegrityStatus
     /** Things a reader should tell the user: a cut-off last line, a missing footer, a newer minor version. */
     warnings: string[]
+    /**
+     * What is wrong with the records themselves: a repeated or decreasing `seq`, a `t` that goes backwards. The file is still read as far as it
+     * goes (so a tool can show the damage), but a capture with problems is not analysed: the command line and the Doctor refuse it.
+     * The integrity hash is about tampering after writing; this is about a file that was written wrong, and the hash can be fine for it.
+     */
+    problems: CaptureProblem[]
 }
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -158,6 +165,7 @@ export function parseCapture(text: string): ParsedCapture {
     const warnings: string[] = []
     const bodyRaw: string[] = []
     const records: CaptureRecord[] = []
+    const recordLines: number[] = []
     let footer: CaptureFooter | undefined
     for (let i = 1; i < raw.length; i++) {
         const line = raw[i]!
@@ -169,10 +177,10 @@ export function parseCapture(text: string): ParsedCapture {
         }
         if (!isObject(value)) throw new CaptureFormatError('a record must be a JSON object', i + 1)
         if (isObject(value.footer)) { footer = value.footer as unknown as CaptureFooter; continue }
-        if (typeof value.kind !== 'string' || typeof value.seq !== 'number' || typeof value.t !== 'number') {
-            throw new CaptureFormatError('a record needs "kind", "seq" and "t"', i + 1)
-        }
+        const shape = recordShapeProblem(value)
+        if (shape !== undefined) throw new CaptureFormatError(shape, i + 1)
         records.push(value as unknown as CaptureRecord)
+        recordLines.push(i + 1)
         bodyRaw.push(line)
     }
     if (!footer) warnings.push('the capture has no footer (it was not finished); counts and the integrity check are unavailable')
@@ -181,5 +189,5 @@ export function parseCapture(text: string): ParsedCapture {
     let integrity: IntegrityStatus = 'absent'
     if (footer?.integrity) integrity = footer.integrity.value === integrityOf(bodyRaw) ? 'ok' : 'mismatch'
     if (integrity === 'mismatch') warnings.push('the integrity hash does not match: the records were changed after the capture was written')
-    return { capture: { header: header as unknown as CaptureHeader, records, footer }, integrity, warnings }
+    return { capture: { header: header as unknown as CaptureHeader, records, footer }, integrity, warnings, problems: validateCaptureIntegrity(records, { lines: recordLines }) }
 }
