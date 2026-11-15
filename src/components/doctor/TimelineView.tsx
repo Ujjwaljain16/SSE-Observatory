@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Bookmark as BookmarkIcon, Trash2 } from 'lucide-react'
 import type { Theme } from '../../types'
 import type { DoctorView } from '../../doctor/doctorSession'
@@ -34,8 +34,14 @@ export default function TimelineView({ theme, streamId, view }: Props) {
     const [marks, setMarks] = useState<Bookmark[]>([])
     const [label, setLabel] = useState('')
     const [problem, setProblem] = useState('')
+    // The bookmarks come from IndexedDB a moment later; a read that finishes after the view is gone must not touch state.
+    const mounted = useRef(true)
+    useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
     const reload = useCallback(async () => {
-        try { setMarks(await listBookmarks(captureId)) } catch (err) { setProblem(err instanceof Error ? err.message : String(err)) }
+        try {
+            const found = await listBookmarks(captureId)
+            if (mounted.current) setMarks(found)
+        } catch (err) { if (mounted.current) setProblem(err instanceof Error ? err.message : String(err)) }
     }, [captureId])
     useEffect(() => { void reload() }, [reload])
     const mark = async () => {
@@ -46,7 +52,7 @@ export default function TimelineView({ theme, streamId, view }: Props) {
             keepOnMark(streamId, view, text) // a copy of the recording at this moment, if the flight recorder is on
             setLabel('')
             await reload()
-        } catch (err) { setProblem(err instanceof Error ? err.message : String(err)) }
+        } catch (err) { if (mounted.current) setProblem(err instanceof Error ? err.message : String(err)) }
     }
     const shown = timeline.connections.slice(-MAX_ROWS)
     const span = Math.max(timeline.endT, 1)
