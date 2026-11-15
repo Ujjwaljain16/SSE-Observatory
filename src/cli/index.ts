@@ -10,14 +10,13 @@ import { CliError, EXIT, type CliIo } from './io'
 import { SecretRegistry, scrubbedIo } from './secretRegistry'
 import { selftestChecks } from './selftest'
 import { sanitizeText } from './sanitize'
+import { toolVersion } from '../core/version'
 
 export { EXIT } from './io'
 export type { CliIo } from './io'
 
-/** Injected by scripts/build-cli.mjs at bundle time; undefined when running from source (tests). */
-declare const __VERSION__: string | undefined
-
-export const version = (): string => (typeof __VERSION__ === 'undefined' ? 'dev' : __VERSION__)
+/** The package.json version, injected at bundle time by scripts/build-cli.mjs ('dev' only when running the source with no build). */
+export const version = (): string => toolVersion()
 
 const HELP = `sse-doctor ${version()}
 
