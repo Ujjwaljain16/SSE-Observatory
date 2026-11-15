@@ -49,7 +49,7 @@ The panel has seven tabs. **Findings** is described above. **Request**, **Flow**
 
 ### Request
 
-One entry per connection attempt, newest first, each with what was asked and what came back:
+One entry per connection, newest first, each with what was asked and what came back. An entry is numbered by the connection it is (1, 2, 3, in the order the client made them), with the client's retry counter in brackets ("Connection 3 (retry 1)"; see the Timeline):
 
 - **Request**: the method and the URL as recorded (credentials and query values are already replaced), the names of the request headers that were sent, and the `Last-Event-ID` the attempt resumed from. Header *values* are never recorded, only names.
 - **Response**: the status, the content type, whether there was a redirect, and the response headers the Doctor keeps (the ones that explain buffering, caching and proxy behaviour: `Cache-Control`, `Content-Encoding`, `Via`, `X-Accel-Buffering`, the proxy's own `X-SSE-*` tags and a few more). A cross-origin response only shows the headers its server exposes with CORS, so a short list can mean that.
@@ -70,11 +70,17 @@ Under the drawing, **Where the time went** says in plain sentences what was meas
 
 ### Timeline
 
-One row per connection attempt: how long it lived, each event as a tick, each comment line as a dot (filled from the origin,
-hollow from the proxy), and a dashed line for the wait before the next attempt. The table under it says the same in words:
-status and how long the headers took, time to the first event, the longest wait between byte arrivals, why it ended, the
-`Last-Event-ID` it resumed from, and how long the client waited (and what the server's `retry:` asked for). That is the
-place to check that a reconnect sent the id you expect.
+One row per connection, numbered in the order the client made them (#1, #2, #3, ...): how long it lived, each event as a tick,
+each comment line as a dot (filled from the origin, hollow from the proxy), and a dashed line for the wait before the next
+attempt. The table under it says the same in words: the **Connection** number, the **Retry** counter, status and how long the
+headers took, time to the first event, the longest wait between byte arrivals, why it ended, the `Last-Event-ID` it resumed
+from, and how long the client waited (and what the server's `retry:` asked for). That is the place to check that a reconnect
+sent the id you expect.
+
+**Retry** is the client's own counter of retries in a row: 0 for the first connection, 1 for the first retry. It starts again
+after a connection that opened, so it can repeat from row to row (a stream that is dropped three times after opening reads
+Connection 1 to 4 with Retry 0, 1, 1, 1) and is not the row number. Before this was changed the row label was that counter,
+and three different rows could all read "#2".
 
 **Bookmarks** mark a moment (a label and the time) and show on the timeline. They stay in this browser with the recording
 and are copied when you save the recording to the library; they are not part of an exported file.
@@ -92,6 +98,24 @@ A library of recordings kept in this browser (up to 20, 20 MB each, **not redact
   if it were healthy.
 - **Analyse** runs the same checks on a saved or opened capture and lists its findings and what could not be evaluated.
 - **Compare** two captures (tick both) lists where their behaviour differs. Which layer caused a difference cannot be told from two recordings alone, and the page says so.
+
+### Raw values, and what is redacted
+
+The live views show what the stream sent, **as received**. They say so in one sentence, **Raw values — as received, not redacted.**, on each view that
+displays recorded values: the Findings list and every raw record opened from an evidence chip (also in a capture you analyse), the Request tab (response
+header values, `Last-Event-ID`), the Timeline (the ids a connection resumed from), the Sequence tab (event ids and numbers), the Profile tab's list of
+fields in recent events (sample values), and the events list. So a token that a stream uses as an event id is on screen exactly as it arrived.
+
+- **Redacted:** every export (report, capture to share, curl command, scenario, smallest capture), made from a redacted copy; the request URL in the
+  recording (credentials and query values are replaced when it is recorded; the Request tab shows that URL as recorded); and request header values, which are
+  never recorded at all.
+- **Not redacted:** everything above, on screen; a saved capture in the library (see Captures); the flight recorder's copies; and the Full local capture.
+
+**Copying.** The one place the app copies recorded data to the clipboard is **Copy** on an event in the events list. It does not copy at once: a warning
+says the value is shown as received, not redacted, and may contain secrets, with **Cancel** (focus starts there) and **Copy anyway**. **Escape**, a click outside
+or Cancel copies nothing. Copy anyway puts exactly the received event data on the clipboard, nothing changed. The Doctor does not guess which values are
+sensitive: every copy of a raw value asks, every time. The **Copy** in a finding's "Check next" copies a fixed command with a placeholder (`$URL`), not a
+recorded value, so it does not ask, and exports never ask because they are already redacted.
 
 ### From a finding to the event, and to a replay
 

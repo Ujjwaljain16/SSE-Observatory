@@ -165,18 +165,6 @@ The limit is three times the 95th-percentile gap of the stream's own history. Wi
 
 Not done: option 3 (also scrub the decoded wire bytes), which is redaction under another name and defeats a byte-exact capture. The field-by-field scrub in `saveObserved` stays as a second layer; with the refusal it has nothing to scrub in practice.
 
-### Q18. The Timeline's attempt label repeats
-
-After a connection that opened, the client's retry counter restarts, so `f05-drops` rows read `#1, #2, #2, #2`. Pinned in `e2e/doctor.fixtures.spec.ts`. Option 1: number the rows by connection and show the retry counter in its own column. Option 2: rename the column "Retry".
-
-### Q19. The live Doctor shows data as recorded
-
-The Sequence view lists event ids as received, so a JWT used as an event id is on screen, and the raw-record chips are unredacted (a local recording). Every export redacts it. Option 1: redact ids in the views with the same redactor. Option 2: label the views "as received, not redacted". Option 3: accept it, since it is the user's own screen.
-
-### Q20. Cookie and custom-header secrets cannot be sent from the UI
-
-The app has no input for them, so the browser sweep cannot plant them; the unit and command-line sweeps do. Add inputs if the browser should cover them.
-
 ### Q6. A redirect to another origin drops the secrets silently (DECIDED, IMPLEMENTED)
 
 **Decision (owner):** refuse cross-origin redirects when secret-bearing options are present; provide `--follow-redirects` as an explicit opt-in with a warning that names the credentials that will not be forwarded; same-origin redirects continue; never forward authorization headers or custom secret headers to an untrusted origin.
@@ -230,6 +218,27 @@ With the switch off the proxy still sent `: sse-proxy-ping`, which the client la
 - **Now with `PROXY_DIAGNOSTICS=0`:** no `X-SSE-*` header; no `sse-proxy*` comment (ping, meta, `hb`, `cap`, `error`); the response starts by flushing the headers, so its first bytes are the upstream's; the keep-alive that holds the connection open stays as a plain `: keep-alive` (outside the namespace; the client cannot tell it from the upstream's, which is the documented meaning of the switch); at the duration cap only `retry: 1000` is written; a started stream that the proxy ends just ends, with no notice.
 - **Tests:** the existing assertion in `streamProxy.test.ts` ("PROXY_DIAGNOSTICS=0 ...") was changed from "starts with the ping" to "no text in the `sse-proxy` namespace at all"; new tests for the flushed headers, the error notice, the cap and the byte limit with diagnostics off; the "PROXY_DIAGNOSTICS=0" block of `proxyInTheLoop.test.ts` now asserts that no comment in the proxy's namespace is read by the client, on a healthy and a silent upstream, and that R13 and `stall.silent:origin` stay silent.
 - **Not verified:** that every hosting platform starts a response whose first body byte arrives later (the headers are flushed, the first byte is the upstream's); the Vercel runtime was not exercised.
+
+### Q18. The Timeline's connection labels (decided: number by connection, show the retry counter separately)
+
+After a connection that opened, the client's retry counter restarts, so the rows of `f05-drops` read `#1, #2, #2, #2`. **Decision:** number the connection rows by connection attempt and show the retry counter separately.
+
+- **Now:** each row is labelled `#N`, N counting connections from 1 in the order the client made them (the `conn` index of the recording, plus one, so a recording that no longer holds the first connections still numbers the rest truthfully). The retry counter is its own column, **Retry** (0 for the first connection, 1 for the first retry; "–" when the recording no longer has the connect record). The drawing's row labels use the connection number. The screen-reader sentence reads "connection 3, retry 1, status 200, ...". The Request tab uses the same numbering: "Connection 3 (retry 1): 200". For `f05-drops` the rows read `#1, #2, #3, #4` with Retry `0, 1, 1, 1`.
+- **Tests:** `src/doctor/__tests__/timeline.test.ts` ("numbering": the f05-drops shape, retries that pile up and then restart, a recording that starts at a later connection), `requestInspector.test.ts`, `src/components/__tests__/viewers.test.tsx` (the table's headings and cells). The pin in `e2e/doctor.fixtures.spec.ts` (`f05-drops`) recorded the old label (`#1, #2, #2, #2`); **it was changed to the decided labels (`#1` to `#4`, Retry `0, 1, 1, 1`)**, and it now also checks that the Nth row's "Resumed from id" is the id the server's own log shows on its Nth request.
+- **Not changed:** the health strip's "Connection" note still reads `attempt N`, where N is the retry counter plus one of the current connection (it is the counter, not a row label).
+
+### Q19. The live Doctor shows data as recorded (decided: keep the exact values, label them, warn before copying)
+
+The Sequence view lists event ids as received, so a JWT used as an event id is on screen, and the raw-record chips are unredacted (a local recording). Every export redacts it. **Decision:** label the live views "Raw values — as received, not redacted."; show a warning before copying sensitive values; keep the exact received values (no redaction on screen).
+
+- **Label** (one constant, `RAW_VALUES_LABEL` in `src/utils/rawValues.ts`, drawn by `RawValuesLabel`): the Findings list and each raw record opened from an evidence chip, the Request, Timeline and Sequence tabs, the Profile tab's "Fields in recent events", and the events list. Not labelled (no recorded values on them): the Flow tab, the health strip, the Captures tab outside its analysis. Not labelled and outside the Doctor: the trace dialog, followed fields and the diff view of the main app.
+- **Warning** (`RawCopyButton`, `RawCopyDialog`): "sensitive" is not guessed. Every copy of a raw recorded value asks, every time, unless the copy is of something already redacted (the exports, which never copy through this path). The only such copy in the app is **Copy** on an event in the events list: it opens an alert dialog (focus on Cancel, Tab kept inside, Escape or a click outside cancels, focus returns to the button), and "Copy anyway" writes exactly `event.data`. The Doctor's own Copy (a finding's "Check next") copies a fixed command with a `$URL` placeholder, which is not a recorded value, so it does not ask.
+- **Tests:** `src/components/__tests__/rawValues.test.tsx` (the label's exact text; cancel, Escape and a click outside copy nothing; Copy anyway hands over the value byte for byte; focus and Tab; the label on each view; the command Copy is unchanged), `e2e/doctor.raw.spec.ts` (the labels in a real browser, in the events list and every tab; the warning; the clipboard read back from the browser holds the sentinel until Copy anyway and then exactly the server's data; an axe scan of the dialog). The canary spec's comment about the Sequence view was updated; its assertion (the id is shown as received) is unchanged.
+- **Open:** a value can still be selected and copied from the screen by hand, which asks nothing; the warning covers the app's own Copy buttons.
+
+### Q20. Cookie and custom-header secrets cannot be sent from the UI (decided: nothing built)
+
+The app has no input for them, so the browser sweep cannot plant them; the unit and command-line sweeps do. **Decision:** do not add new UI inputs in v2.0. Nothing was built; the cookie and custom-header cases stay covered by the unit and command-line sweeps (`artifacts.canary.test.ts`, `security.canary.test.ts`).
 
 ### Q21. A v1 recording replays its own ids and names, never its storage uuid (decided)
 

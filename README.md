@@ -41,7 +41,7 @@ Says what looks wrong with a stream and shows the evidence: a stream that went q
 
 ![Stream Doctor findings](./public/screenshots/doctor-findings.png)
 
-One row per connection attempt, with the `Last-Event-ID` each one resumed from and how long the client waited:
+One row per connection, numbered in order, with the retry counter, the `Last-Event-ID` each one resumed from and how long the client waited:
 
 ![Reconnect timeline](./public/screenshots/doctor-timeline.png)
 
