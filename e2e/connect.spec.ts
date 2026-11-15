@@ -53,12 +53,11 @@ test.describe('SSE-Tester E2E', () => {
         await page.getByTestId('connect-button').click();
 
         await expect(page.locator('text=Connected').first()).toBeVisible({ timeout: 10000 });
-        await page.waitForTimeout(5000);
 
-        const eventStat = await page.getByTestId('event-count').innerText();
-        const countMatch = eventStat.match(/(\d+)/);
-        const count = countMatch ? parseInt(countMatch[1]) : 0;
-        expect(count).toBeGreaterThan(100);
+        // Poll instead of sleeping: on a cold dev server the filter worker takes a few seconds to compile, and the
+        // count only reflects events once it is up, so a fixed 5 s sleep read 0 on slow runners.
+        const count = async () => Number((await page.getByTestId('event-count').innerText()).match(/(\d+)/)?.[1] ?? 0);
+        await expect.poll(count, { timeout: 20000, intervals: [500] }).toBeGreaterThan(100);
     });
 
     test('handles 1MB+ massive payloads gracefully without crashing', async ({ page }) => {

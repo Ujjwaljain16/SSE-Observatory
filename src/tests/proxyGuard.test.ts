@@ -100,6 +100,24 @@ describe('isTrustedBrowserRequest', () => {
     })
 })
 
+describe('isTrustedBrowserRequest: a rebound name in development (S19)', () => {
+    const req = (headers: Record<string, string>) => ({ headers })
+    it('same-origin means nothing when the page reached the server under a name that is not ours', () => {
+        expect(isTrustedBrowserRequest(req({ 'sec-fetch-site': 'same-origin', host: 'evil.example:3000' }), dev)).toBe(false)
+        expect(isTrustedBrowserRequest(req({ 'sec-fetch-site': 'same-origin', host: 'evil.example' }), dev)).toBe(false)
+        expect(isTrustedBrowserRequest(req({ 'sec-fetch-site': 'same-site', host: '169.254.169.254' }), dev)).toBe(false)
+    })
+    it('loopback names and the host of a configured origin are ours', () => {
+        for (const host of ['localhost:3001', '127.0.0.1:3000', '[::1]:3000', 'app.localhost:3001']) expect(isTrustedBrowserRequest(req({ 'sec-fetch-site': 'same-origin', host }), dev), host).toBe(true)
+        const cfg = loadConfig({ PROXY_ALLOWED_ORIGINS: 'http://dev.team.test:3001' })
+        expect(isTrustedBrowserRequest(req({ 'sec-fetch-site': 'same-origin', host: 'dev.team.test:3001' }), cfg)).toBe(true)
+        expect(isTrustedBrowserRequest(req({ 'sec-fetch-site': 'same-origin', host: 'dev.team.test:9999' }), cfg)).toBe(false)
+    })
+    it('production is unchanged', () => {
+        expect(isTrustedBrowserRequest(req({ 'sec-fetch-site': 'same-origin', host: 'anything.example' }), prod)).toBe(true)
+    })
+})
+
 describe('loadConfig', () => {
     it('is closed-by-default in production and open in development', () => {
         expect(prod.open).toBe(false)
@@ -126,5 +144,34 @@ describe('FrameTracker', () => {
         t.push('\n\r\n'); expect(t.atBoundary).toBe(true) // CRLF CRLF split across chunks
         t.push(': comment\n\n'); expect(t.atBoundary).toBe(true)
         t.push(Buffer.from('data: y\n')); expect(t.atBoundary).toBe(false)
+    })
+
+    it('an empty chunk before any byte changes nothing: the stream is still at a boundary', () => {
+        const t = new FrameTracker()
+        t.push(Buffer.alloc(0))
+        expect(t.atBoundary).toBe(true)
+        t.push('')
+        expect(t.atBoundary).toBe(true)
+    })
+
+    it('a comment line is complete on its own, so the proxy may write after it; an event, data or id line is not, a retry or unknown line is', () => {
+        const at = (text: string) => { const t = new FrameTracker(); t.push(text); return t.atBoundary }
+        expect(at(': keep-alive\n')).toBe(true)
+        expect(at('data: x\n\n: keep-alive\n')).toBe(true)
+        expect(at('data: x\n: comment in the middle\n')).toBe(false)
+        for (const line of ['event: a\n', 'data: a\n', 'data\n', 'id: 1\n', 'id\n']) expect(at(line), line).toBe(false)
+        for (const line of ['retry: 1000\n', 'foo: bar\n', 'Data: x\n', 'dat: x\n']) expect(at(line), line).toBe(true)
+        expect(at('data: x')).toBe(false) // half a line
+    })
+
+    it('a byte order mark at the start is not text, half of one is half a character, and a lone partial one is text', () => {
+        const at = (...chunks: number[][]) => { const t = new FrameTracker(); for (const c of chunks) t.push(Buffer.from(c)); return t.atBoundary }
+        const bom = [0xef, 0xbb, 0xbf]
+        expect(at(bom)).toBe(true)
+        expect(at(bom.slice(0, 2))).toBe(false)
+        expect(at(bom.slice(0, 1), bom.slice(1))).toBe(true)
+        expect(at([...bom, 0x3a, 0x61, 0x0a])).toBe(true) // BOM, then a comment line
+        expect(at([0xef, 0x61])).toBe(false) // EF then "a": not a BOM, the bytes are the start of a line of text
+        expect(at([0xef, 0x61, 0x0a])).toBe(true) // ...a line that is no field of an event, so ignored, as the parser does
     })
 })

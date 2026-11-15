@@ -1,2 +1,5 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# The lab captures carry an integrity hash over their exact bytes: never convert their line endings.
+public/lab/** -text

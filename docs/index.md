@@ -5,7 +5,7 @@ layout: home
 hero:
   name: "SSE Observatory"
   text: "Real-Time Streaming Intelligence"
-  tagline: Inspect, Filter, Trace, Replay, and Transform Server-Sent Events natively in the browser.
+  tagline: Inspect, Diagnose, Reproduce, and Test Server-Sent Events, in the browser and on the command line.
   image:
     src: /logo.png
     alt: SSE Observatory Logo
@@ -28,6 +28,8 @@ features:
     details: Correlate asynchronous transactions using `traceId` attributes. Instantly generate Gantt-chart style visualizations of inter-service latency.
   - title: VCR Mock Server & Replay
     details: Export production incidents as `.sse-record` files, upload them, and time-travel replay the exact bug with pixel-perfect deterministic timing.
+  - title: Stream Doctor
+    details: Says why a stream is stuck, late or losing events, with the evidence, and turns a captured failure into a regression test. In the app and on the command line.
   - title: Dynamic Schema Inference
     details: Feed in raw JSON blobs and the engine will detect value frequencies, types, and recursive object mappings to generate a living TypeScript Interface.
 ---

@@ -1,0 +1,146 @@
+# Scenarios and CI
+
+A scenario is a JSON file that says what a stream must do, and `sse-doctor test` runs it and exits with a verdict a CI job can act on. The format is described by a published schema, so editors complete and check it: `https://sse-observatory.vercel.app/docs/schemas/sse-scenario-1.json`.
+
+```json
+{
+  "$schema": "https://sse-observatory.vercel.app/docs/schemas/sse-scenario-1.json",
+  "version": 1,
+  "name": "orders stream resumes after a dropped connection",
+  "target": {
+    "url": "${ENV:STREAM_URL}",
+    "headers": { "Authorization": "${ENV:STREAM_AUTHORIZATION}" },
+    "sequence": { "field": "$.seq", "policy": "consecutive" },
+    "delivery": "at_least_once"
+  },
+  "expect": { "status": 200, "content_type": "text/event-stream", "first_event_within_ms": 3000 },
+  "steps": [
+    { "collect_events": 20, "timeout_ms": 20000 },
+    { "disconnect": { "mode": "client" } },
+    { "reconnect": { "after_ms": 500, "resume_from_last_event_id": true } },
+    { "collect_events": 20, "timeout_ms": 20000 }
+  ],
+  "verify": ["no_unexplained_sequence_gaps", "no_unexpected_duplicates", "preserve_event_order"],
+  "fail_on_severity": "error"
+}
+```
+
+## Targets
+
+| `target` | Runs against |
+|---|---|
+| `url` with `${ENV:NAME}` or an `https://` address | a live stream |
+| `url: "fixture://f06-skips?scale=0.05"` | a built-in faulty or healthy stream, started in-process (`sse-doctor fixtures list`) |
+| `replay: { "capture": "file.sse-capture", "honor_last_event_id": true, "test_aids": { "skip_ids": ["6"], "drop_after": 3 } }` | a saved capture served from this process, so the scenario needs no live server |
+
+A `replay` capture path is relative to the folder you run the command from, not to the scenario file. On shells that do not expand wildcards (PowerShell), `sse-doctor test scenarios/*.json` expands a `*` in the last path segment itself.
+
+Secrets enter only through `${ENV:NAME}`, and only for variables named `STREAM_*` or `SSE_*` (a scenario is configuration that runs, and one from a pull request must not be able to read `GITHUB_TOKEN`); name another one yourself with `--allow-env NAME`. A literal token, key or password in a scenario is rejected (exit 2), and every value taken from the environment is scrubbed from all output.
+
+A redirect to another origin (another scheme, host or port) is treated as for `probe`: when the scenario carries a credential (a header, or a query value, that comes from `${ENV:NAME}`; the address alone does not count) the run stops with exit 3 and says which, because credentials are never sent to another origin. Add `--follow-redirects` to follow it anyway: the credentials stay behind and a warning names them. A redirect inside one origin always continues, and a scenario with no credential follows redirects as before.
+
+## Steps
+
+- `collect_events` waits for that many events, or fails at `timeout_ms`.
+- `disconnect` with `mode: "client"` closes the connection; with `mode: "server"` waits for the server (a fixture or a replay with `drop_after`) to drop it.
+- `reconnect` waits `after_ms` (counted from the moment the step runs), then connects again; `resume_from_last_event_id: false` connects without a `Last-Event-ID` header (the cursor is forgotten first), `true` (the default) sends the last id received. If the connection is still open the step closes it first.
+- `wait` pauses.
+
+**Who reconnects.** A scenario that has a `reconnect` step takes control of the reconnection: the runner holds its client when the server drops an open connection, and nothing connects again until the `reconnect` step does, so `after_ms` and `resume_from_last_event_id` are what the server sees (its own log shows the second connection arriving no earlier than the drop plus `after_ms`). A `collect_events` step that comes after a drop and before the `reconnect` step fails with "the server dropped the connection after N" (it counts only events of the connection it started on). A scenario with **no** `reconnect` step is unchanged: after a server drop the runner's client reconnects by itself, within a fraction of a second and with the last id, and the events of the new connection count for the next `collect_events`. That is the path to use to test what a client really does when it is dropped; use the explicit step to test how the server behaves for a reconnect at a time and with a cursor you choose.
+
+## Checks and the three outcomes
+
+| Check | Needs |
+|---|---|
+| `no_unexplained_sequence_gaps` | `target.sequence` declared |
+| `no_unexpected_duplicates` | `target.sequence`; with `exactly_once` delivery a replay after a reconnect also counts |
+| `preserve_event_order` | `target.sequence` |
+| `{ "no_findings_at_or_above": "warning" }` | nothing |
+
+`expect` checks the status, the content type and the time to the first event. `fail_on_severity` (default `error`) fails the scenario on any open finding that severe.
+
+### `expect.max_silence_ms`: a stream must not go silent
+
+A scenario that stops at its last step never sees what the stream does next, so a stream that sends its events and then stalls would pass. `expect.max_silence_ms` (a whole number of milliseconds, 1 or more) closes that gap. After the last step the runner keeps the connection open and observing for that long, plus a margin (a tenth of the limit, at least 100 ms), and the check `expect max silence` fails when:
+
+- the longest stretch without any byte on one connection, **including the stretch still going when the observation ends**, is longer than the limit (a heartbeat is a byte; the pause of a reconnect is not a silence), or
+- a `stall.silent` finding was raised, which also catches a stream that keeps sending heartbeats but no events.
+
+```json
+"expect": { "status": 200, "content_type": "text/event-stream", "max_silence_ms": 3000 }
+```
+
+If the scenario closes the connection itself in its last step (`disconnect` with `mode: "client"`), nothing can be observed after it: the check is **inconclusive** (exit 4), unless a silence longer than the limit was already seen, which fails. If the server ends the stream by itself before the time is over there is no silence left to judge, and the check passes and says so.
+
+The field is optional and additive: the scenario format stays at version 1 and the schema at `sse-scenario-1.json`, and a scenario without the field runs exactly as before (it ends at its last step and has no silence check).
+
+### Scenarios made from a capture
+
+`sse-doctor repro <capture> --scenario <file>` (and the Doctor's "Test scenario" export) writes a scenario from a capture and says in its `meta.notes` what it did:
+
+- **A stall in the capture** (a `stall.silent` finding) sets `expect.max_silence_ms` to the limit the stall rule used for that stream's own rhythm, so the scenario fails on a stream that stalls again. A stream with another rhythm needs another value. Without a stall finding the field is left out.
+- **A response that was not a healthy event stream** (not HTTP 200 with `text/event-stream`) is **not** expected again: the scenario expects HTTP 200 and `text/event-stream`, and a note says so. It is designed to verify the fix, not to reproduce the broken response, so it fails on the response that was captured and passes once the stream is fixed.
+
+**A sequence check on a stream that declares no sequence is inconclusive, not a pass**: ids that look sequential prove nothing, so the tool will not claim there was no loss. Inconclusive exits 4 unless you pass `--allow-inconclusive`.
+
+| Exit | Meaning |
+|---|---|
+| 0 | every scenario passed |
+| 1 | a check failed |
+| 2 | the scenario file is invalid, names an unset variable, or contains a literal secret |
+| 3 | could not run |
+| 4 | no check failed, but at least one could not be decided |
+
+## In CI
+
+This repository runs its own scenarios (`scenarios/ci`) against the fixtures: the passing ones must pass, the failing ones must fail, the unprovable ones must be inconclusive, and the JUnit result is uploaded as an artifact (`npm run doctor:scenarios`).
+
+For your own stream, with the composite action in this repository:
+
+```yaml
+- uses: Ujjwaljain16/SSE-Observatory@v2
+  env:
+    STREAM_URL: ${{ secrets.STREAM_URL }}
+    STREAM_AUTHORIZATION: ${{ secrets.STREAM_AUTHORIZATION }}
+  with:
+    scenarios: scenarios/orders.json
+    format: junit
+    output: results.xml
+```
+
+or by hand, which works without the action:
+
+```yaml
+- run: git clone --depth 1 https://github.com/Ujjwaljain16/SSE-Observatory.git sse-observatory
+- run: cd sse-observatory && npm ci --ignore-scripts && npm run build:cli
+- run: node sse-observatory/dist-cli/bin/sse-doctor.mjs test scenarios/orders.json --format junit --output results.xml
+  env:
+    STREAM_URL: ${{ secrets.STREAM_URL }}
+```
+
+The action also adds a **Markdown summary to the job summary page** (`summary: 'true'`, the default) and gives back its path as the `summary-file` output. The job still fails with the scenarios' exit code (1 failed, 4 inconclusive): the summary and the comment are made first, then the code is returned.
+
+### A pull request comment
+
+```yaml
+permissions:
+  pull-requests: write
+steps:
+  - uses: Ujjwaljain16/SSE-Observatory@v2
+    with:
+      scenarios: scenarios/orders.json
+      comment: 'true'
+```
+
+With `comment: 'true'` on a `pull_request` run, the summary is posted as **one comment that later runs update**, found by a hidden marker in its text. It never edits "the last comment", which may belong to another workflow. The token (`token`, default `github.token`) needs `pull-requests: write`; a pull request from a fork gets a read-only token, and then the comment step fails without failing the job, because the verdict is the exit code and not the comment. Nothing is posted unless you set `comment`.
+
+The tool is not published to npm yet; building it from the repository is the supported path.
+
+## Other commands
+
+- `sse-doctor replay <capture>` serves a capture as a local SSE endpoint (`--port`, `--speed`, `--honor-last-event-id`, `--drop-after n`, `--skip-ids a,b`, `--end close|hold|rst|end-event`), to point a client or a test at recorded behaviour.
+- `sse-doctor fixtures list` and `fixtures serve` expose the built-in streams.
+
+- `sse-doctor repro <capture> --output min.sse-capture [--finding key] [--scenario min.json] [--test min.test.ts]` shrinks a capture to the smallest one that still reports a finding, for a bug report or a regression test.
+
+`allow_gaps` lists numbers a scenario expects to be missing (`[{ "from": 5, "to": 7 }]`). A gap is explained only if an entry covers every number in it; an explained gap counts neither for `no_unexplained_sequence_gaps` nor for the severity gate.

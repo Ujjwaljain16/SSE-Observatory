@@ -6,26 +6,31 @@
 //                { type: 'events', payloads }         payloads: IncomingSSE[] (each with a monotonic seq); everything parsed in
 //                                                     one go is sent as one message instead of thousands
 //                { type: 'catchup', events }          last events of a connection a tab joined late
+//                { type: 'observations', key, captureId, batch, replace? }   recorded observations, batched (~10 Hz)
 //
 // Connection lifecycle (reconnect, backoff, Last-Event-ID resume) lives in SSEClient; this file only
 // does the multi-tab bookkeeping.
 
 /// <reference lib="webworker" />
 
-import { SSEClient, type SSEClientOptions, type SSEPhase, type SSEPhaseInfo } from '../utils/sseClient'
+import { SSEClient, type SSEClientOptions, type SSEPhase, type SSEPhaseInfo } from '../core/sse/sseClient'
+import { createObservedStream, type ObservedStream } from '../core/sse/observedStream'
 import { buildSSERequest } from '../utils/sseProxyUrl'
 import type { IncomingSSE } from '../utils/buildEvent'
+import type { PayloadProbeConfig } from '../core/observe/payloadProbe'
+import { asProbeConfig, streamKey } from './contracts'
 
 const MAX_BUFFER = 50                // recent events kept so a late-joining tab can catch up
 const SWEEP_MS = 15_000              // how often silent tabs are looked for
 const PORT_TIMEOUT_MS = 75_000       // a tab that stayed silent this long (ping interval is 30 s) is considered gone
+const JOIN_HISTORY_RECORDS = 5_000     // newest records sent to a tab that joins late
 const IDLE_GRACE_MS = 5_000          // keep a connection this long after its last tab left (quick reloads)
 
 interface StatusMessage { type: 'status'; key: string; phase: SSEPhase; attempt?: number; delayMs?: number; reason?: string; status?: number }
 
 interface Connection {
     key: string
-    client: SSEClient
+    client: ObservedStream
     ports: Set<MessagePort>
     buffer: IncomingSSE[]
     /** Events parsed but not yet posted: they are sent together once the current parse step finishes. */
@@ -53,7 +58,6 @@ export function _clearConnectionsForTesting() {
 }
 export function _sweepForTesting(now: number) { sweep(now) }
 
-const makeKey = (url: string, token?: string) => `${url}::${token ?? ''}`
 
 function send(port: MessagePort, msg: unknown) {
     try { port.postMessage(msg) } catch { /* port is gone; the sweeper removes it */ }
@@ -70,7 +74,7 @@ function flushPending(conn: Connection) {
     broadcast(conn, { type: 'events', key: conn.key, payloads })
 }
 
-function openConnection(key: string, url: string, token: string | undefined, useProxy: boolean): Connection {
+function openConnection(key: string, url: string, token: string | undefined, useProxy: boolean, recording: boolean, profile: PayloadProbeConfig | undefined): Connection {
     const conn: Connection = {
         key,
         ports: new Set(),
@@ -79,24 +83,30 @@ function openConnection(key: string, url: string, token: string | undefined, use
         flushQueued: false,
         status: { type: 'status', key, phase: 'connecting', attempt: 0 },
         idleTimer: null,
-        client: undefined as unknown as SSEClient,
+        client: undefined as unknown as ObservedStream,
     }
-    conn.client = clientFactory({
+    conn.client = createObservedStream({
         request: () => buildSSERequest(url, token, useProxy),
-        onMessage: (m) => {
-            const payload: IncomingSSE = { event: m.event, data: m.data, id: m.id, raw: m.raw, arrivalTime: Date.now(), seq: ++seq }
-            conn.buffer.push(payload)
-            if (conn.buffer.length > MAX_BUFFER) conn.buffer.shift()
-            conn.pending.push(payload)
-            if (!conn.flushQueued) {
-                conn.flushQueued = true
-                queueMicrotask(() => flushPending(conn))
-            }
-        },
-        onPhase: (phase: SSEPhase, info: SSEPhaseInfo) => {
-            flushPending(conn) // events that came before the status change must arrive before it
-            conn.status = { type: 'status', key, phase, ...info }
-            broadcast(conn, conn.status)
+        nextSeq: () => ++seq, // numbered across every connection this worker holds
+        clientFactory: (options) => clientFactory(options), // read at call time: tests swap it
+        // Records go to every tab in batches; the page runs the analysis, so the worker only records and forwards. A tab that
+        // turned recording off asks for none; the tab that opens the connection decides for everyone sharing it.
+        recording: recording ? { ...(profile ? { profile } : {}), onObservations: (batch) => broadcast(conn, { type: 'observations', key, captureId: conn.client.captureId, batch }) } : undefined,
+        sinks: {
+            onMessage: (payload) => {
+                conn.buffer.push(payload)
+                if (conn.buffer.length > MAX_BUFFER) conn.buffer.shift()
+                conn.pending.push(payload)
+                if (!conn.flushQueued) {
+                    conn.flushQueued = true
+                    queueMicrotask(() => flushPending(conn))
+                }
+            },
+            onPhase: (phase: SSEPhase, info: SSEPhaseInfo) => {
+                flushPending(conn) // events that came before the status change must arrive before it
+                conn.status = { type: 'status', key, phase, ...info }
+                broadcast(conn, conn.status)
+            },
         },
     })
     connections.set(key, conn)
@@ -121,14 +131,14 @@ function leave(port: MessagePort) {
     }
 }
 
-function join(port: MessagePort, url: string, token: string | undefined, useProxy: boolean) {
-    const key = makeKey(url, token)
+function join(port: MessagePort, url: string, token: string | undefined, useProxy: boolean, recording: boolean, profile: PayloadProbeConfig | undefined) {
+    const key = streamKey(url, token, { recording, useProxy, probe: profile })
     const st = portState.get(port)!
     if (st.key && st.key !== key) leave(port)  // switching streams must not leave the old subscription behind
     st.key = key
 
     let conn = connections.get(key)
-    if (!conn) conn = openConnection(key, url, token, useProxy)
+    if (!conn) conn = openConnection(key, url, token, useProxy, recording, profile)
     if (conn.idleTimer) { clearTimeout(conn.idleTimer); conn.idleTimer = null }
     conn.ports.add(port)
 
@@ -141,6 +151,9 @@ function join(port: MessagePort, url: string, token: string | undefined, useProx
 
     send(port, conn.status)
     if (conn.buffer.length > 0) send(port, { type: 'catchup', key, events: conn.buffer })
+    // A tab that joins late gets the retained history, so its analysis starts from everything recorded so far.
+    const history = conn.client.store?.snapshot().slice(-JOIN_HISTORY_RECORDS)
+    if (history && history.length > 0) send(port, { type: 'observations', key, captureId: conn.client.captureId, batch: history, replace: true })
 }
 
 function sweep(now: number) {
@@ -167,7 +180,7 @@ setInterval(() => sweep(Date.now()), SWEEP_MS)
 
         switch (msg.type) {
             case 'connect':
-                if (typeof msg.url === 'string' && msg.url) join(port, msg.url, msg.token || undefined, msg.useProxy !== false)
+                if (typeof msg.url === 'string' && msg.url) join(port, msg.url, msg.token || undefined, msg.useProxy !== false, msg.recording !== false, asProbeConfig(msg.profile))
                 return
             case 'disconnect':
                 leave(port)

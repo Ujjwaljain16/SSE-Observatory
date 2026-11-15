@@ -52,7 +52,7 @@ export function PatternPanel({
 
     const bg = isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'
     const text = isDark ? 'text-white' : 'text-slate-900'
-    const muted = isDark ? 'text-slate-400' : 'text-slate-500'
+    const muted = isDark ? 'text-slate-400' : 'text-slate-600'
     const inputCls = `w-full px-3 py-1.5 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${isDark ? 'bg-slate-700 border-slate-600 text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
         }`
 
@@ -90,7 +90,7 @@ export function PatternPanel({
                         </h3>
                         <button
                             onClick={onClearAlerts}
-                            className={`text-xs px-2 py-1 rounded transition-colors ${isDark ? 'hover:bg-slate-700 text-slate-400' : 'hover:bg-slate-100 text-slate-500'
+                            className={`text-xs px-2 py-1 rounded transition-colors ${isDark ? 'hover:bg-slate-700 text-slate-400' : 'hover:bg-slate-100 text-slate-600'
                                 }`}
                         >
                             Clear all
@@ -177,7 +177,7 @@ export function PatternPanel({
                         </button>
                         <button
                             onClick={() => openAdd('burst')}
-                            className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors"
+                            className="px-3 py-1.5 bg-amber-700 hover:bg-amber-800 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors"
                         >
                             <Plus className="w-3.5 h-3.5" /> Burst
                         </button>
@@ -310,7 +310,7 @@ export function PatternPanel({
                                 <button
                                     onClick={() => onRemoveRule(rule.id)}
                                     aria-label={`Remove rule ${rule.name}`}
-                                    className={`shrink-0 p-1 rounded transition-colors ${isDark ? 'hover:bg-slate-600 text-slate-400' : 'hover:bg-slate-200 text-slate-500'
+                                    className={`shrink-0 p-1 rounded transition-colors ${isDark ? 'hover:bg-slate-600 text-slate-400' : 'hover:bg-slate-200 text-slate-600'
                                         }`}
                                 >
                                     <X className="w-3.5 h-3.5" />

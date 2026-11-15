@@ -54,7 +54,7 @@ export const PlaybackControls = ({
                 className={`
                     w-12 h-12 flex items-center justify-center rounded-xl transition-all
                     ${isPaused
-                        ? 'bg-amber-500 hover:bg-amber-600 text-white shadow-lg shadow-amber-500/20'
+                        ? 'bg-amber-500 hover:bg-amber-700 text-white shadow-lg shadow-amber-500/20'
                         : 'bg-slate-200 hover:bg-slate-300 text-slate-700 shadow-inner'
                     }
                 `}
@@ -88,7 +88,7 @@ export const PlaybackControls = ({
                         ? 'bg-red-500/20 text-red-500 cursor-default'
                         : isDark
                             ? 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
-                            : 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-900'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
                     }
                 `}
             >
@@ -97,7 +97,7 @@ export const PlaybackControls = ({
             </button>
 
 
-            <div className={`ml-2 text-xs font-mono tabular-nums ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+            <div className={`ml-2 text-xs font-mono tabular-nums ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                 {currentEventIndex > 0 && `-${currentEventIndex} events ago`}
             </div>
         </div>

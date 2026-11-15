@@ -1,19 +1,9 @@
 import type { EventMessage } from '../types'
 import { cacheParsedData } from './eventUtils'
+import type { IncomingSSE } from '../core/sse/incoming'
 
-/** What a transport hands to the UI for every SSE message. */
-export interface IncomingSSE {
-    /** SSE event name ("message" when unnamed). */
-    event: string
-    data: string
-    /** Server-sent event id in effect ('' when none). */
-    id: string
-    /** Wire form of the event. */
-    raw: string
-    arrivalTime: number
-    /** Monotonic sequence assigned by the SharedWorker (used to drop duplicates on catch-up). */
-    seq?: number
-}
+// IncomingSSE moved to the shared core; re-exported so existing imports keep working.
+export type { IncomingSSE }
 
 let localSeq = 0
 export const nextSeq = () => ++localSeq
@@ -38,6 +28,7 @@ export function buildEvent(p: IncomingSSE, extra: Partial<EventMessage> = {}): E
         id: uuid(),
         timestamp: timeFormat.format(new Date(p.arrivalTime)),
         arrivalTime: p.arrivalTime,
+        ...(p.obsSeq !== undefined ? { obsSeq: p.obsSeq } : {}),
         seq: nextSeq(),
         type: p.event || 'message',
         data: p.data,

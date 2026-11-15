@@ -1,7 +1,7 @@
 // pure layout component reading state exclusively from context
 // keeps render cycles separate from complex stream orchestration logic
 
-import { useMemo, useState, useEffect } from 'react'
+import { lazy, Suspense, useMemo, useState, useEffect, useSyncExternalStore } from 'react'
 import { useThemeContext } from '../context/ThemeContext'
 import { useUIContext } from '../context/UIContext'
 import { useStreamContext } from '../context/StreamContext'
@@ -26,13 +26,27 @@ import { StoragePanel } from './StoragePanel'
 import { TracePanel } from './TracePanel'
 import { PatternPanel } from './PatternPanel'
 import { PerfOverlay } from './PerfOverlay'
+import { DoctorToggle } from './doctor/DoctorToggle'
 import { exportEvents, getEventStats } from '../utils/exportUtils'
+import { useEventRate } from '../hooks/useEventRate'
+import { useFlightRecorder } from '../doctor/flightSetting'
+import { TypeChart } from './TypeChart'
+import { FollowedFields } from './FollowedFields'
+import { getProfile, subscribeProfile } from '../doctor/profileStore'
 
 import {
     Activity, Server, Search, BarChart2, Dna, Download, Circle, Layers, Zap, GitBranch, AlertTriangle
 } from 'lucide-react'
 
 const MAX_EVENTS = 1000
+
+// The diagnostics and their rules are a separate chunk, fetched when a panel opens or a stream has records.
+const DoctorPanel = lazy(() => import('./doctor/DoctorPanel'))
+const DoctorLanes = lazy(() => import('./doctor/DoctorLanes'))
+
+const DoctorLoading = ({ dark }: { dark: boolean }) => (
+    <p role="status" className={`text-sm ${dark ? 'text-slate-300' : 'text-slate-700'}`}>Loading the Doctor…</p>
+)
 
 export function AppLayout() {
     const { theme, toggleTheme } = useThemeContext()
@@ -41,6 +55,8 @@ export function AppLayout() {
         showStats, setShowStats,
         showSchema, setShowSchema,
         showInterceptors, setShowInterceptors,
+        showDoctor, setShowDoctor,
+        eventJump, setJumpResult,
         url, setUrl,
         bearerToken, setBearerToken,
         profileName, setProfileName,
@@ -88,6 +104,11 @@ export function AppLayout() {
     const { schema, isAnalyzing } = useSchemaInference(allEvents)
 
     const stats = useMemo(() => getEventStats(allEvents), [allEvents])
+    const profile = useSyncExternalStore(subscribeProfile, getProfile, () => undefined)
+    useFlightRecorder() // keeps a copy of the recording when an error is first found, if the person switched that on
+    const monitorRate = useEventRate(allEvents, connected)
+    const multiConnected = streams.some((s) => s.connected)
+    const multiRate = useEventRate(mergedEvents, multiConnected)
 
     const handleConnect = () => connect(url, bearerToken)
 
@@ -118,7 +139,7 @@ export function AppLayout() {
                     <div className={`flex max-w-full overflow-x-auto p-1 rounded-xl transition-all ${theme === 'dark' ? 'bg-slate-800' : 'bg-slate-200'}`}>
                         {([
                             { key: 'monitor', label: 'Monitor Mode', Icon: Activity, color: 'bg-blue-600' },
-                            { key: 'multistream', label: 'Multi-Stream', Icon: Layers, color: 'bg-emerald-600' },
+                            { key: 'multistream', label: 'Multi-Stream', Icon: Layers, color: 'bg-emerald-700' },
                             { key: 'mock', label: 'Mock Server', Icon: Server, color: 'bg-purple-600' },
                         ] as const).map(({ key, label, Icon, color }) => (
                             <button
@@ -129,7 +150,7 @@ export function AppLayout() {
                                 }}
                                 className={`px-2.5 sm:px-6 py-2 rounded-lg font-bold text-xs sm:text-sm whitespace-nowrap transition-all flex items-center gap-2 ${appMode === key
                                     ? `${color} text-white shadow-md`
-                                    : theme === 'dark' ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-800'
+                                    : theme === 'dark' ? 'text-slate-300 hover:text-white' : 'text-slate-700 hover:text-slate-900'
                                     }`}
                             >
                                 <Icon className="hidden sm:block w-4 h-4" /> {label}
@@ -169,14 +190,25 @@ export function AppLayout() {
                             onDisconnectStream={disconnectStream}
                             onClearStreamEvents={clearStreamEvents}
                         />
+                        <div className="flex justify-end mb-4">
+                            <DoctorToggle theme={theme} active={showDoctor} onToggle={() => setShowDoctor(!showDoctor)} streams={streams.map((s) => s.id)} />
+                        </div>
+                        {showDoctor && (
+                            <Suspense fallback={<DoctorLoading dark={theme === 'dark'} />}>
+                                <DoctorLanes theme={theme} streams={streams} ratePerSecond={multiRate} />
+                            </Suspense>
+                        )}
                         <EventsList
                             theme={theme}
-                            connected={streams.some(s => s.connected)}
+                            connected={multiConnected}
+                            ratePerSecond={multiRate}
                             filteredEvents={mergedEvents}
                             customFilters={[]}
                             copiedId={copiedId}
                             isLive={true}
                             onCopyToClipboard={copyToClipboard}
+                            jumpTarget={eventJump}
+                            onJumpResult={setJumpResult}
                         />
                     </>
                 )}
@@ -263,7 +295,7 @@ export function AppLayout() {
                                             Icon: AlertTriangle,
                                             active: showPatterns,
                                             onToggle: () => setShowPatterns(!showPatterns),
-                                            activeColor: activePatternAlerts.length > 0 ? 'bg-amber-500' : 'bg-amber-600',
+                                            activeColor: activePatternAlerts.length > 0 ? 'bg-amber-500' : 'bg-amber-700',
                                         },
                                     ] as const).map(({ key, label, Icon, active, onToggle, activeColor }) => (
                                         <button
@@ -291,12 +323,14 @@ export function AppLayout() {
                                     ))}
 
 
+                                    <DoctorToggle theme={theme} active={showDoctor} onToggle={() => setShowDoctor(!showDoctor)} />
+
                                     <button
                                         onClick={() => setShowInterceptors(!showInterceptors)}
                                         className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${interceptors.some(i => i.enabled && i.compiledFn)
                                             ? 'bg-amber-500 text-white'
                                             : showInterceptors
-                                                ? 'bg-amber-600 text-white'
+                                                ? 'bg-amber-700 text-white'
                                                 : theme === 'dark'
                                                     ? 'bg-slate-700 text-slate-300 hover:bg-slate-600'
                                                     : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
@@ -315,15 +349,15 @@ export function AppLayout() {
 
                                 <div className="flex flex-wrap gap-2">
                                     {([
-                                        { fmt: 'json' as const, label: 'JSON', cls: 'bg-emerald-600 hover:bg-emerald-700' },
-                                        { fmt: 'csv' as const, label: 'CSV', cls: 'bg-amber-600 hover:bg-amber-700' },
+                                        { fmt: 'json' as const, label: 'JSON', cls: 'bg-emerald-700 hover:bg-emerald-800' },
+                                        { fmt: 'csv' as const, label: 'CSV', cls: 'bg-amber-700 hover:bg-amber-800' },
                                         { fmt: 'record' as const, label: 'Record', cls: 'bg-purple-600 hover:bg-purple-700', title: 'Export as a playable Mock Server recording' },
                                     ]).map(({ fmt, label, cls, title }) => (
                                         <button
                                             key={fmt}
                                             onClick={() => exportEvents(filteredEvents, { format: fmt })}
                                             disabled={filteredEvents.length === 0}
-                                            aria-label={title} title={title}
+                                            aria-label={title ? `${label}: ${title}` : undefined} title={title}
                                             className={`px-4 py-2 ${cls} disabled:bg-slate-600 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors text-sm flex items-center gap-2`}
                                         >
                                             {fmt === 'record'
@@ -364,24 +398,8 @@ export function AppLayout() {
                                             </div>
                                         ))}
                                     </div>
-                                    {stats.topTypes.length > 0 && (
-                                        <div>
-                                            <div className={`text-sm font-medium mb-2 ${theme === 'dark' ? 'text-slate-300' : 'text-slate-700'}`}>
-                                                Top Event Types
-                                            </div>
-                                            <div className="flex flex-wrap gap-2">
-                                                {stats.topTypes.map(([type, count]) => (
-                                                    <span
-                                                        key={type}
-                                                        className={`px-3 py-1 rounded-full text-xs font-medium ${theme === 'dark' ? 'bg-slate-600 text-slate-200' : 'bg-slate-200 text-slate-700'
-                                                            }`}
-                                                    >
-                                                        {type}: {count}
-                                                    </span>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
+                                    <TypeChart events={allEvents} theme={theme} display={profile?.display} />
+                                    <div className="mt-6"><FollowedFields theme={theme} events={allEvents} loadHistory={idbAvailable ? loadHistory : undefined} /></div>
                                 </div>
                             )}
 
@@ -403,6 +421,15 @@ export function AppLayout() {
                                         onDismissAlert={dismissPatternAlert}
                                         onClearAlerts={clearPatternAlerts}
                                     />
+                                </div>
+                            )}
+
+
+                            {showDoctor && (
+                                <div className={`mt-4 pt-4 border-t ${theme === 'dark' ? 'border-slate-600' : 'border-slate-200'}`}>
+                                    <Suspense fallback={<DoctorLoading dark={theme === 'dark'} />}>
+                                        <DoctorPanel theme={theme} streamId="main" />
+                                    </Suspense>
                                 </div>
                             )}
 
@@ -445,11 +472,14 @@ export function AppLayout() {
                         <EventsList
                             theme={theme}
                             connected={connected}
+                            ratePerSecond={monitorRate}
                             filteredEvents={filteredEvents}
                             customFilters={customFilters}
                             copiedId={copiedId}
                             isLive={currentEventIndex === 0}
                             onCopyToClipboard={copyToClipboard}
+                            jumpTarget={eventJump}
+                            onJumpResult={setJumpResult}
                             getTraceForEvent={getTraceForEvent}
                             onViewTrace={setActiveTraceId}
                         />

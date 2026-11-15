@@ -1,0 +1,338 @@
+import http from 'node:http'
+import type { AddressInfo } from 'node:net'
+import { analyze, type RuleCoverage } from '../core/diagnostics/engine'
+import { SEVERITY_RANK, type Finding, type Severity } from '../core/diagnostics/finding'
+import type { EngineInput } from '../core/diagnostics/streamModel'
+import type { StreamProfile } from '../core/diagnostics/thresholds'
+import type { CaptureRecord } from '../core/capture/format'
+import type { PayloadProbeConfig } from '../core/observe/payloadProbe'
+import { createObservedStream, type ObservedStream } from '../core/sse/observedStream'
+import { createSafeFetch, type CrossOriginRedirectRefused } from './safeFetch'
+import type { Scenario, ScenarioStep } from '../core/scenario/types'
+import { planReplay, sessionFromCapture } from '../../lib/mock/capturePlan.js'
+import { FIXTURE_ROUTES, startFixtureServer } from '../fixtures/server'
+import { CliError, EXIT, requireFiles, type CliIo } from './io'
+import type { SecretRegistry } from './secretRegistry'
+
+export type CheckStatus = 'pass' | 'fail' | 'inconclusive'
+export interface CheckResult { name: string; status: CheckStatus; message: string }
+
+export interface ScenarioRun {
+    name: string
+    file: string
+    status: CheckStatus
+    checks: CheckResult[]
+    findings: Finding[]
+    coverage: RuleCoverage[]
+    events: number
+    durationMs: number
+}
+
+const ENV_REF = /\$\{ENV:([A-Za-z_][A-Za-z0-9_]*)\}/g
+/** After the last step, expect.max_silence_ms keeps the connection open for the limit plus this margin (a tenth of it, at least 100 ms). */
+const SILENCE_MARGIN_MIN_MS = 100
+const SILENCE_MARGIN_FRACTION = 0.1
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
+/**
+ * A scenario is executable configuration: `${ENV:NAME}` in its URL reads an environment variable and sends it where the scenario says
+ * (a scenario that came with a pull request could put `${ENV:GITHUB_TOKEN}` in a URL it controls). So only names that are meant for
+ * scenarios are read: STREAM_* and SSE_*, plus any the person running it names with --allow-env.
+ */
+const SCENARIO_ENV = /^(?:STREAM|SSE)_[A-Za-z0-9_]+$/
+
+/** Replaces `${ENV:NAME}` with the variable's value and registers every value as a secret. Names that are not set are all reported at once. */
+function substitute(text: string, io: CliIo, secrets: SecretRegistry, missing: Set<string>, allowed: ReadonlySet<string> = new Set()): string {
+    return text.replace(ENV_REF, (_m, name: string) => {
+        if (!SCENARIO_ENV.test(name) && !allowed.has(name)) {
+            throw new CliError(`The scenario reads the environment variable ${name}, which is not a STREAM_ or SSE_ variable. A scenario is configuration that runs: to allow it, pass --allow-env ${name}.`, EXIT.usage)
+        }
+        const value = io.env?.[name]
+        if (value === undefined || value === '') { missing.add(name); return '' }
+        secrets.register(value)
+        return value
+    })
+}
+
+/** What a scenario attaches that is a credential, by name and never by value: a header, or a query value, that comes from `${ENV:NAME}`. The address
+ *  alone (`${ENV:STREAM_URL}`) is not a credential. The same rule as the probe's (decision Q6): a redirect to another origin is refused while any is attached. */
+export function scenarioSecretOptions(scenario: Scenario): string[] {
+    const out: string[] = []
+    for (const [name, value] of Object.entries(scenario.target.headers ?? {})) if (new RegExp(ENV_REF.source).test(value)) out.push(`header ${name}`)
+    const raw = scenario.target.url
+    if (raw) {
+        const rest = raw.replace(/^\$\{ENV:[A-Za-z_][A-Za-z0-9_]*\}/, '')
+        for (const m of rest.matchAll(ENV_REF)) out.push(`query value \${ENV:${m[1]}}`)
+        if (/^[a-z][a-z0-9+.-]*:\/\/[^/?#]*@/i.test(raw)) out.push('credentials in the URL')
+    }
+    return out
+}
+
+function profileOf(scenario: Scenario): StreamProfile {
+    const seq = scenario.target.sequence
+    return {
+        ...(seq ? { sequence: { ...(seq.use_sse_id ? { useSseId: true } : { field: seq.field }), policy: seq.policy } } : {}),
+        ...(scenario.target.delivery ? { delivery: scenario.target.delivery } : {}),
+    }
+}
+
+function probeOf(profile: StreamProfile): PayloadProbeConfig {
+    return profile.sequence ? { sequence: { ...(profile.sequence.field ? { field: profile.sequence.field } : {}), ...(profile.sequence.useSseId ? { useSseId: true } : {}) } } : {}
+}
+
+/** Serves a capture from this process, one recorded connection per request, so a scenario needs no live server. */
+async function serveReplay(scenario: Scenario, io: CliIo): Promise<{ url: string; close(): Promise<void> }> {
+    const replay = scenario.target.replay!
+    const text = await requireFiles(io).readText(replay.capture).catch(() => { throw new CliError(`Cannot read the capture "${replay.capture}".`, EXIT.couldNotRun) })
+    const { session, error } = sessionFromCapture(text)
+    if (!session) throw new CliError(`The capture "${replay.capture}": ${error ?? 'cannot be replayed'}`, EXIT.usage)
+    let requests = 0
+    const server = http.createServer((req, res) => {
+        const plan = planReplay(session, {
+            connection: requests++,
+            honorLastEventId: replay.honor_last_event_id === true,
+            lastEventId: String(req.headers['last-event-id'] ?? ''),
+            skipIds: replay.test_aids?.skip_ids ?? [],
+            ...(replay.test_aids?.drop_after !== undefined ? { dropAfter: replay.test_aids.drop_after } : {}),
+        })
+        res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' })
+        let closed = false
+        res.on('close', () => { closed = true })
+        void (async () => {
+            const start = Date.now()
+            for (const step of plan.steps) {
+                const wait = step.atMs - (Date.now() - start)
+                if (wait > 0) await sleep(wait)
+                if (closed) return
+                res.write(step.write)
+            }
+            res.end()
+        })()
+    })
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    return { url: `http://127.0.0.1:${(server.address() as AddressInfo).port}/replay`, close: () => new Promise((resolve) => { server.closeAllConnections(); server.close(() => resolve()) }) }
+}
+
+async function resolveTarget(scenario: Scenario, io: CliIo, secrets: SecretRegistry, cleanup: Array<() => Promise<void>>, allowed: ReadonlySet<string>): Promise<{ url: string; headers: Record<string, string> }> {
+    const missing = new Set<string>()
+    const headers = Object.fromEntries(Object.entries(scenario.target.headers ?? {}).map(([k, v]) => [k, substitute(v, io, secrets, missing, allowed)]))
+    let url: string
+    const raw = scenario.target.url
+    if (scenario.target.replay) {
+        const served = await serveReplay(scenario, io)
+        cleanup.push(served.close)
+        url = served.url
+    } else if (raw?.startsWith('fixture://')) {
+        const [name, query = ''] = raw.slice('fixture://'.length).split('?')
+        const route = FIXTURE_ROUTES.find((r) => r.id === name!.toLowerCase()) ?? FIXTURE_ROUTES.find((r) => r.family.toLowerCase() === name!.toLowerCase())
+        if (!route) throw new CliError(`No fixture "${name}". Run "sse-doctor fixtures list".`, EXIT.usage)
+        const fixtures = await startFixtureServer({ port: 0 })
+        cleanup.push(() => fixtures.close())
+        url = `${fixtures.url}${route.path}${query ? `?${query}` : ''}`
+    } else if (raw) {
+        url = substitute(raw, io, secrets, missing, allowed)
+    } else throw new CliError('The scenario has no target.url and no target.replay.', EXIT.usage)
+    if (missing.size > 0) throw new CliError(`Environment variable${missing.size > 1 ? 's' : ''} not set: ${[...missing].join(', ')}.`, EXIT.usage)
+    return { url, headers }
+}
+
+const mediaType = (value: string): string => value.split(';')[0]!.trim().toLowerCase()
+
+export async function runScenario(scenario: Scenario, file: string, io: CliIo, secrets: SecretRegistry, allowEnv: readonly string[] = [], followRedirects = false): Promise<ScenarioRun> {
+    const cleanup: Array<() => Promise<void>> = []
+    const startedAt = Date.now()
+    try {
+        const target = await resolveTarget(scenario, io, secrets, cleanup, new Set(allowEnv))
+        const profile = profileOf(scenario)
+        const records: CaptureRecord[] = []
+        const startedClock = performance.now()
+        let events = 0
+        let phase = ''
+        // A redirect to another origin while the scenario carries a credential is refused unless --follow-redirects opts in (then the credential stays behind).
+        let refusal: CrossOriginRedirectRefused | undefined
+        const fetchImpl = createSafeFetch({
+            secretOptions: scenarioSecretOptions(scenario),
+            followRedirects,
+            onRefused: (error) => { refusal ??= error },
+            onWithheld: (redirect, names) => io.err(`warning: ${redirect.from} redirected to ${redirect.to}, and it was followed because of --follow-redirects. NOT forwarded to ${redirect.to}: ${names.join(', ')}. Credentials are never sent to another origin, so expect that server to answer without them.
+`),
+        })
+        // Q-I2. A scenario with an explicit `reconnect` step holds its client at a drop: the step is the reconnect (it waits after_ms and sends or
+        // withholds the cursor as it says), so the client must not reconnect on its own first. A scenario without one leaves the client's own
+        // reconnection alone, because that is the behaviour it tests.
+        const explicitReconnect = (scenario.steps as ScenarioStep[]).some((s) => 'reconnect' in s)
+        let openSinceStart = false // a connection was open: only the drop of an open connection is held, not a failed attempt the client retries
+        let held = false // the server dropped the connection and the runner holds its client until the next reconnect step
+        const stream: ObservedStream = createObservedStream({
+            request: () => ({ url: target.url, headers: { Accept: 'text/event-stream', 'Cache-Control': 'no-cache', ...target.headers } }),
+            sinks: {
+                onMessage: () => { events++ },
+                onPhase: (p) => {
+                    phase = p
+                    if (p === 'open') openSinceStart = true
+                    else if (p === 'reconnecting' && explicitReconnect && openSinceStart) { openSinceStart = false; held = true; stream.stop() }
+                },
+            },
+            recording: { ...(Object.keys(probeOf(profile)).length > 0 ? { profile: probeOf(profile) } : {}), onObservations: (batch) => { records.push(...batch) }, flushMs: 10 },
+            clientOptions: { initialDelayMs: 20, maxDelayMs: 200, jitter: 0, maxRetries: 5, fetchImpl },
+        })
+        const waitFor = async (done: () => boolean, timeoutMs: number): Promise<boolean> => {
+            const until = Date.now() + timeoutMs
+            while (!done()) {
+                if (refusal) throw new CliError(refusal.message, EXIT.couldNotRun)
+                if (io.signal?.aborted) throw new CliError('Interrupted.', EXIT.interrupted)
+                if (Date.now() > until) return false
+                await sleep(10)
+            }
+            return true
+        }
+
+        const checks: CheckResult[] = []
+        const check = (name: string, ok: boolean, message: string) => checks.push({ name, status: ok ? 'pass' : 'fail', message })
+        const ended = () => phase === 'ended' || phase === 'failed'
+
+        stream.start()
+        let index = 0
+        // The runner's client reconnects by itself when the server drops it, so events of the new connection can arrive while a `reconnect` step
+        // waits. They count for the next `collect_events`: it counts from the drop, not from the moment it starts.
+        let countFrom: number | undefined
+        for (const step of scenario.steps as ScenarioStep[]) {
+            index++
+            if (refusal) throw new CliError(refusal.message, EXIT.couldNotRun)
+            if ('collect_events' in step) {
+                const base = countFrom ?? events
+                countFrom = undefined
+                const goal = base + step.collect_events
+                const ok = await waitFor(() => events >= goal || ended() || held, step.timeout_ms ?? 30_000)
+                const got = events - base
+                check(`step ${index}: collect ${step.collect_events} events`, ok && events >= goal, events >= goal ? `received ${got}` : held ? `the server dropped the connection after ${got}, and the scenario's reconnect step has not run yet` : ended() ? `the stream ${phase} after ${got}` : `received ${got} of ${step.collect_events} before the timeout`)
+            } else if ('disconnect' in step) {
+                if (step.disconnect.mode === 'client') {
+                    stream.stop()
+                    check(`step ${index}: disconnect (client)`, true, 'closed by the client')
+                } else {
+                    // held: the client was stopped at the drop; otherwise it is already reconnecting by itself
+                    const ok = await waitFor(() => held || phase === 'reconnecting' || ended(), 15_000)
+                    if (ok) countFrom = events
+                    check(`step ${index}: disconnect (server)`, ok, ok ? (held ? 'the server dropped the connection; the runner holds its client until the reconnect step' : 'the server dropped the connection') : 'the server did not drop the connection')
+                }
+            } else if ('reconnect' in step) {
+                // a connection still open (no drop before this step) is closed first: the step is the reconnect
+                const closedHere = stream.isRunning
+                if (closedHere) stream.stop()
+                held = false
+                if (step.reconnect.after_ms) await sleep(step.reconnect.after_ms)
+                if (step.reconnect.resume_from_last_event_id === false) stream.forgetLastEventId()
+                if (!stream.isRunning) stream.start()
+                countFrom = undefined
+                check(`step ${index}: reconnect`, true, `${closedHere ? 'closed the open connection, ' : ''}${step.reconnect.after_ms ? `after ${step.reconnect.after_ms} ms ` : ''}${step.reconnect.resume_from_last_event_id === false ? 'without Last-Event-ID' : `with Last-Event-ID "${stream.lastId}"`}`)
+            } else if ('wait' in step) await sleep(step.wait.ms)
+        }
+        if (refusal) throw new CliError(refusal.message, EXIT.couldNotRun)
+        // expect.max_silence_ms: a silence needs time to show, and the analysis ends at the last record, so after the last step the
+        // connection stays open and observed for that long (plus a margin), and the analysis ends at the end of that time.
+        const maxSilence = scenario.expect?.max_silence_ms
+        let observedWindow = false
+        if (maxSilence !== undefined && stream.isRunning && !ended()) {
+            const margin = Math.max(SILENCE_MARGIN_MIN_MS, Math.round(maxSilence * SILENCE_MARGIN_FRACTION))
+            observedWindow = !(await waitFor(ended, maxSilence + margin)) // true when the whole time passed with the stream still going
+        }
+        stream.flushObservations()
+        const observedEndT = performance.now() - startedClock
+        const finalPhase = phase
+        stream.stop()
+
+        const lastRecordT = records.at(-1)?.t ?? 0
+        const endT = observedWindow ? Math.max(lastRecordT, observedEndT) : lastRecordT
+        const analysis = analyze(records as EngineInput[], { profile, endT })
+        // Gaps the scenario declares as expected (allow_gaps) are explained: their findings count neither for the gap check nor for
+        // the severity gates. A gap finding is explained only if an entry covers every number in every one of its ranges.
+        const allowed = scenario.allow_gaps ?? []
+        const rangesOf = (f: Finding): Array<{ from: number; to: number }> => (f.data?.['ranges'] as Array<{ from: number; to: number }> | undefined) ?? []
+        const isGapFinding = (f: Finding) => f.key.startsWith('seq.integrity:gap') || f.key.startsWith('resume.last-event-id:skipped')
+        const explained = (f: Finding) => isGapFinding(f) && f.data?.['truncated'] !== true && rangesOf(f).length > 0 && rangesOf(f).every((r) => allowed.some((a) => a.from <= r.from && r.to <= a.to))
+        const open = analysis.findings.filter((f) => f.status === 'open' && !explained(f))
+        const hasKey = (...prefixes: string[]) => open.filter((f) => prefixes.some((p) => f.key.startsWith(p)))
+
+        // what the scenario expects of the response
+        const response = records.find((r) => r.kind === 'response') as { status: number; contentType: string } | undefined
+        const exp = scenario.expect
+        if (exp?.status !== undefined) check('expect status', response?.status === exp.status, response ? `got ${response.status}, expected ${exp.status}` : 'no response was received')
+        if (exp?.content_type !== undefined) check('expect content type', response !== undefined && mediaType(response.contentType) === mediaType(exp.content_type), response ? `got ${response.contentType}, expected ${exp.content_type}` : 'no response was received')
+        if (exp?.first_event_within_ms !== undefined) {
+            const connect = records.find((r) => r.kind === 'connect')
+            const first = records.find((r) => r.kind === 'event')
+            const took = connect && first ? first.t - connect.t : undefined
+            check('expect first event in time', took !== undefined && took <= exp.first_event_within_ms, took === undefined ? 'no event arrived' : `first event after ${Math.round(took)} ms, limit ${exp.first_event_within_ms} ms`)
+        }
+
+        if (maxSilence !== undefined) {
+            // The longest stretch without any byte on one connection (a pause for a reconnect is not a silence), including the one that is still going
+            // when the observation ends. A heartbeat is a byte, so a stream that only sends heartbeats has no byte silence: its stall is the finding.
+            const lastByte = new Map<number, number>()
+            let longest = 0
+            for (const r of records) {
+                if (r.kind !== 'chunk') continue
+                const before = lastByte.get(r.conn)
+                if (before !== undefined) longest = Math.max(longest, r.t - before)
+                lastByte.set(r.conn, r.t)
+            }
+            const currentConn = records.reduce((n, r) => Math.max(n, r.conn), 0)
+            const lastOfCurrent = lastByte.get(currentConn)
+            const trailing = observedWindow && lastOfCurrent !== undefined ? Math.max(0, endT - lastOfCurrent) : 0
+            longest = Math.max(longest, trailing)
+            const stalls = analysis.findings.filter((f) => f.key.startsWith('stall.silent'))
+            const fmt = (ms: number) => `${Math.round(ms)} ms`
+            if (longest > maxSilence || stalls.length > 0) {
+                const parts = [...(longest > maxSilence ? [`no byte for ${fmt(longest)}${trailing === longest ? ' after the last one' : ''}, limit ${maxSilence} ms`] : []), ...stalls.map((f) => `${f.key}: ${f.summary}`)]
+                checks.push({ name: 'expect max silence', status: 'fail', message: parts.join(' | ') })
+            } else if (!observedWindow && finalPhase !== 'ended' && finalPhase !== 'failed') {
+                checks.push({ name: 'expect max silence', status: 'inconclusive', message: `the scenario closed the connection itself, so the silence after the last step could not be observed (longest before it: ${fmt(longest)}, limit ${maxSilence} ms)` })
+            } else {
+                checks.push({ name: 'expect max silence', status: 'pass', message: `longest silence ${fmt(longest)}, limit ${maxSilence} ms${observedWindow ? ', observed to the end of the time after the last step' : `, the stream ${finalPhase} before that time was over`}` })
+            }
+        }
+        // what the scenario asks to verify; sequence checks without a declared contract are inconclusive, never a silent pass
+        const needContract = (name: string, run: () => CheckResult): void => {
+            if (!scenario.target.sequence) checks.push({ name, status: 'inconclusive', message: 'no sequence contract is declared (target.sequence), so continuity cannot be verified' })
+            else checks.push(run())
+        }
+        for (const v of scenario.verify ?? []) {
+            if (v === 'no_unexplained_sequence_gaps') {
+                needContract(v, () => {
+                    const found = hasKey('seq.integrity:gap', 'resume.last-event-id:skipped') // what allow_gaps did not explain
+                    const covered = analysis.findings.filter((f) => f.status === 'open' && explained(f)).flatMap(rangesOf)
+                    if (found.length > 0 && allowed.length > 0 && found.some((f) => f.data?.['truncated'] === true)) return { name: v, status: 'inconclusive', message: 'more gaps than the tool lists (1000), so they cannot all be checked against allow_gaps' }
+                    if (found.length > 0) {
+                        const missing = found.flatMap(rangesOf).filter((r) => !allowed.some((a) => a.from <= r.from && r.to <= a.to))
+                        const list = missing.slice(0, 5).map((r) => (r.from === r.to ? r.from : `${r.from}-${r.to}`)).join(', ')
+                        return { name: v, status: 'fail', message: allowed.length > 0 && missing.length > 0 ? `numbers missing that no allow_gaps entry covers: ${list}${missing.length > 5 ? ` and ${missing.length - 5} more` : ''}` : found.map((f) => f.summary).join(' ') }
+                    }
+                    return { name: v, status: 'pass', message: covered.length > 0 ? `${covered.length} gap${covered.length === 1 ? '' : 's'}, all covered by allow_gaps` : 'no number is missing' }
+                })
+            } else if (v === 'no_unexpected_duplicates') {
+                needContract(v, () => {
+                    const bad = hasKey('seq.integrity:duplicate', 'seq.integrity:conflict', ...(scenario.target.delivery && scenario.target.delivery !== 'at_least_once' ? ['seq.integrity:replay'] : []))
+                    return { name: v, status: bad.length ? 'fail' : 'pass', message: bad.length ? bad.map((f) => f.summary).join(' ') : 'no unexpected duplicate' }
+                })
+            } else if (v === 'preserve_event_order') {
+                needContract(v, () => {
+                    const bad = hasKey('seq.integrity:reorder', 'seq.integrity:regression')
+                    return { name: v, status: bad.length ? 'fail' : 'pass', message: bad.length ? bad.map((f) => f.summary).join(' ') : 'events arrived in order' }
+                })
+            } else {
+                const level = v.no_findings_at_or_above
+                const bad = open.filter((f) => SEVERITY_RANK[f.severity] >= SEVERITY_RANK[level])
+                checks.push({ name: `no findings at or above ${level}`, status: bad.length ? 'fail' : 'pass', message: bad.length ? bad.map((f) => `${f.key}: ${f.summary}`).join(' | ') : 'none' })
+            }
+        }
+        const gateLevel: Severity = scenario.fail_on_severity ?? 'error'
+        const bad = open.filter((f) => SEVERITY_RANK[f.severity] >= SEVERITY_RANK[gateLevel])
+        checks.push({ name: `findings below ${gateLevel}`, status: bad.length ? 'fail' : 'pass', message: bad.length ? bad.map((f) => `${f.key}: ${f.summary}`).join(' | ') : 'none at or above the threshold' })
+
+        const status: CheckStatus = checks.some((c) => c.status === 'fail') ? 'fail' : checks.some((c) => c.status === 'inconclusive') ? 'inconclusive' : 'pass'
+        return { name: scenario.name, file, status, checks, findings: analysis.findings, coverage: analysis.coverage, events, durationMs: Date.now() - startedAt }
+    } finally {
+        for (const close of cleanup) await close()
+    }
+}

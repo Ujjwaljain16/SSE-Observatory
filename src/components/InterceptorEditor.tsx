@@ -48,23 +48,23 @@ export const InterceptorEditor = ({
                     <h2 className={`text-lg font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
                         Stream Interceptors
                     </h2>
-                    <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                    <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                         Transform or drop events before they reach the buffer. Runs on every incoming event.
                     </p>
                 </div>
                 <button
                     onClick={onAdd}
-                    className="ml-auto px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-1 bg-amber-600 hover:bg-amber-500 text-white transition-all"
+                    className="ml-auto px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-1 bg-amber-700 hover:bg-amber-700 text-white transition-all"
                 >
                     <Plus className="w-4 h-4" /> Add
                 </button>
             </div>
 
             {interceptors.length === 0 ? (
-                <div className={`text-center py-8 rounded-xl border border-dashed ${isDark ? 'border-slate-700 text-slate-500' : 'border-slate-300 text-slate-400'}`}>
+                <div className={`text-center py-8 rounded-xl border border-dashed ${isDark ? 'border-slate-700 text-slate-400' : 'border-slate-300 text-slate-600'}`}>
                     <Zap className="w-8 h-8 mx-auto mb-2 opacity-30" />
                     <p className="text-sm">No interceptors. Add one to transform incoming events.</p>
-                    <p className="text-xs mt-1 opacity-70">Example: Base64 decode, field rename, event filtering.</p>
+                    <p className="text-xs mt-1">Example: Base64 decode, field rename, event filtering.</p>
                 </div>
             ) : (
                 <div className="flex flex-col gap-3">
@@ -104,13 +104,13 @@ export const InterceptorEditor = ({
                                 onClick={() => setExpandedId(expandedId === interceptor.id ? null : interceptor.id)}
                             >
 
-                                <div className={`cursor-grab active:cursor-grabbing p-1 -ml-1 ${isDark ? 'text-slate-600 hover:text-slate-400' : 'text-slate-400 hover:text-slate-600'}`}>
+                                <div className={`cursor-grab active:cursor-grabbing p-1 -ml-1 ${isDark ? 'text-slate-600 hover:text-slate-400' : 'text-slate-600 hover:text-slate-600'}`}>
                                     <GripVertical className="w-4 h-4" />
                                 </div>
 
 
 
-                                <span className={`text-xs font-mono font-bold px-1.5 py-0.5 rounded ${isDark ? 'bg-slate-700 text-slate-400' : 'bg-slate-200 text-slate-500'}`}>
+                                <span className={`text-xs font-mono font-bold px-1.5 py-0.5 rounded ${isDark ? 'bg-slate-700 text-slate-400' : 'bg-slate-200 text-slate-600'}`}>
                                     #{index + 1}
                                 </span>
 
@@ -182,7 +182,7 @@ export const InterceptorEditor = ({
                                     <span className="flex">
                                         {interceptor.enabled
                                             ? <ToggleRight className="w-5 h-5 text-amber-400" />
-                                            : <ToggleLeft className={`w-5 h-5 ${isDark ? 'text-slate-600' : 'text-slate-400'}`} />
+                                            : <ToggleLeft className={`w-5 h-5 ${isDark ? 'text-slate-600' : 'text-slate-600'}`} />
                                         }
                                     </span>
                                 </button>
@@ -225,7 +225,7 @@ export const InterceptorEditor = ({
                                     {lastEventRaw && (
                                         <div className="mt-3 grid grid-cols-2 gap-2">
                                             <div>
-                                                <div className={`text-xs font-semibold mb-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                                                <div className={`text-xs font-semibold mb-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                                                     Raw Input (last event)
                                                 </div>
                                                 <pre className={`text-xs p-2 rounded-lg border overflow-auto max-h-24 ${isDark ? 'bg-black/40 border-slate-700 text-slate-400' : 'bg-slate-100 border-slate-200 text-slate-600'}`}>
@@ -233,7 +233,7 @@ export const InterceptorEditor = ({
                                                 </pre>
                                             </div>
                                             <div>
-                                                <div className={`text-xs font-semibold mb-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                                                <div className={`text-xs font-semibold mb-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                                                     Transformed Output
                                                 </div>
                                                 <pre className={`text-xs p-2 rounded-lg border overflow-auto max-h-24 ${lastEventTransformed

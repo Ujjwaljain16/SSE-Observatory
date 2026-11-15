@@ -1,0 +1,473 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "id": "f01-text-plain",
+      "family": "F01",
+      "title": "Wrong content type: text/plain",
+      "description": "A 200 response labelled text/plain.",
+      "expected": [
+        "proto.content-type"
+      ],
+      "forbidden": [
+        "stall.silent"
+      ],
+      "healthyTwin": "h01",
+      "file": "f01-text-plain.sse-capture",
+      "events": 0,
+      "seconds": 0,
+      "scale": 0.25
+    },
+    {
+      "id": "f01-text-html",
+      "family": "F01",
+      "title": "Wrong content type: text/html",
+      "description": "A 200 response labelled text/html, like an error or login page.",
+      "expected": [
+        "proto.content-type"
+      ],
+      "forbidden": [
+        "stall.silent"
+      ],
+      "healthyTwin": "h01",
+      "file": "f01-text-html.sse-capture",
+      "events": 0,
+      "seconds": 0,
+      "scale": 0.25
+    },
+    {
+      "id": "f01-json",
+      "family": "F01",
+      "title": "Wrong content type: application/json",
+      "description": "A 200 JSON response.",
+      "expected": [
+        "proto.content-type"
+      ],
+      "forbidden": [
+        "stall.silent"
+      ],
+      "healthyTwin": "h01",
+      "file": "f01-json.sse-capture",
+      "events": 0,
+      "seconds": 0,
+      "scale": 0.25
+    },
+    {
+      "id": "f01-401",
+      "family": "F01",
+      "title": "HTTP 401",
+      "description": "Credentials rejected.",
+      "expected": [
+        "http.status"
+      ],
+      "forbidden": [
+        "stall.silent"
+      ],
+      "healthyTwin": "h01",
+      "file": "f01-401.sse-capture",
+      "events": 0,
+      "seconds": 0,
+      "scale": 0.25
+    },
+    {
+      "id": "f01-404",
+      "family": "F01",
+      "title": "HTTP 404",
+      "description": "No such stream.",
+      "expected": [
+        "http.status"
+      ],
+      "forbidden": [
+        "stall.silent"
+      ],
+      "healthyTwin": "h01",
+      "file": "f01-404.sse-capture",
+      "events": 0,
+      "seconds": 0,
+      "scale": 0.25
+    },
+    {
+      "id": "f01-502",
+      "family": "F01",
+      "title": "HTTP 502",
+      "description": "A gateway error (retryable).",
+      "expected": [
+        "http.status"
+      ],
+      "forbidden": [
+        "stall.silent"
+      ],
+      "healthyTwin": "h01",
+      "file": "f01-502.sse-capture",
+      "events": 0,
+      "seconds": 0.2,
+      "scale": 0.25
+    },
+    {
+      "id": "f04-silent",
+      "family": "F04",
+      "title": "Events, then silence",
+      "description": "N events one second apart, then nothing at all.",
+      "expected": [
+        "stall.silent:bytes"
+      ],
+      "forbidden": [
+        "stall.silent:origin",
+        "stall.silent:events"
+      ],
+      "healthyTwin": "h02",
+      "file": "f04-silent.sse-capture",
+      "events": 12,
+      "seconds": 12.1,
+      "scale": 0.25
+    },
+    {
+      "id": "f04-heartbeats",
+      "family": "F04",
+      "title": "Events, then heartbeats only",
+      "description": "N events, then only origin comments.",
+      "expected": [
+        "stall.silent:events"
+      ],
+      "forbidden": [
+        "stall.silent:bytes",
+        "stall.silent:origin"
+      ],
+      "healthyTwin": "h02",
+      "file": "f04-heartbeats.sse-capture",
+      "events": 12,
+      "seconds": 12.1,
+      "scale": 0.25
+    },
+    {
+      "id": "f04-masked",
+      "family": "F04",
+      "title": "Events, then only proxy heartbeats",
+      "description": "N events, then only proxy-tagged comments: the proxy hides an upstream stall.",
+      "expected": [
+        "stall.silent:origin"
+      ],
+      "forbidden": [
+        "stall.silent:bytes"
+      ],
+      "healthyTwin": "h02",
+      "file": "f04-masked.sse-capture",
+      "events": 12,
+      "seconds": 12.1,
+      "scale": 0.25
+    },
+    {
+      "id": "h01",
+      "family": "H01",
+      "title": "Healthy: steady 1 s events",
+      "description": "One event per second.",
+      "expected": [],
+      "forbidden": [
+        "*"
+      ],
+      "healthyTwin": null,
+      "file": "h01.sse-capture",
+      "events": 6,
+      "seconds": 1.3,
+      "scale": 0.25
+    },
+    {
+      "id": "h02",
+      "family": "H02",
+      "title": "Healthy: sparse events with 15 s heartbeats",
+      "description": "An event every 20 s, a heartbeat comment every 15 s.",
+      "expected": [],
+      "forbidden": [
+        "*"
+      ],
+      "healthyTwin": null,
+      "file": "h02.sse-capture",
+      "events": 1,
+      "seconds": 3,
+      "scale": 0.25
+    },
+    {
+      "id": "h03",
+      "family": "H03",
+      "title": "Healthy: CRLF, split multi-byte UTF-8, comments",
+      "description": "CRLF line endings, characters split across writes, comments.",
+      "expected": [],
+      "forbidden": [
+        "*"
+      ],
+      "healthyTwin": null,
+      "file": "h03.sse-capture",
+      "events": 4,
+      "seconds": 0.8,
+      "scale": 0.25
+    },
+    {
+      "id": "h04",
+      "family": "H04",
+      "title": "Healthy: uuid ids",
+      "description": "Steady events with uuid ids and resume support.",
+      "expected": [],
+      "forbidden": [
+        "*"
+      ],
+      "healthyTwin": null,
+      "file": "h04.sse-capture",
+      "events": 6,
+      "seconds": 1.3,
+      "scale": 0.25
+    },
+    {
+      "id": "f03-buffered",
+      "family": "F03",
+      "title": "Events written in lumps",
+      "description": "Events are produced every 250 ms but written to the socket 12 at a time, every 3 s: what a buffer in front of the app does.",
+      "expected": [
+        "delivery.bursty"
+      ],
+      "forbidden": [
+        "stall.silent"
+      ],
+      "healthyTwin": "f03-steady",
+      "file": "f03-buffered.sse-capture",
+      "events": 61,
+      "seconds": 15,
+      "scale": 1
+    },
+    {
+      "id": "f03-steady",
+      "family": "F03",
+      "title": "Healthy: events flushed as produced",
+      "description": "The same events, one every 250 ms, each written when produced.",
+      "expected": [],
+      "forbidden": [
+        "*"
+      ],
+      "healthyTwin": null,
+      "file": "f03-steady.sse-capture",
+      "events": 61,
+      "seconds": 3.9,
+      "scale": 0.25
+    },
+    {
+      "id": "f05-drops",
+      "family": "F05",
+      "title": "The server ends the connection every few events",
+      "description": "Ends the connection after ?per= events (default 3); the client resumes with Last-Event-ID. ?ignore=1 ignores it and restarts from 1.",
+      "expected": [
+        "reconnect.loop"
+      ],
+      "forbidden": [
+        "reconnect.duration-pattern",
+        "stall.silent"
+      ],
+      "healthyTwin": "f05-resumes",
+      "file": "f05-drops.sse-capture",
+      "events": 13,
+      "seconds": 2.8,
+      "scale": 0.25
+    },
+    {
+      "id": "f05-resumes",
+      "family": "F05",
+      "title": "Healthy: one drop, a correct resume",
+      "description": "The connection is dropped once, half way; the client resumes after Last-Event-ID and the rest arrives.",
+      "expected": [],
+      "forbidden": [
+        "*"
+      ],
+      "healthyTwin": null,
+      "file": "f05-resumes.sse-capture",
+      "events": 7,
+      "seconds": 1.1,
+      "scale": 0.25
+    },
+    {
+      "id": "f06-skips",
+      "family": "F06",
+      "title": "Resume skips ids",
+      "description": "Half the events, a dropped connection, then a resume that jumps three ids past the cursor (a server history that is too short).",
+      "expected": [
+        "resume.last-event-id:skipped"
+      ],
+      "forbidden": [
+        "stall.silent",
+        "seq.integrity:gap"
+      ],
+      "healthyTwin": "f06-resumes",
+      "file": "f06-skips.sse-capture",
+      "events": 6,
+      "seconds": 0.4,
+      "scale": 0.25
+    },
+    {
+      "id": "f06-resumes",
+      "family": "F06",
+      "title": "Healthy: resume continues after the cursor",
+      "description": "The same drop, resumed correctly.",
+      "expected": [],
+      "forbidden": [
+        "*"
+      ],
+      "healthyTwin": null,
+      "file": "f06-resumes.sse-capture",
+      "events": 9,
+      "seconds": 0.7,
+      "scale": 0.25
+    },
+    {
+      "id": "f09-buffered",
+      "family": "F09",
+      "title": "Same stream through a buffering layer",
+      "description": "Events are produced every 300 ms but delivered in 4096-byte blocks. Compare with f09-healthy.",
+      "expected": [],
+      "forbidden": [
+        "stall.silent"
+      ],
+      "healthyTwin": null,
+      "file": "f09-buffered.sse-capture",
+      "events": 13,
+      "seconds": 0.9,
+      "scale": 0.25
+    },
+    {
+      "id": "f09-healthy",
+      "family": "F09",
+      "title": "Healthy: same stream, flushed per event",
+      "description": "The same events, each delivered as it is produced.",
+      "expected": [],
+      "forbidden": [
+        "*"
+      ],
+      "healthyTwin": null,
+      "file": "f09-healthy.sse-capture",
+      "events": 13,
+      "seconds": 1,
+      "scale": 0.25
+    },
+    {
+      "id": "f11-drift",
+      "family": "F11",
+      "title": "The payload format changes part way",
+      "description": "The first 20 orders have id, price and qty; from the 21st the price is gone and a currency is new.",
+      "expected": [
+        "schema.drift"
+      ],
+      "forbidden": [
+        "stall.silent",
+        "proto"
+      ],
+      "healthyTwin": "f11-steady",
+      "file": "f11-drift.sse-capture",
+      "events": 35,
+      "seconds": 0.6,
+      "scale": 0.25
+    },
+    {
+      "id": "f11-steady",
+      "family": "F11",
+      "title": "Healthy: the payload format never changes",
+      "description": "The same orders with one shape throughout.",
+      "expected": [],
+      "forbidden": [
+        "*"
+      ],
+      "healthyTwin": null,
+      "file": "f11-steady.sse-capture",
+      "events": 35,
+      "seconds": 0.6,
+      "scale": 0.25
+    }
+  ],
+  "skipped": [
+    {
+      "id": "f02-closed",
+      "family": "F02",
+      "title": "Event never terminated, connection closed",
+      "reason": "the capture is 87 KB, over the 40 KB a static lab ships"
+    },
+    {
+      "id": "f02-open",
+      "family": "F02",
+      "title": "Event never terminated, connection open",
+      "reason": "under the default thresholds it did not meet its own expectations: stall.silent:bytes was expected but not found (found: timing.first-event:first-event)"
+    },
+    {
+      "id": "f08-token",
+      "family": "F08",
+      "title": "Token in the URL",
+      "reason": "under the default thresholds it did not meet its own expectations: security.credentials-in-metadata:url was expected but not found (found: http.status)"
+    },
+    {
+      "id": "f05-cap",
+      "family": "F05",
+      "title": "Every connection is cut after the same duration",
+      "reason": "the capture is 80 KB, over the 40 KB a static lab ships"
+    },
+    {
+      "id": "f10-steady",
+      "family": "F10",
+      "title": "A fast, healthy stream for a slow consumer",
+      "reason": "under the default thresholds it did not meet its own expectations: consumer.slow was expected but not found (found: nothing)"
+    },
+    {
+      "id": "f07-flood",
+      "family": "F07",
+      "title": "Flood of tiny events",
+      "reason": "the capture is 382 KB, over the 40 KB a static lab ships"
+    },
+    {
+      "id": "f08-echo",
+      "family": "F08",
+      "title": "Echoes the credentials it was sent",
+      "reason": "it exists to test redaction: it echoes whatever credentials the request carries, so a capture of it would be a capture of the request."
+    },
+    {
+      "id": "f05-ignores",
+      "family": "F05",
+      "title": "The server ignores Last-Event-ID after a drop",
+      "reason": "added after the lab was made; the lab is regenerated with npm run lab:build, which also changes every shipped capture"
+    },
+    {
+      "id": "h05-declared-idle",
+      "family": "H05",
+      "title": "Healthy: idle for 40 s between events, and said to be",
+      "reason": "added after the lab was made; the lab is regenerated with npm run lab:build, which also changes every shipped capture"
+    },
+    {
+      "id": "h06-comments-only",
+      "family": "H06",
+      "title": "Healthy: comments only, then the end",
+      "reason": "added after the lab was made; the lab is regenerated with npm run lab:build, which also changes every shipped capture"
+    },
+    {
+      "id": "f04-late-heartbeat",
+      "family": "F04",
+      "title": "A heartbeat arrives late",
+      "reason": "added after the lab was made; the lab is regenerated with npm run lab:build, which also changes every shipped capture"
+    },
+    {
+      "id": "f11-slow-start",
+      "family": "F11",
+      "title": "Slow first byte and slow first event",
+      "reason": "added after the lab was made; the lab is regenerated with npm run lab:build, which also changes every shipped capture"
+    },
+    {
+      "id": "f12-gzip-sync",
+      "family": "F12",
+      "title": "Compressed event stream",
+      "reason": "added after the lab was made; the lab is regenerated with npm run lab:build, which also changes every shipped capture"
+    },
+    {
+      "id": "f15-malformed",
+      "family": "F15",
+      "title": "Malformed framing, then good events",
+      "reason": "added after the lab was made; the lab is regenerated with npm run lab:build, which also changes every shipped capture"
+    },
+    {
+      "id": "f16-rate",
+      "family": "F16",
+      "title": "Healthy: a constant rate",
+      "reason": "added after the lab was made; the lab is regenerated with npm run lab:build, which also changes every shipped capture"
+    }
+  ]
+}

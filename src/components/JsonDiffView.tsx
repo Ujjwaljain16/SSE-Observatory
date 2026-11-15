@@ -20,7 +20,7 @@ export const JsonDiffView = ({ oldData, newData, theme }: JsonDiffViewProps) => 
 
     if (differences.length === 0) {
         return (
-            <div className={`p-4 rounded-lg text-sm text-center font-medium ${isDark ? 'bg-slate-800/80 text-slate-400 border border-slate-700/50' : 'bg-slate-50 text-slate-500 border border-slate-200'}`}>
+            <div className={`p-4 rounded-lg text-sm text-center font-medium ${isDark ? 'bg-slate-800/80 text-slate-400 border border-slate-700/50' : 'bg-slate-50 text-slate-600 border border-slate-200'}`}>
                 No differences found between the selected events.
             </div>
         )

@@ -38,6 +38,8 @@ app.use(helmet())
 if (!config.production) app.use(cors())
 app.use(compression())
 app.use(express.json({ limit: '10mb' }))
+// A capture can be uploaded as raw NDJSON; its size is capped again before it is parsed.
+app.use(express.text({ type: 'application/x-ndjson', limit: '20mb' }))
 
 // Reconnects count as requests, so the window must be generous; connection caps live in the proxy itself.
 app.use('/api/', rateLimit({
@@ -62,6 +64,14 @@ if (config.production) {
         res.sendFile(path.join(process.cwd(), 'dist', 'index.html'))
     })
 }
+
+// A body that is too large or not valid JSON would otherwise come back as Express's HTML error page; the API answers in JSON.
+app.use((err, req, res, next) => {
+    if (!req.path.startsWith('/api')) return next(err)
+    if (err?.type === 'entity.too.large') return res.status(413).json({ error: 'Request body too large (JSON up to 10 MB, NDJSON up to 20 MB)' })
+    if (err?.type === 'entity.parse.failed') return res.status(400).json({ error: 'Request body is not valid JSON' })
+    return next(err)
+})
 
 if (process.env.SENTRY_DSN) Sentry.setupExpressErrorHandler(app)
 

@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sse-observatory.vercel.app/docs/schemas/sse-cli-output-1.json",
+  "title": "sse-doctor findings output",
+  "description": "What `sse-doctor analyze`, `probe`, `compare` and the other commands that report findings print with --format json. Fields may be added within version 1; a field is never removed or changed in meaning without a new version (schemaVersion 2 and a new file).",
+  "type": "object",
+  "required": ["schemaVersion", "command", "subject", "findings", "coverage", "notes"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "command": { "type": "string", "minLength": 1 },
+    "subject": { "type": "string", "description": "What was looked at: a file, a URL, or two captures." },
+    "findings": { "type": "array", "items": { "$ref": "#/$defs/finding" } },
+    "coverage": { "type": "array", "items": { "$ref": "#/$defs/coverage" }, "description": "One entry per check, saying whether it could be judged. A check that was not evaluated is never the same as a check that found nothing." },
+    "notes": { "type": "array", "items": { "type": "string" } }
+  },
+  "$defs": {
+    "evidence": {
+      "type": "object",
+      "required": ["seq", "t"],
+      "properties": {
+        "seq": { "type": "number", "description": "The record's sequence number in the capture." },
+        "t": { "type": "number", "description": "Milliseconds since the capture started." },
+        "note": { "type": "string" }
+      }
+    },
+    "finding": {
+      "type": "object",
+      "required": ["key", "ruleId", "ruleVersion", "severity", "title", "summary", "facts", "deductions", "limits", "status", "firstSeenT", "lastSeenT", "occurrences"],
+      "properties": {
+        "key": { "type": "string", "minLength": 1, "description": "Stable identity within a capture, for example stall.silent:bytes." },
+        "ruleId": { "type": "string" },
+        "ruleVersion": { "type": "number" },
+        "severity": { "enum": ["info", "warning", "error", "critical"] },
+        "title": { "type": "string" },
+        "summary": { "type": "string" },
+        "facts": {
+          "type": "array",
+          "description": "What was observed, each with the records that show it.",
+          "items": {
+            "type": "object",
+            "required": ["text", "evidence"],
+            "properties": { "text": { "type": "string" }, "evidence": { "type": "array", "items": { "$ref": "#/$defs/evidence" } } }
+          }
+        },
+        "deductions": {
+          "type": "array",
+          "description": "What is inferred from the facts. Each statement starts with \"Likely:\".",
+          "items": {
+            "type": "object",
+            "required": ["statement", "confidence", "basis", "alternatives"],
+            "properties": {
+              "statement": { "type": "string" },
+              "confidence": { "enum": ["low", "medium", "high"] },
+              "basis": { "type": "array", "items": { "type": "number" } },
+              "alternatives": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        },
+        "nextCheck": {
+          "type": "object",
+          "required": ["description"],
+          "properties": { "description": { "type": "string" }, "command": { "type": "string" } }
+        },
+        "limits": { "type": "array", "items": { "type": "string" }, "description": "What this check cannot know." },
+        "status": { "enum": ["open", "resolved"] },
+        "firstSeenT": { "type": "number" },
+        "lastSeenT": { "type": "number" },
+        "occurrences": { "type": "number", "minimum": 1 },
+        "data": { "type": "object", "description": "Machine-readable detail for tools that act on a finding, such as missing number ranges." }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "required": ["ruleId", "ruleVersion", "title", "status", "missingCapabilities", "missingKinds", "notes"],
+      "properties": {
+        "ruleId": { "type": "string" },
+        "ruleVersion": { "type": "number" },
+        "title": { "type": "string" },
+        "status": { "enum": ["evaluated", "not-evaluated"] },
+        "missingCapabilities": { "type": "array", "items": { "type": "string" } },
+        "missingKinds": { "type": "array", "items": { "type": "string" } },
+        "notes": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

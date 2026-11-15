@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "name": "a steady stream stays healthy",
+  "target": { "url": "fixture://h01?scale=0.02&n=6" },
+  "expect": { "status": 200, "content_type": "text/event-stream" },
+  "steps": [{ "collect_events": 5, "timeout_ms": 10000 }],
+  "verify": [{ "no_findings_at_or_above": "warning" }]
+}

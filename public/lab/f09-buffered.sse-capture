@@ -1,0 +1,23 @@
+{"format":"sse-capture","version":"2.0","createdAt":"2026-11-14T18:44:40.269Z","tool":{"name":"sse-observatory","version":"dev"},"clock":{"origin":"monotonic"},"capabilities":["connect","response","chunks","comments","violations","events","phases","reconnects","payload"],"kind":"sanitized","source":{"kind":"fixture","client":"node-undici"},"request":{"url":"https://lab.example/f09-buffered","method":"GET","headers":{}},"redaction":{"policy":"default","version":1,"applied":[],"placeholders":0}}
+{"seq":0,"t":0.03350000000500586,"conn":0,"domain":"transport","kind":"phase","phase":"connecting","info":{"attempt":0}}
+{"seq":1,"t":0.10340000000724103,"conn":0,"domain":"transport","kind":"connect","attempt":0,"url":"http://127.0.0.1:59246/f09/buffered?scale=[redacted]","method":"GET","headerNames":["accept","cache-control"],"sentLastEventId":""}
+{"seq":2,"t":1.4457000000111293,"conn":0,"domain":"transport","kind":"response","status":200,"contentType":"text/event-stream; charset=utf-8","redirected":false,"headers":{"content-type":"text/event-stream; charset=utf-8","cache-control":"no-cache","transfer-encoding":"chunked","x-accel-buffering":"no"},"ttfbMs":1}
+{"seq":3,"t":1.455500000010943,"conn":0,"domain":"transport","kind":"phase","phase":"open","info":{"attempt":0}}
+{"seq":4,"t":313.53859999999986,"conn":0,"domain":"transport","kind":"chunk","bytes":4096}
+{"seq":5,"t":313.6201000000001,"conn":0,"domain":"transport","kind":"event","event":"tick","sseId":"1","dataBytes":1016,"dataHash":"e920aff24482","extracted":{"shape":"$:o|n:n|pad:s"}}
+{"seq":6,"t":313.6362000000081,"conn":0,"domain":"transport","kind":"event","event":"tick","sseId":"2","dataBytes":1016,"dataHash":"c1499b646cff9","extracted":{"shape":"$:o|n:n|pad:s"}}
+{"seq":7,"t":313.6453000000038,"conn":0,"domain":"transport","kind":"event","event":"tick","sseId":"3","dataBytes":1016,"dataHash":"137761bf6d36fb","extracted":{"shape":"$:o|n:n|pad:s"}}
+{"seq":8,"t":624.3581000000122,"conn":0,"domain":"transport","kind":"chunk","bytes":4096}
+{"seq":9,"t":624.4236999999994,"conn":0,"domain":"transport","kind":"event","event":"tick","sseId":"4","dataBytes":1016,"dataHash":"a661f139c4bb7","extracted":{"shape":"$:o|n:n|pad:s"}}
+{"seq":10,"t":624.4389000000083,"conn":0,"domain":"transport","kind":"event","event":"tick","sseId":"5","dataBytes":1016,"dataHash":"cc869b16d1386","extracted":{"shape":"$:o|n:n|pad:s"}}
+{"seq":11,"t":624.4486000000034,"conn":0,"domain":"transport","kind":"event","event":"tick","sseId":"6","dataBytes":1016,"dataHash":"f8d7f79212497","extracted":{"shape":"$:o|n:n|pad:s"}}
+{"seq":12,"t":624.4578000000038,"conn":0,"domain":"transport","kind":"event","event":"tick","sseId":"7","dataBytes":1016,"dataHash":"813b02cc43857","extracted":{"shape":"$:o|n:n|pad:s"}}
+{"seq":13,"t":944.0428000000102,"conn":0,"domain":"transport","kind":"chunk","bytes":4341}
+{"seq":14,"t":944.1380000000063,"conn":0,"domain":"transport","kind":"event","event":"tick","sseId":"8","dataBytes":1016,"dataHash":"1be60ab5d015c2","extracted":{"shape":"$:o|n:n|pad:s"}}
+{"seq":15,"t":944.1637000000046,"conn":0,"domain":"transport","kind":"event","event":"tick","sseId":"9","dataBytes":1016,"dataHash":"b28809bc6f258","extracted":{"shape":"$:o|n:n|pad:s"}}
+{"seq":16,"t":944.1805000000022,"conn":0,"domain":"transport","kind":"event","event":"tick","sseId":"10","dataBytes":1017,"dataHash":"a660859fbe5ad","extracted":{"shape":"$:o|n:n|pad:s"}}
+{"seq":17,"t":944.1981999999989,"conn":0,"domain":"transport","kind":"event","event":"tick","sseId":"11","dataBytes":1017,"dataHash":"1982ecd272b9b9","extracted":{"shape":"$:o|n:n|pad:s"}}
+{"seq":18,"t":944.2146000000066,"conn":0,"domain":"transport","kind":"event","event":"tick","sseId":"12","dataBytes":1017,"dataHash":"e77e14b91d8f6","extracted":{"shape":"$:o|n:n|pad:s"}}
+{"seq":19,"t":944.2195000000065,"conn":0,"domain":"transport","kind":"event","event":"end","sseId":"12","dataBytes":4,"dataHash":"391c5a833e9e6"}
+{"seq":20,"t":944.3222999999998,"conn":0,"domain":"transport","kind":"phase","phase":"ended","info":{"attempt":0,"reason":"The server ended the stream"}}
+{"footer":{"endReason":"stopped","counts":{"phase":3,"connect":1,"response":1,"chunk":3,"event":13},"endT":944.3222999999998,"integrity":{"algorithm":"sha256","value":"8e2f8836d28e5e8c17140ccd310290981d79efff1a0e5b5d9c073791420f6b69"}}}

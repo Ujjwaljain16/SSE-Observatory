@@ -1,0 +1,28 @@
+{
+  "version": "1.0",
+  "createdAt": "2026-11-14T20:47:18.760Z",
+  "totalEvents": 2,
+  "durationMs": 90000,
+  "events": [
+    {
+      "id": "c99e3bdc-e44a-4d2a-bd5a-0cc684f81ad0",
+      "timestamp": "02:23:20 PM",
+      "arrivalTime": 1760000000000,
+      "seq": 11,
+      "type": "message",
+      "data": "hello",
+      "raw": "hello",
+      "deltaMs": 0
+    },
+    {
+      "id": "a9955311-7cec-465e-a870-0bf620b82d6b",
+      "timestamp": "02:24:50 PM",
+      "arrivalTime": 1760000090000,
+      "seq": 12,
+      "type": "message",
+      "data": "world",
+      "raw": "world",
+      "deltaMs": 90000
+    }
+  ]
+}

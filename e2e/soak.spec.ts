@@ -5,12 +5,12 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Soak Testing', () => {
     test('handles continuous stream for an extended duration without memory explosion', async ({ page }) => {
-        test.setTimeout(60 * 60 * 1000); // 1 Hour Timeout for soak testing
+        test.setTimeout(((Number(process.env.SOAK_MINUTES) || 10) + 5) * 60 * 1000) // the soak itself plus five minutes
 
         await page.goto('/');
 
-        // Connect to the load stream
-        await page.fill('input[placeholder*="https://api.example.com/sse"]', 'http://localhost:4000/load-stream');
+        // Connect to a continuous stream (200 events/s). /load-stream ends after 10,000 events, which a soak must not rely on.
+        await page.fill('input[placeholder*="https://api.example.com/sse"]', 'http://localhost:4000/api/stream?freq=200');
         await page.getByRole('button', { name: 'Connect', exact: true }).click();
 
         await expect(page.locator('text=Connected').first()).toBeVisible({ timeout: 10000 });
@@ -19,7 +19,9 @@ test.describe('Soak Testing', () => {
 
         // We run a loop to periodically check the UI responsiveness and (if possible) log metrics.
         // We'll run it for a configured soak time (e.g. 10 minutes locally for proof)
-        const soakDurationMs = process.env.CI ? 60000 : 10 * 60 * 1000; // 1 min in CI, 10 mins local testing
+        // SOAK_MINUTES overrides the length (for example 60 for an hour); the default is 1 minute in CI and 10 minutes locally.
+        const soakMinutes = Number(process.env.SOAK_MINUTES) || (process.env.CI ? 1 : 10)
+        const soakDurationMs = soakMinutes * 60 * 1000
         const intervalMs = 30000; // Check every 30 seconds
         const iterations = Math.floor(soakDurationMs / intervalMs);
 

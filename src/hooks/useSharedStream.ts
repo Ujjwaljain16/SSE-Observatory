@@ -12,7 +12,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { EventMessage } from '../types'
 import { workerRegistry } from '../utils/workerRegistry'
-import { SSEClient, type SSEPhase, type SSEPhaseInfo } from '../utils/sseClient'
+import type { SSEPhase, SSEPhaseInfo } from '../core/sse/sseClient'
+import { createObservedStream, type ObservedStream } from '../core/sse/observedStream'
+import { MAIN_STREAM, observationRegistry } from '../doctor/observationRegistry'
+import { recordingEnabled } from '../doctor/recordingConfig'
+import { getProfile } from '../doctor/profileStore'
+import { asProbeConfig, streamKey } from '../workers/contracts'
+import { probeConfigOf } from '../core/diagnostics/profile'
 import { buildSSERequest } from '../utils/sseProxyUrl'
 import type { IncomingSSE } from '../utils/buildEvent'
 import { useEventIngest } from './useEventIngest'
@@ -80,7 +86,7 @@ export function useSharedStream(
     const [status, setStatus] = useState<StreamStatus>(IDLE)
 
     const workerRef = useRef<SharedWorker | null>(null)
-    const directRef = useRef<SSEClient | null>(null)
+    const directRef = useRef<ObservedStream | null>(null)
     const pingRef = useRef<ReturnType<typeof setInterval> | null>(null)
     const keyRef = useRef('')
     const lastSeqRef = useRef(0)
@@ -92,23 +98,38 @@ export function useSharedStream(
 
     const stopPing = () => { if (pingRef.current) { clearInterval(pingRef.current); pingRef.current = null } }
 
-    const startDirect = useCallback((url: string, token: string | undefined, useProxy: boolean) => {
-        directRef.current?.stop()
-        const client = new SSEClient({
-            request: () => buildSSERequest(url, token, useProxy),
-            onMessage: (m) => pushRef.current({ event: m.event, data: m.data, id: m.id, raw: m.raw, arrivalTime: Date.now() }),
-            onPhase: (phase, info) => setStatus(describeStatus(phase, info)),
-        })
-        directRef.current = client
-        client.start()
+    // The newest event id seen from whichever transport is running, so a takeover can resume instead of restarting.
+    const lastEventIdRef = useRef('')
+    const deliver = useCallback((incoming: IncomingSSE | IncomingSSE[]) => {
+        const last = Array.isArray(incoming) ? incoming[incoming.length - 1] : incoming
+        if (last?.id) lastEventIdRef.current = last.id
+        pushRef.current(incoming)
     }, [])
+
+    const startDirect = useCallback((url: string, token: string | undefined, useProxy: boolean, lastEventId = '') => {
+        directRef.current?.stop()
+        const stream = createObservedStream({
+            request: () => buildSSERequest(url, token, useProxy),
+            sinks: {
+                onMessage: (message) => deliver(message),
+                onPhase: (phase, info) => setStatus(describeStatus(phase, info)),
+            },
+            clientOptions: { initialLastEventId: lastEventId },
+            ...(recordingEnabled() ? { recording: { profile: probeConfigOf(getProfile()), onObservations: () => observationRegistry.notify(MAIN_STREAM) } } : {}),
+        })
+        // The page runs this stream itself, so the registry adopts its store instead of copying it.
+        if (stream.store) observationRegistry.attach(MAIN_STREAM, stream.store, stream.captureId)
+        directRef.current = stream
+        stream.start()
+    }, [deliver])
 
     // The worker is gone (crashed, killed, failed to load): carry on with the same connection inside the page.
     const fallbackToDirect = useCallback(() => {
         workerRef.current = null
         stopPing()
         const params = lastParamsRef.current
-        if (params) startDirect(params.url, params.token, params.useProxy)
+        // Resume from the last id the worker delivered, so the stream continues instead of restarting from scratch.
+        if (params) startDirect(params.url, params.token, params.useProxy, lastEventIdRef.current)
     }, [startDirect])
 
     // --- SharedWorker lifecycle -------------------------------------------------------------
@@ -131,19 +152,21 @@ export function useSharedStream(
                     const p = msg.payload as IncomingSSE
                     if (p.seq !== undefined && p.seq <= lastSeqRef.current) return
                     if (p.seq !== undefined) lastSeqRef.current = p.seq
-                    pushRef.current(p)
+                    deliver(p)
                 } else if (msg.type === 'events') {
                     const fresh = (msg.payloads as IncomingSSE[]).filter((p) => p.seq === undefined || p.seq > lastSeqRef.current)
                     if (fresh.length === 0) return
                     const last = fresh[fresh.length - 1].seq
                     if (last !== undefined) lastSeqRef.current = last
-                    pushRef.current(fresh)
+                    deliver(fresh)
+                } else if (msg.type === 'observations') {
+                    observationRegistry.receive(MAIN_STREAM, { captureId: msg.captureId, batch: msg.batch, replace: msg.replace })
                 } else if (msg.type === 'catchup') {
                     const fresh = (msg.events as IncomingSSE[]).filter((p) => p.seq === undefined || p.seq > lastSeqRef.current)
                     if (fresh.length === 0) return
                     const last = fresh[fresh.length - 1].seq
                     if (last !== undefined) lastSeqRef.current = last
-                    pushRef.current(fresh)
+                    deliver(fresh)
                 }
             }
 
@@ -161,7 +184,7 @@ export function useSharedStream(
             directRef.current = null
             workerRegistry.release(WORKER_KEY)
         }
-    }, [startDirect, fallbackToDirect])
+    }, [startDirect, fallbackToDirect, deliver])
 
     // --- public API -------------------------------------------------------------------------
     const connect = useCallback((url: string, token?: string, clearHistory = true, useProxy = true) => {
@@ -174,14 +197,17 @@ export function useSharedStream(
         directRef.current?.stop()
         directRef.current = null
         lastParamsRef.current = { url: trimmed, token, useProxy }
-        keyRef.current = `${trimmed}::${token ?? ''}`
+        keyRef.current = streamKey(trimmed, token, { recording: recordingEnabled(), useProxy, probe: asProbeConfig(probeConfigOf(getProfile())) })
         lastSeqRef.current = 0
+        lastEventIdRef.current = '' // a new connection starts fresh; only a takeover resumes
+        observationRegistry.reset(MAIN_STREAM)
         if (clearHistory) ingest.clear()
         setStatus({ phase: 'connecting', message: '' })
 
         const worker = workerRef.current
         if (worker) {
-            worker.port.postMessage({ type: 'connect', url: trimmed, token, useProxy })
+            const probe = probeConfigOf(getProfile())
+            worker.port.postMessage({ type: 'connect', url: trimmed, token, useProxy, ...(recordingEnabled() ? {} : { recording: false }), ...(Object.keys(probe).length > 0 ? { profile: probe } : {}) })
             lastHeardRef.current = Date.now()
             pingRef.current = setInterval(() => {
                 // A killed SharedWorker raises no event: silence is the only sign, so the ping doubles as a watchdog.

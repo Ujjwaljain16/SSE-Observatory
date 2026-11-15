@@ -34,7 +34,7 @@ export const SchemaAnalyzer = memo(function SchemaAnalyzer({ theme, schema, isAn
                     </div>
                     <div>
                         <h3 className={`font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>Inferred Schema</h3>
-                        <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Detected JSON structure from {Object.keys(schema).length > 0 ? 'the event stream' : '0 events'}</p>
+                        <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>Detected JSON structure from {Object.keys(schema).length > 0 ? 'the event stream' : '0 events'}</p>
                     </div>
                 </div>
                 {isAnalyzing && (
@@ -48,13 +48,13 @@ export const SchemaAnalyzer = memo(function SchemaAnalyzer({ theme, schema, isAn
             <div className="p-0 overflow-x-auto max-h-[400px] overflow-y-auto">
                 {fields.length === 0 ? (
                     <div className="px-6 py-12 text-center">
-                        <p className={`text-sm ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
+                        <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                             Waiting for valid JSON payloads to analyze the schema...
                         </p>
                     </div>
                 ) : (
                     <table className="w-full text-left border-collapse text-sm">
-                        <thead className={`sticky top-0 z-10 text-xs uppercase tracking-wider ${isDark ? 'bg-slate-900 text-slate-400' : 'bg-slate-100 text-slate-500'}`}>
+                        <thead className={`sticky top-0 z-10 text-xs uppercase tracking-wider ${isDark ? 'bg-slate-900 text-slate-400' : 'bg-slate-100 text-slate-600'}`}>
                             <tr>
                                 <th className="px-5 py-3 font-semibold w-1/2 rounded-tl-xl border-b border-inherit">Field Path</th>
                                 <th className="px-5 py-3 font-semibold border-b border-inherit">Detected Types</th>

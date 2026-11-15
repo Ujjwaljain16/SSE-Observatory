@@ -1,0 +1,485 @@
+import { analyze, type Analysis } from '../core/diagnostics/engine'
+import type { EngineInput } from '../core/diagnostics/streamModel'
+import type { StreamProfile } from '../core/diagnostics/thresholds'
+import { parseCapture, serializeCapture, newHeader, captureEndT, CaptureFormatError, type Capture, type CaptureRecord } from '../core/capture/format'
+import { importV1, isV1Recording, V1ImportError } from '../core/capture/importV1'
+import { describeCaptureProblems, validateCaptureIntegrity, type CaptureProblem } from '../core/capture/integrity'
+import { redactCapture, RedactionError, type RedactionPolicy, type RedactionReport } from '../core/capture/redact'
+import { describePolicy, isCustomPolicy, parseRedactionPolicy } from '../core/capture/policy'
+import { isSensitiveName } from '../core/capture/secrets'
+import type { RedactedCapture } from '../core/capture/redacted'
+import { buildReport } from '../core/capture/derived/report'
+import { compareCaptures } from '../core/capture/derived/compare'
+import { toCurl } from '../core/capture/derived/curl'
+import { minimizeCapture } from '../core/capture/derived/minimize'
+import { serializeScenario, toScenario } from '../core/scenario'
+import { SEVERITY_RANK } from '../core/diagnostics/finding'
+import { localCapture } from '../core/capture/build'
+import { createObservedStream } from '../core/sse/observedStream'
+import { redactUrl } from '../core/observe/redactUrl'
+import { parseProfile, probeConfigOf } from '../core/diagnostics/profile'
+import { numberFlag, stringFlag, type ParsedArgs } from './args'
+import { createSafeFetch, type CrossOriginRedirectRefused } from './safeFetch'
+import { CliError, EXIT, requireFiles, type CliIo } from './io'
+import { parseFailOn, parseFormat, render, gate, type Result } from './output'
+import type { SecretRegistry } from './secretRegistry'
+
+// ---------------------------------------------------------------- reading input
+
+function refuseInvalid(path: string, problems: CaptureProblem[]): void {
+    if (problems.length > 0) throw new CliError(`"${path}": ${describeCaptureProblems(problems)}`, EXIT.usage)
+}
+
+/** Reads a capture file: `.sse-capture` v2 (NDJSON) or an old `.sse-record` v1 recording. A capture with invalid records is refused (exit 2). */
+export async function loadCapture(io: CliIo, path: string): Promise<{ capture: Capture; warnings: string[] }> {
+    const files = requireFiles(io)
+    let text: string
+    try { text = await files.readText(path) } catch { throw new CliError(`Cannot read "${path}".`, EXIT.couldNotRun) }
+    try {
+        if (text.trimStart().startsWith('{')) {
+            let whole: unknown
+            // an editor or a PowerShell redirect may have put a byte order mark in front; JSON.parse does not accept one
+            try { whole = JSON.parse(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text) } catch { whole = undefined }
+            if (isV1Recording(whole)) {
+                const imported = importV1(whole)
+                refuseInvalid(path, validateCaptureIntegrity(imported.records))
+                return { capture: imported, warnings: ['Imported an old .sse-record file: its timeline is rebuilt from event gaps, so rules that need chunks, headers or reconnects are not evaluated.'] }
+            }
+        }
+        const parsed = parseCapture(text)
+        // A capture whose records repeat a seq or go back in time is not analysed: it would be judged as if it were a healthy recording.
+        refuseInvalid(path, parsed.problems)
+        return { capture: parsed.capture, warnings: parsed.warnings }
+    } catch (error) {
+        if (error instanceof CaptureFormatError || error instanceof V1ImportError) throw new CliError(`"${path}": ${error.message}`, EXIT.usage)
+        throw error
+    }
+}
+
+async function loadProfile(io: CliIo, args: ParsedArgs, fallback: StreamProfile | undefined): Promise<StreamProfile | undefined> {
+    const path = stringFlag(args, 'profile')
+    if (!path) return fallback
+    const files = requireFiles(io)
+    let value: unknown
+    try { value = JSON.parse(await files.readText(path)) } catch { throw new CliError(`Cannot read a JSON profile from "${path}".`, EXIT.usage) }
+    const checked = parseProfile(value)
+    if (!checked.ok) throw new CliError(`The profile in "${path}" is not valid:\n- ${checked.errors.join('\n- ')}`, EXIT.usage)
+    return checked.profile
+}
+
+/** The person's own redaction rules, from --redact-policy <file>: more keys, more patterns, headers to keep. Without the flag, the built-in rules only. */
+async function loadRedactionPolicy(io: CliIo, args: ParsedArgs): Promise<RedactionPolicy | undefined> {
+    const path = stringFlag(args, 'redact-policy')
+    if (!path) return undefined
+    let text: string
+    try { text = await requireFiles(io).readText(path) } catch { throw new CliError(`Cannot read a redaction policy from "${path}".`, EXIT.usage) }
+    const checked = parseRedactionPolicy(text)
+    if (checked.errors.length > 0) throw new CliError(`The redaction policy in "${path}" is not valid:\n- ${checked.errors.join('\n- ')}`, EXIT.usage)
+    if (!checked.policy) throw new CliError(`The redaction policy in "${path}" holds no rules. Add extraKeys, extraPatterns or keepHeaders, or leave the flag out.`, EXIT.usage)
+    return checked.policy
+}
+
+export function analysisOf(capture: Capture, profile: StreamProfile | undefined): Analysis {
+    return analyze(capture.records as EngineInput[], { ...(profile ? { profile } : {}), endT: captureEndT(capture) })
+}
+
+export function show(io: CliIo, result: Result, args: ParsedArgs): number {
+    const failOn = parseFailOn(stringFlag(args, 'fail-on'))
+    const text = render(result, parseFormat(stringFlag(args, 'format')), { failOn, verbose: args.flags['verbose'] === true })
+    if (args.flags['quiet'] !== true || result.findings.length > 0) io.out(text)
+    return gate(result.findings, failOn)
+}
+
+/** What a person must look at before sending a redacted file: ids that look like tokens, and anything the scan still flags. Never prints a value. */
+function warnAboutRedaction(io: CliIo, report: RedactionReport): void {
+    for (const w of report.idWarnings) io.err(`warning: ${w}\n`)
+    if (report.residual.length > 0) {
+        io.err(`warning: ${report.residual.length} thing${report.residual.length === 1 ? '' : 's'} still look like secrets after redaction (values not shown). Look before sharing:\n`)
+        for (const hit of report.residual.slice(0, 10)) io.err(`  - ${hit.where} (${hit.rule})\n`)
+    }
+}
+
+/** Reports and curl commands accept only a RedactedCapture. A sanitized file is run through the redactor again (it is idempotent) to get the type. */
+async function shareable(io: CliIo, capture: Capture, args: ParsedArgs): Promise<RedactedCapture> {
+    if (capture.header.kind === 'local-full' && args.flags['redact'] !== true) {
+        throw new CliError('This capture is a local full-fidelity capture and may contain secrets. Run "sse-doctor redact" first, or add --redact to redact it for this command.', EXIT.usage)
+    }
+    try {
+        const result = redactCapture(capture, await loadRedactionPolicy(io, args))
+        warnAboutRedaction(io, result.report)
+        return result.capture
+    } catch (error) {
+        if (error instanceof RedactionError) throw new CliError(error.message, EXIT.couldNotRun)
+        throw error
+    }
+}
+
+// ---------------------------------------------------------------- commands
+
+export async function analyzeCommand(io: CliIo, args: ParsedArgs): Promise<number> {
+    const path = args.positionals[1]
+    if (!path) throw new CliError('Usage: sse-doctor analyze <capture>', EXIT.usage)
+    const { capture, warnings } = await loadCapture(io, path)
+    const profile = await loadProfile(io, args, capture.header.profile)
+    const a = analysisOf(capture, profile)
+    return show(io, { command: 'analyze', subject: path, findings: a.findings, coverage: a.coverage, notes: warnings }, args)
+}
+
+export async function reportCommand(io: CliIo, args: ParsedArgs): Promise<number> {
+    const path = args.positionals[1]
+    if (!path) throw new CliError('Usage: sse-doctor report <capture> [--format md|html|json|issue] [--output file]', EXIT.usage)
+    const raw = stringFlag(args, 'format') ?? 'md'
+    if (raw !== 'md' && raw !== 'html' && raw !== 'json' && raw !== 'issue') throw new CliError(`--format for report must be md, html, json or issue, got "${raw}".`, EXIT.usage)
+    const { capture } = await loadCapture(io, path)
+    const safe = await shareable(io, capture, args)
+    const profile = await loadProfile(io, args, safe.header.profile)
+    const text = buildReport(safe, analysisOf(safe, profile), { format: raw })
+    const out = stringFlag(args, 'output')
+    if (out) await requireFiles(io).writeText(out, text)
+    else io.out(text.endsWith('\n') ? text : text + '\n')
+    return EXIT.ok
+}
+
+export async function redactCommand(io: CliIo, args: ParsedArgs): Promise<number> {
+    const path = args.positionals[1]
+    const out = stringFlag(args, 'output')
+    if (!path || !out) throw new CliError('Usage: sse-doctor redact <capture> --output <file>', EXIT.usage)
+    const { capture } = await loadCapture(io, path)
+    const policy = await loadRedactionPolicy(io, args)
+    let result
+    try { result = redactCapture(capture, policy) } catch (error) {
+        if (error instanceof RedactionError) throw new CliError(error.message, EXIT.couldNotRun)
+        throw error
+    }
+    await requireFiles(io).writeText(out, serializeCapture(result.capture))
+    const { placeholders, residual, idWarnings } = result.report
+    io.out(`Wrote ${out}: ${placeholders} value${placeholders === 1 ? '' : 's'} replaced${isCustomPolicy(policy) ? ` (built-in rules plus ${describePolicy(policy)})` : ''}.\n`)
+    for (const w of idWarnings) io.err(`warning: ${w}\n`)
+    if (residual.length > 0) {
+        io.err(`warning: ${residual.length} thing${residual.length === 1 ? '' : 's'} still look like secrets (not shown). Look before sharing:\n`)
+        for (const hit of residual.slice(0, 10)) io.err(`  - ${hit.where} (${hit.rule})\n`)
+    }
+    return EXIT.ok
+}
+
+export async function compareCommand(io: CliIo, args: ParsedArgs): Promise<number> {
+    const [, a, b] = args.positionals
+    if (!a || !b) throw new CliError('Usage: sse-doctor compare <captureA> <captureB>', EXIT.usage)
+    const first = await loadCapture(io, a)
+    const second = await loadCapture(io, b)
+    const findings = compareCaptures(first.capture, second.capture)
+    const coverage = [{ ruleId: 'compare', ruleVersion: 1, title: 'Capture comparison', status: 'evaluated' as const, missingCapabilities: [], missingKinds: [], notes: [] }]
+    return show(io, { command: 'compare', subject: `${a} vs ${b}`, findings, coverage, notes: [...first.warnings, ...second.warnings] }, args)
+}
+
+export async function curlCommand(io: CliIo, args: ParsedArgs): Promise<number> {
+    const target = args.positionals[1]
+    if (!target) throw new CliError('Usage: sse-doctor curl <capture|url>', EXIT.usage)
+    let safe: RedactedCapture
+    if (/^https?:\/\//i.test(target)) {
+        const stub: Capture = { header: newHeader({ kind: 'local-full', source: { kind: 'cli' }, request: { url: redactUrl(target), method: 'GET', headers: {} } }), records: [] }
+        safe = redactCapture(stub).capture
+    } else safe = await shareable(io, (await loadCapture(io, target)).capture, args)
+    const shell = stringFlag(args, 'shell') ?? (io.env?.['ComSpec'] && !io.env['SHELL'] ? 'powershell' : 'posix')
+    if (shell !== 'posix' && shell !== 'powershell') throw new CliError('--shell must be posix or powershell.', EXIT.usage)
+    io.out(toCurl(safe, { shell }) + '\n')
+    return EXIT.ok
+}
+
+// ---------------------------------------------------------------- probe
+
+function resolveEnv(io: CliIo, name: string, secrets: SecretRegistry, what: string): string {
+    const value = io.env?.[name]
+    if (value === undefined || value === '') throw new CliError(`${what}: the environment variable ${name} is not set.`, EXIT.usage)
+    if (!secrets.register(value)) io.err(`warning: the value of ${name} is shorter than 4 characters and cannot be scrubbed from output reliably.\n`)
+    return value
+}
+
+const safeDecode = (text: string): string => { try { return decodeURIComponent(text) } catch { return text } }
+
+/**
+ * Whether a value typed into the URL's query is registered as a secret, which means every output has it replaced wherever it appears. A query value
+ * is a secret when its NAME says so (`token`, `api_key`, `password`...) or when its shape does (long, letters and digits mixed). Registering
+ * all of them was a defect: `?scale=0.05`, `?limit=1000` or `?debug=true` made every `0.05`, `1000` or `true` in the output a placeholder, which cut
+ * into the numbers of a JSON result and the records of the saved capture and left files that could not be read.
+ */
+export function isSecretQueryValue(name: string, value: string): boolean {
+    if (value === '') return false
+    if (isSensitiveName(name)) return true
+    // by shape: long, with both letters and digits (a token, an id), not a word or a number
+    return value.length >= 12 && /[A-Za-z]/.test(value) && /\d/.test(value) && !/^\d{4}-\d{2}-\d{2}/.test(value)
+}
+
+/**
+ * The options of one request that supply a secret, by name and never by value: the list `requestFor` feeds the secret registry from (credentials
+ * in the URL, a secret-looking query value in the URL, --auth-env, --cookie-env, --header-env, --header, --query-env). Used by the two refusals that
+ * depend on it: a redirect to another origin (without --follow-redirects) and --no-redact. A parameter name typed in the URL is not printed,
+ * because a name can itself be the token. For env-diff, `args` is one side's (see `sideArgs`) and the side's own option is named (`--auth-env-a`).
+ */
+export function secretOptionsIn(args: ParsedArgs, url: string): string[] {
+    const side = typeof args.flags['side'] === 'string' ? `-${args.flags['side']}` : ''
+    const label = (name: string): string => (side && (typeof args.flags[`${name}${side}`] === 'string' || (args.multi[`${name}${side}`]?.length ?? 0) > 0) ? `--${name}${side}` : `--${name}`)
+    const names: string[] = []
+    try {
+        const parsed = new URL(url)
+        if (parsed.username || parsed.password) names.push('credentials in the URL (user:password@)')
+        if ([...parsed.searchParams].some(([name, value]) => isSecretQueryValue(name, value))) names.push('a secret value in the URL query')
+    } catch { /* a URL that cannot be read is refused by requestFor with its own message */ }
+    if (stringFlag(args, 'auth-env')) names.push(label('auth-env'))
+    if (stringFlag(args, 'cookie-env')) names.push(label('cookie-env'))
+    for (const spec of args.multi['header-env'] ?? []) if (spec.indexOf('=') > 0) names.push(`${label('header-env')} ${spec.slice(0, spec.indexOf('='))}`)
+    for (const spec of args.multi['header'] ?? []) if (spec.indexOf(':') > 0) names.push(`--header ${spec.slice(0, spec.indexOf(':')).trim()}`)
+    for (const spec of args.multi['query-env'] ?? []) if (spec.indexOf('=') > 0) names.push(`${label('query-env')} ${spec.slice(0, spec.indexOf('='))}`)
+    return [...new Set(names)]
+}
+
+/** Q14: a capture written with --no-redact keeps the wire bytes as recorded, and a server may echo a credential back into the stream. */
+export function refuseNoRedactWithSecrets(args: ParsedArgs, secretOptions: readonly string[]): void {
+    if (args.flags['no-redact'] !== true || secretOptions.length === 0) return
+    throw new CliError(`--no-redact was refused because this command was given secrets (${secretOptions.join(', ')}). A capture written with --no-redact keeps the stream's bytes exactly as received, and a server can echo a credential back into its stream, so the file could hold secrets that no scrub is able to find. Run it without --no-redact (the capture is then redacted and safe to share), or without the secret options (--no-redact then writes a byte-exact local capture of a request that carries none).`, EXIT.usage)
+}
+
+function requestFor(io: CliIo, args: ParsedArgs, url: string, secrets: SecretRegistry): { url: string; headers: Record<string, string>; sentNames: string[] } {
+    const headers: Record<string, string> = { Accept: 'text/event-stream', 'Cache-Control': 'no-cache' }
+    // Secrets typed into the URL itself (user:password@, ?token=) are secrets too: registered, so no message can echo them. A URL the
+    // platform cannot read is refused here, because its own error message would quote the whole thing, userinfo and query included.
+    let parsed: URL
+    try { parsed = new URL(url) } catch { throw new CliError(`"${redactUrl(url)}" is not a valid URL.`, EXIT.usage) }
+    secrets.register(safeDecode(parsed.username))
+    secrets.register(safeDecode(parsed.password))
+    for (const [name, value] of parsed.searchParams) if (isSecretQueryValue(name, value)) secrets.register(value)
+    const authEnv = stringFlag(args, 'auth-env')
+    if (authEnv) headers['Authorization'] = `Bearer ${resolveEnv(io, authEnv, secrets, '--auth-env')}`
+    const cookieEnv = stringFlag(args, 'cookie-env')
+    if (cookieEnv) headers['Cookie'] = resolveEnv(io, cookieEnv, secrets, '--cookie-env')
+    for (const spec of args.multi['header-env'] ?? []) {
+        const eq = spec.indexOf('=')
+        if (eq <= 0) throw new CliError(`--header-env needs Name=VARIABLE, got "${spec}".`, EXIT.usage)
+        headers[spec.slice(0, eq)] = resolveEnv(io, spec.slice(eq + 1), secrets, `--header-env ${spec.slice(0, eq)}`)
+    }
+    for (const spec of args.multi['header'] ?? []) {
+        const colon = spec.indexOf(':')
+        if (colon <= 0) throw new CliError(`--header needs "Name: value", got a value without a colon.`, EXIT.usage)
+        const value = spec.slice(colon + 1).trim()
+        secrets.register(value)
+        io.err('warning: a literal --header value is visible in your shell history and process list; prefer --header-env Name=VARIABLE.\n')
+        headers[spec.slice(0, colon).trim()] = value
+    }
+    let full = url
+    for (const spec of args.multi['query-env'] ?? []) {
+        const eq = spec.indexOf('=')
+        if (eq <= 0) throw new CliError(`--query-env needs param=VARIABLE, got "${spec}".`, EXIT.usage)
+        const value = resolveEnv(io, spec.slice(eq + 1), secrets, `--query-env ${spec.slice(0, eq)}`)
+        full += `${full.includes('?') ? '&' : '?'}${encodeURIComponent(spec.slice(0, eq))}=${encodeURIComponent(value)}`
+    }
+    return { url: full, headers, sentNames: Object.keys(headers).map((h) => h.toLowerCase()) }
+}
+
+/** The longest wait a timer can hold (2^31 ms), in seconds. */
+const MAX_SECONDS = Math.floor(2 ** 31 / 1000)
+
+/** What one probe saw. */
+export interface Observed {
+    target: string
+    capture: Capture
+    profile: StreamProfile | undefined
+    events: number
+    endT: number
+    reason: string
+    answered: boolean
+    maxBytes: number
+}
+
+/** Connects, watches for the time asked, and returns what was recorded. Shared by `probe` (one stream) and `env-diff` (two at once). */
+/** `profileFallback` is the profile used when --profile is not given (`validate` reads the stream the way the original capture was read). */
+export async function observe(io: CliIo, args: ParsedArgs, target: string, secrets: SecretRegistry, profileFallback?: StreamProfile): Promise<Observed> {
+    const duration = numberFlag(args, 'duration', 30)
+    // setTimeout holds at most 2^31 ms; a longer wait fires at once, and a probe that ends before it began must not pass as a clean one
+    if (duration <= 0 || duration > MAX_SECONDS) throw new CliError(`--duration must be more than 0 and at most ${MAX_SECONDS} seconds, got ${duration}.`, EXIT.usage)
+    const durationMs = duration * 1000
+    const maxEvents = numberFlag(args, 'max-events', 0)
+    const idleMs = numberFlag(args, 'idle-timeout', 0) * 1000
+    const timeout = numberFlag(args, 'timeout', 0)
+    if (timeout > MAX_SECONDS || idleMs > MAX_SECONDS * 1000) throw new CliError(`--timeout and --idle-timeout must be at most ${MAX_SECONDS} seconds.`, EXIT.usage)
+    const maxBytes = numberFlag(args, 'max-mb', 256) * 1024 * 1024
+    const profile = await loadProfile(io, args, profileFallback)
+    const req = requestFor(io, args, target, secrets)
+
+    const records: CaptureRecord[] = []
+    let events = 0
+    let held = 0
+    let answered = false
+    let lastActivity = Date.now()
+    let finish!: (reason: string) => void
+    const done = new Promise<string>((resolve) => { finish = resolve })
+    // Q6: a redirect to another origin while an option carries a secret is refused (the probe stops, exit 3) unless --follow-redirects opts in; then it is
+    // followed, the secrets stay behind, and the warning says which. With no secret option every redirect is followed as before.
+    let refusal: CrossOriginRedirectRefused | undefined
+    const fetchImpl = createSafeFetch({
+        secretOptions: secretOptionsIn(args, target),
+        followRedirects: args.flags['follow-redirects'] === true,
+        onRefused: (error) => { refusal ??= error; finish('redirect-refused') },
+        onWithheld: (redirect, names) => io.err(`warning: ${redirect.from} redirected to ${redirect.to}, and it was followed because of --follow-redirects. NOT forwarded to ${redirect.to}: ${names.join(', ')}. Credentials are never sent to another origin, so expect that server to answer without them.\n`),
+    })
+    const stream = createObservedStream({
+        request: () => ({ url: req.url, headers: req.headers }),
+        sinks: {
+            onMessage: () => { events++; if (maxEvents > 0 && events >= maxEvents) finish('max-events') },
+            onPhase: (phase) => { if (phase === 'ended' || phase === 'failed') finish(phase) },
+        },
+        recording: {
+            ...(Object.keys(probeConfigOf(profile)).length > 0 ? { profile: probeConfigOf(profile) } : {}),
+            captureBytes: true,
+            onObservations: (batch) => {
+                for (const o of batch) {
+                    records.push(o)
+                    if (o.kind === 'response') answered = true
+                    held += o.kind === 'chunk' ? 120 + (o.b64?.length ?? 0) : 200
+                }
+                lastActivity = Date.now()
+                // Every read is kept (with its bytes) so the capture can be replayed; a fast server would fill the heap before the duration ended.
+                if (maxBytes > 0 && held > maxBytes) finish('max-size')
+            },
+            flushMs: 25,
+        },
+        // redirects are followed by hand, and a header that carries a key is not sent to another origin
+        clientOptions: { maxRetries: 2, fetchImpl },
+    })
+    const timer = setTimeout(() => finish('duration'), durationMs)
+    // --timeout: how long to wait for the server to answer at all
+    const answerTimer = timeout > 0 ? setTimeout(() => { if (!answered) finish('timeout') }, timeout * 1000) : undefined
+    const idle = idleMs > 0 ? setInterval(() => { if (Date.now() - lastActivity >= idleMs) finish('idle') }, Math.min(250, idleMs)) : undefined
+    const onAbort = () => finish('interrupted')
+    io.signal?.addEventListener('abort', onAbort)
+    stream.start()
+    const reason = await done
+    clearTimeout(timer)
+    if (answerTimer) clearTimeout(answerTimer)
+    if (idle) clearInterval(idle)
+    io.signal?.removeEventListener('abort', onAbort)
+    stream.flushObservations()
+    stream.stop()
+    if (refusal) throw new CliError(refusal.message, EXIT.couldNotRun)
+
+    const endT = records.at(-1)?.t ?? 0
+    const capture = localCapture(records, {
+        source: { kind: 'cli', client: 'node-undici' },
+        request: { url: target, method: 'GET', headers: Object.fromEntries(req.sentNames.map((n) => [n, '[redacted]'])) },
+        ...(profile ? { profile } : {}),
+        captureId: stream.captureId,
+        endReason: reason === 'failed' ? 'failed' : reason === 'ended' ? 'completed' : 'stopped',
+    })
+    return { target, capture, profile, events, endT, reason, answered, maxBytes }
+}
+
+/** A copy of `value` with `scrub` applied to every string in it, except the base64 of wire bytes (key `b64`). */
+function scrubStrings(value: unknown, scrub: (text: string) => string, key: string): unknown {
+    if (typeof value === 'string') return key === 'b64' ? value : scrub(value)
+    if (Array.isArray(value)) return value.map((v) => scrubStrings(v, scrub, key))
+    if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, scrubStrings(v, scrub, k)]))
+    return value
+}
+
+/** Writes a capture: redacted unless --no-redact, so secrets never reach the disk. */
+export async function saveObserved(io: CliIo, args: ParsedArgs, capture: Capture, out: string): Promise<void> {
+    const files = requireFiles(io)
+    // --no-redact is the recording as it is: the wire bytes (base64) are kept as they were, so what the server echoed may be in them. Everything else is
+    // scrubbed of the secrets this command was given, field by field BEFORE the file is made: a scrub of the finished text cuts into the base64 of the
+    // wire bytes and leaves a capture that cannot be read back, and the hash must be made from what is written.
+    if (args.flags['no-redact'] === true) await (io.writeRawText ?? files.writeText)(out, serializeCapture(scrubStrings(capture, io.scrub ?? ((t) => t), '') as Capture))
+    else {
+        const result = redactCapture(capture, await loadRedactionPolicy(io, args)) // secrets never reach the disk
+        warnAboutRedaction(io, result.report)
+        await files.writeText(out, serializeCapture(result.capture))
+    }
+}
+
+export async function probeCommand(io: CliIo, args: ParsedArgs, secrets: SecretRegistry): Promise<number> {
+    const target = args.positionals[1]
+    if (!target || !/^https?:\/\//i.test(target)) throw new CliError('Usage: sse-doctor probe <http(s) url> [--duration s] [--max-events n] [--idle-timeout s] [--timeout s] [--max-mb n] [--out capture]', EXIT.usage)
+    const out = stringFlag(args, 'out')
+    refuseNoRedactWithSecrets(args, secretOptionsIn(args, target))
+    if (out && args.flags['no-redact'] === true) io.err('warning: --no-redact writes a capture that may contain secrets. Do not share it.\n')
+    const { capture, profile, events, endT, reason, answered, maxBytes } = await observe(io, args, target, secrets)
+    if (out) await saveObserved(io, args, capture, out)
+    const a = analysisOf(capture, profile)
+    const notes = [`Observed ${events} event${events === 1 ? '' : 's'} for ${(endT / 1000).toFixed(1)} s (stopped: ${reason}).`, ...(reason === 'max-size' ? [`The capture reached ${(maxBytes / 1048576).toFixed(0)} MB (--max-mb) and the probe stopped there.`] : []), ...(answered ? [] : ['The server never answered: no response was received.']), ...(out ? [`Capture written to ${out}${args.flags['no-redact'] === true ? ' (NOT redacted)' : ' (redacted)'}.`] : [])]
+    const code = show(io, { command: 'probe', subject: redactUrl(target), findings: a.findings, coverage: a.coverage, notes }, args)
+    // An interrupted probe still reports what it saw and saves the capture; only the exit code says it was cut short.
+    if (reason === 'interrupted') return EXIT.interrupted
+    // A server that never answered is "could not run", whatever the findings and the gate say: a dead endpoint must not pass a gate set above its findings.
+    if (!answered) return EXIT.couldNotRun
+    if (reason === 'failed' && code === EXIT.ok && a.findings.length === 0) return EXIT.couldNotRun
+    return code
+}
+
+// ---------------------------------------------------------------- repro
+
+const testTemplate = (key: string, captureFile: string): string => `// Generated by "sse-doctor repro". Reports a finding from a minimal capture; once the bug is fixed, flip the assertion.
+import { spawnSync } from 'node:child_process'
+import { describe, expect, it } from 'vitest'
+
+// Path to the built CLI (npm run build:cli) or override with SSE_DOCTOR_BIN.
+const bin = process.env.SSE_DOCTOR_BIN ?? 'dist-cli/bin/sse-doctor.mjs'
+
+describe('${key}', () => {
+    it('is reported for the minimal capture', () => {
+        const run = spawnSync(process.execPath, [bin, 'analyze', ${JSON.stringify(captureFile)}, '--format', 'json'], { encoding: 'utf8' })
+        const keys: string[] = JSON.parse(run.stdout).findings.map((f: { key: string }) => f.key)
+        expect(keys).toContain(${JSON.stringify(key)})
+    })
+})
+`
+
+export async function reproCommand(io: CliIo, args: ParsedArgs): Promise<number> {
+    const path = args.positionals[1]
+    const out = stringFlag(args, 'output')
+    if (!path || !out) throw new CliError('Usage: sse-doctor repro <capture> --output <minimal.sse-capture> [--finding <key>] [--scenario file.json] [--test file.test.ts]', EXIT.usage)
+    const { capture } = await loadCapture(io, path)
+    const profile = await loadProfile(io, args, capture.header.profile)
+    const full = analysisOf(capture, profile)
+    let key = stringFlag(args, 'finding')
+    if (!key) {
+        const worst = full.findings.filter((f) => f.status === 'open').sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity])[0]
+        if (!worst) throw new CliError('This capture has no open finding to reproduce.', EXIT.usage)
+        key = worst.key
+    }
+    if (capture.records.length > 20_000) io.err(`warning: ${capture.records.length} records; shrinking tries many analyses and stops after 3000, so the result may not be minimal.\n`)
+    const result = minimizeCapture(capture, key, { profile })
+    if (!result.reproduced) throw new CliError(`The capture does not report "${key}". Findings it does report: ${full.findings.map((f) => f.key).join(', ') || 'none'}.`, EXIT.usage)
+
+    // What leaves the machine is the redacted copy, and it must still show the finding.
+    let redacted: RedactedCapture
+    try {
+        const done = redactCapture(result.capture, await loadRedactionPolicy(io, args))
+        warnAboutRedaction(io, done.report)
+        redacted = done.capture
+    } catch (error) {
+        if (error instanceof RedactionError) throw new CliError(error.message, EXIT.couldNotRun)
+        throw error
+    }
+    const again = analysisOf(redacted, profile)
+    const still = again.findings.some((f) => f.status === 'open' && (f.key === key || f.key.startsWith(`${key}:`)))
+    const files = requireFiles(io)
+    await files.writeText(out, serializeCapture(redacted))
+    io.out(`Reduced ${result.originalRecords} records to ${result.minimalRecords} that still report ${key} (${result.runs} analyses${result.complete ? '' : ', stopped at the limit: not guaranteed minimal'}).\nWrote ${out} (redacted).\n`)
+    if (!still) io.err('warning: after redaction the finding is no longer reported; the written capture may not reproduce it.\n')
+
+    const scenarioFile = stringFlag(args, 'scenario')
+    if (scenarioFile) {
+        try {
+            const { scenario, notes } = toScenario(redacted, again)
+            await files.writeText(scenarioFile, serializeScenario(scenario))
+            io.out(`Wrote the scenario ${scenarioFile}.\n`)
+            for (const note of notes) io.out(`  note: ${note}\n`)
+        } catch (error) {
+            io.err(`warning: could not generate a scenario: ${error instanceof Error ? error.message : String(error)}\n`)
+        }
+    }
+    const testFile = stringFlag(args, 'test')
+    if (testFile) {
+        await files.writeText(testFile, testTemplate(key, out))
+        io.out(`Wrote the test template ${testFile}.\n`)
+    }
+    return still ? EXIT.ok : EXIT.gateFailed
+}

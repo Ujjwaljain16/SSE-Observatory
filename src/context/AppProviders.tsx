@@ -1,12 +1,13 @@
 // orchestrates global context providers
 // separates high-frequency metrics (PerfContext) from UI state to prevent render thrashing
 
-import { useState, useMemo, type ReactNode } from 'react'
+import { useState, useMemo, useCallback, useEffect, type ReactNode } from 'react'
 import { useTheme } from '../hooks/useTheme'
 import { useStreamState, MAX_EVENTS } from '../hooks/useStreamState'
+import { applyRetention } from '../doctor/retention'
 
 import { ThemeContext } from './ThemeContext'
-import { UIContext } from './UIContext'
+import { UIContext, type EventJump, type JumpResult } from './UIContext'
 import { StreamContext } from './StreamContext'
 import { PerfContext } from './PerfContext'
 
@@ -18,11 +19,21 @@ export function AppProviders({ children }: Props) {
     const { theme, toggleTheme } = useTheme()
     const themeValue = useMemo(() => ({ theme, toggleTheme }), [theme, toggleTheme])
 
+    // Saved captures older than the time the person chose are deleted at start.
+    useEffect(() => { void applyRetention() }, [])
+
     // ui context only holds view toggles, connection fields live in stream context
     const [appMode, setAppMode] = useState<'monitor' | 'mock' | 'multistream'>('monitor')
     const [showStats, setShowStats] = useState(false)
     const [showSchema, setShowSchema] = useState(false)
     const [showInterceptors, setShowInterceptors] = useState(false)
+    const [showDoctor, setShowDoctor] = useState(false)
+    const [eventJump, setEventJump] = useState<EventJump | null>(null)
+    const [jumpResult, setJumpResult] = useState<JumpResult>(null)
+    const requestEventJump = useCallback((streamId: string, obsSeq: number) => {
+        setJumpResult(null)
+        setEventJump((prev) => ({ streamId, obsSeq, nonce: (prev?.nonce ?? 0) + 1 }))
+    }, [])
 
     const { streamValue, perfValue } = useStreamState({ capturePreview: showInterceptors })
 
@@ -34,11 +45,13 @@ export function AppProviders({ children }: Props) {
         showStats, setShowStats,
         showSchema, setShowSchema,
         showInterceptors, setShowInterceptors,
+        showDoctor, setShowDoctor,
+        eventJump, requestEventJump, jumpResult, setJumpResult,
         url, setUrl,
         bearerToken, setBearerToken,
         profileName, setProfileName,
         useProxy, setUseProxy,
-    }), [appMode, showStats, showSchema, showInterceptors, url, setUrl, bearerToken, setBearerToken, profileName, setProfileName, useProxy, setUseProxy])
+    }), [appMode, showStats, showSchema, showInterceptors, showDoctor, eventJump, requestEventJump, jumpResult, url, setUrl, bearerToken, setBearerToken, profileName, setProfileName, useProxy, setUseProxy])
 
     return (
         <ThemeContext.Provider value={themeValue}>

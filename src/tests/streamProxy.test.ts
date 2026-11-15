@@ -102,13 +102,13 @@ describe('streamProxy', () => {
         }
         const r = await get(portOf(proxy), target())
         expect(r.body).toContain('data: {"a":1}\n\n')
-        expect(r.body).not.toMatch(/data: \{"a":[^\n]*keep-alive/)
+        expect(r.body).not.toMatch(/data: \{"a":[^\n]*sse-proxy/)
     })
 
-    it('does send keep-alive comments while idle between events', async () => {
+    it('does send tagged heartbeat comments while idle between events', async () => {
         upstreamHandler = (_req, res) => { res.writeHead(200, sseHead); res.write('data: x\n\n'); setTimeout(() => res.end(), 200) }
         const r = await get(portOf(proxy), target())
-        expect(r.body).toContain(': keep-alive\n\n')
+        expect(r.body).toMatch(/: sse-proxy hb up_idle=\d+ n=1\n\n/)
     })
 
     it('enforces the byte cap', async () => {
@@ -182,6 +182,232 @@ describe('streamProxy', () => {
             req.end()
         })
         expect(r).toBe(405)
+    })
+})
+
+describe('streamProxy diagnostics tags', () => {
+    const commentsOf = (body: string) => body.split('\n\n').filter((b) => b.startsWith(': ')).map((b) => b.slice(2))
+    const heartbeats = (body: string) => commentsOf(body).map((c) => /^sse-proxy hb up_idle=(\d+) n=(\d+)$/.exec(c)).filter((m): m is RegExpExecArray => !!m)
+
+    it('sets the X-SSE-* headers with the upstream facts', async () => {
+        upstreamHandler = (_req, res) => { res.writeHead(200, { ...sseHead, 'Content-Encoding': 'identity' }); setTimeout(() => res.end('data: x\n\n'), 20) }
+        proxyConfig = devConfig({ maxDurationMs: 5000 })
+        const r = await get(portOf(proxy), target())
+        expect(r.headers['x-sse-proxy']).toBe('observatory/1')
+        expect(r.headers['x-sse-proxy-heartbeat-ms']).toBe('30')
+        expect(r.headers['x-sse-proxy-max-duration']).toBe('5000')
+        expect(r.headers['x-sse-upstream-status']).toBe('200')
+        expect(r.headers['x-sse-upstream-content-type']).toBe('text/event-stream')
+        expect(r.headers['x-sse-upstream-encoding']).toBe('identity')
+        expect(Number(r.headers['x-sse-upstream-ttfb-ms'])).toBeGreaterThanOrEqual(0)
+    })
+
+    it('reports uncapped streams as 0 and a missing encoding as empty', async () => {
+        upstreamHandler = (_req, res) => { res.writeHead(200, sseHead); res.end('data: x\n\n') }
+        const r = await get(portOf(proxy), target())
+        expect(r.headers['x-sse-proxy-max-duration']).toBe('0')
+        expect(r.headers['x-sse-upstream-encoding']).toBe('')
+    })
+
+    it('writes one meta comment right after the ping, before any forwarded event', async () => {
+        upstreamHandler = (_req, res) => { res.writeHead(200, sseHead); setTimeout(() => res.end('data: x\n\n'), 10) }
+        proxyConfig = devConfig({ maxDurationMs: 7000 })
+        const r = await get(portOf(proxy), target())
+        const metas = commentsOf(r.body).filter((c) => c.startsWith('sse-proxy-meta '))
+        expect(metas).toHaveLength(1)
+        expect(r.body.indexOf(': sse-proxy-ping')).toBeLessThan(r.body.indexOf(': sse-proxy-meta'))
+        expect(r.body.indexOf(': sse-proxy-meta')).toBeLessThan(r.body.indexOf('data: x'))
+        const meta = JSON.parse(metas[0]!.slice('sse-proxy-meta '.length))
+        expect(meta).toMatchObject({ status: 200, contentType: 'text/event-stream', encoding: '', heartbeatMs: 30, maxDurationMs: 7000 })
+        expect(meta.ttfbMs).toBeGreaterThanOrEqual(0)
+    })
+
+    it('up_idle grows while the upstream is silent and the proxy keeps heartbeating', async () => {
+        upstreamHandler = (_req, res) => { res.writeHead(200, sseHead); res.write('data: x\n\n'); setTimeout(() => res.end(), 260) }
+        const r = await get(portOf(proxy), target())
+        const hbs = heartbeats(r.body)
+        expect(hbs.length).toBeGreaterThanOrEqual(4)
+        hbs.forEach((m, i) => expect(Number(m[2])).toBe(i + 1))
+        const idle = hbs.map((m) => Number(m[1]))
+        expect(idle[idle.length - 1]!).toBeGreaterThan(idle[0]!)
+        expect(idle[idle.length - 1]!).toBeGreaterThan(150)
+        expect([...idle].sort((a, b) => a - b)).toEqual(idle)
+    })
+
+    it('up_idle resets when upstream bytes arrive', async () => {
+        upstreamHandler = (_req, res) => {
+            res.writeHead(200, sseHead)
+            res.flushHeaders() // without this Node holds the headers back until the first write
+            setTimeout(() => res.write('data: a\n\n'), 150)
+            setTimeout(() => res.end(), 200)
+        }
+        const r = await get(portOf(proxy), target())
+        const idle = heartbeats(r.body).map((m) => Number(m[1]))
+        const peak = Math.max(...idle)
+        expect(peak).toBeGreaterThan(90)
+        expect(idle[idle.length - 1]!).toBeLessThan(peak)
+    })
+
+    it('never injects tags inside an event and leaves forwarded bytes unchanged', async () => {
+        const events = 'id: 1\nevent: tick\ndata: {"a":1}\n\ndata: tail\n\n'
+        upstreamHandler = (_req, res) => {
+            res.writeHead(200, sseHead)
+            res.write('id: 1\nevent: tick\ndata: {"a":')
+            setTimeout(() => res.write('1}\n\ndata: ta'), 120)
+            setTimeout(() => res.end('il\n\n'), 240)
+        }
+        const r = await get(portOf(proxy), target())
+        // Removing every proxy-written comment must give back exactly what the upstream sent.
+        expect(r.body.replace(/: sse-proxy[^\n]*\n\n/g, '')).toBe(events)
+        expect(r.body).toContain('id: 1\nevent: tick\ndata: {"a":1}\n\n')
+    })
+
+    it('writes a cap tag before the retry line at the duration cap', async () => {
+        proxyConfig = devConfig({ maxDurationMs: 100 })
+        upstreamHandler = (_req, res) => { res.writeHead(200, sseHead); res.write('data: x\n\n') }
+        const r = await get(portOf(proxy), target())
+        const m = /: sse-proxy cap duration=(\d+)\n\nretry: 1000\n\n/.exec(r.body)
+        expect(m).not.toBeNull()
+        expect(Number(m![1])).toBeGreaterThanOrEqual(90)
+    })
+
+    // Q17 (decided): PROXY_DIAGNOSTICS=0 means no proxy-specific diagnostic text and no diagnostic header. The first bytes are the upstream's own
+    // (the headers are flushed without a ping), the keep-alive that holds the connection open is a plain `: keep-alive` outside the reserved namespace,
+    // and the duration cap only asks the client to retry.
+    it('PROXY_DIAGNOSTICS=0 emits no text in the sse-proxy namespace (no ping, hb, meta, cap, error) and no X-SSE-* headers; the plain keep-alive and retry stay', async () => {
+        proxyConfig = { ...loadConfig({ PROXY_DIAGNOSTICS: '0' }), heartbeatMs: 30, maxDurationMs: 150 }
+        expect(proxyConfig.diagnostics).toBe(false)
+        upstreamHandler = (_req, res) => { res.writeHead(200, sseHead); res.write('data: x\n\n') }
+        const r = await get(portOf(proxy), target())
+        expect(Object.keys(r.headers).filter((h) => h.startsWith('x-sse-'))).toEqual([])
+        expect(r.status).toBe(200)
+        expect(r.headers['content-type']).toContain('text/event-stream')
+        expect(r.body.startsWith('data: x\n\n')).toBe(true) // the first bytes are the upstream's
+        expect(r.body).toMatch(/\n\n: keep-alive\n\n/)
+        expect(r.body).not.toMatch(/sse-proxy/i)
+        expect(r.body.endsWith('retry: 1000\n\n')).toBe(true)
+    })
+
+    it('with diagnostics off the response still starts at once (headers flushed) for an upstream that has not sent a byte yet', async () => {
+        proxyConfig = { ...loadConfig({ PROXY_DIAGNOSTICS: '0' }), heartbeatMs: 30 }
+        upstreamHandler = (_req, res) => { res.writeHead(200, sseHead); res.flushHeaders(); setTimeout(() => res.end('data: late\n\n'), 200) }
+        let headersAt = Infinity
+        const t0 = Date.now()
+        const body = await new Promise<string>((resolve, reject) => {
+            const req = http.get({ host: '127.0.0.1', port: portOf(proxy), path: target() }, (res) => {
+                headersAt = Date.now() - t0
+                let b = ''
+                res.setEncoding('utf8')
+                res.on('data', (c) => (b += c))
+                res.on('end', () => resolve(b))
+            })
+            req.on('error', reject)
+        })
+        expect(headersAt).toBeLessThan(150) // not held until the upstream's first byte at 200 ms
+        expect(body).toContain('data: late\n\n')
+        expect(body).not.toMatch(/sse-proxy/i)
+    })
+
+    // Q16 (decided): the notice that the upstream connection was lost is a comment, never an `event: error` frame.
+    describe('the notice that the upstream connection was lost', () => {
+        const resetAfterEvent = (_req: http.IncomingMessage, res: http.ServerResponse) => { res.writeHead(200, sseHead); res.write('id: 1\ndata: a\n\n'); setTimeout(() => res.destroy(), 40) }
+
+        it('diagnostics on: a comment in the proxy namespace carrying the reason as JSON, after the last complete event, and no event', async () => {
+            upstreamHandler = resetAfterEvent
+            const r = await get(portOf(proxy), target())
+            expect(r.body).toContain('id: 1\ndata: a\n\n')
+            expect(r.body).toContain(': sse-proxy error {"error":"Upstream connection lost"}\n\n')
+            expect(r.body.indexOf('id: 1\ndata: a')).toBeLessThan(r.body.indexOf('sse-proxy error'))
+            expect(r.body).not.toMatch(/event: ?error/)
+            expect(r.body.endsWith('sse-proxy error {"error":"Upstream connection lost"}\n\n')).toBe(true)
+        })
+
+        it('diagnostics off: the stream just ends, with no text of any kind about it', async () => {
+            proxyConfig = devConfig({ diagnostics: false })
+            upstreamHandler = resetAfterEvent
+            const r = await get(portOf(proxy), target())
+            expect(r.body.startsWith('id: 1\ndata: a\n\n')).toBe(true)
+            expect(r.body).not.toMatch(/error|sse-proxy/i)
+        })
+
+        it('inside an event nothing is written, with diagnostics on or off', async () => {
+            upstreamHandler = (_req, res) => { res.writeHead(200, sseHead); res.write('id: 1\ndata: par'); setTimeout(() => res.destroy(), 40) }
+            for (const diagnostics of [true, false]) {
+                proxyConfig = devConfig({ diagnostics })
+                const r = await get(portOf(proxy), target())
+                expect(r.body.endsWith('id: 1\ndata: par'), `diagnostics ${diagnostics}`).toBe(true)
+                expect(r.body).not.toMatch(/event: ?error|sse-proxy error/)
+            }
+        })
+
+        it('the byte limit says so with a comment too (diagnostics on), and silently with diagnostics off', async () => {
+            upstreamHandler = (_req, res) => {
+                res.writeHead(200, sseHead)
+                const iv = setInterval(() => res.write(`data: ${'y'.repeat(100)}\n\n`), 5)
+                closers.push(() => clearInterval(iv))
+                res.on('close', () => clearInterval(iv))
+            }
+            proxyConfig = devConfig({ maxBytes: 200 })
+            const on = await get(portOf(proxy), target())
+            expect(on.body).toContain(': sse-proxy error {"error":"Stream byte limit reached"}\n\n')
+            expect(on.body).not.toMatch(/event: ?error/)
+            proxyConfig = devConfig({ maxBytes: 200, diagnostics: false })
+            const off = await get(portOf(proxy), target())
+            expect(off.body).not.toMatch(/error|byte limit|sse-proxy/i)
+        })
+    })
+
+    // Q15 (decided): an upstream comment in the proxy's namespace is rewritten before the proxy writes its own tags.
+    describe('upstream comments in the reserved namespace', () => {
+        /** The proxy's own frames out (frames that begin with its tag; a rewritten upstream comment begins ": upstream:"), the rest as it was. */
+        const withoutOwnTags = (body: string): string => body.split('\n\n').filter((frame) => !frame.startsWith(': sse-proxy')).join('\n\n')
+        const forged = ': sse-proxy hb up_idle=9999 n=1\n\n:sse-proxy-ping\n\n:  SSE-PROXY cap duration=1\n\n'
+        const rewritten = ': upstream: sse-proxy hb up_idle=9999 n=1\n\n: upstream:sse-proxy-ping\n\n: upstream:  SSE-PROXY cap duration=1\n\n'
+
+        it('are rewritten, the rest of the stream is untouched, and the proxy\'s own tags are not (diagnostics on)', async () => {
+            upstreamHandler = (_req, res) => { res.writeHead(200, sseHead); res.write(`${forged}id: 1\ndata: a\n\n`); setTimeout(() => res.end('id: 2\ndata: b\n\n'), 120) }
+            const r = await get(portOf(proxy), target())
+            expect(r.body.startsWith(': sse-proxy-ping\n\n: sse-proxy-meta ')).toBe(true) // the proxy's own, first
+            expect(r.body).toContain(`${rewritten}id: 1\ndata: a\n\n`)
+            const ownHeartbeats = r.body.split('\n\n').filter((frame) => frame.startsWith(': sse-proxy hb '))
+            expect(ownHeartbeats.length).toBeGreaterThan(0) // its own heartbeats are still written, as whole frames
+            for (const frame of ownHeartbeats) expect(Number(/up_idle=(\d+)/.exec(frame)![1])).toBeLessThan(9999) // none is the forged one
+            // everything of the proxy's own removed, the upstream's bytes with only the forged lines changed
+            expect(withoutOwnTags(r.body)).toBe(`${rewritten}id: 1\ndata: a\n\nid: 2\ndata: b\n\n`)
+        })
+
+        it('are rewritten with diagnostics off too, and nothing is then in the namespace except what was rewritten away from it', async () => {
+            proxyConfig = devConfig({ diagnostics: false })
+            upstreamHandler = (_req, res) => { res.writeHead(200, sseHead); res.end(`${forged}id: 1\ndata: a\n\n`) }
+            const r = await get(portOf(proxy), target())
+            expect(r.body).toBe(`${rewritten}id: 1\ndata: a\n\n`)
+            expect(r.body).not.toMatch(/(^|\n):\s*sse-proxy/i)
+        })
+
+        it('a forged comment cut across two network chunks is rewritten, and the proxy\'s heartbeats written while the first half is held are whole frames', async () => {
+            upstreamHandler = (_req, res) => {
+                res.writeHead(200, sseHead)
+                res.write('data: a\n\n: sse-pro')
+                setTimeout(() => res.write('xy hb up_idle=9999 n=1\n\n'), 150) // several heartbeat intervals later
+                setTimeout(() => res.end('data: b\n\n'), 250)
+            }
+            const r = await get(portOf(proxy), target())
+            expect(r.body).toContain(': upstream: sse-proxy hb up_idle=9999 n=1\n\n')
+            expect(r.body).not.toMatch(/: sse-pro(?!xy)/) // no proxy tag was joined onto the first half
+            expect(withoutOwnTags(r.body)).toBe('data: a\n\n: upstream: sse-proxy hb up_idle=9999 n=1\n\ndata: b\n\n')
+        })
+
+        it('the upstream\'s partial comment at the end of the stream is delivered unchanged (nothing is lost)', async () => {
+            proxyConfig = devConfig({ diagnostics: false })
+            upstreamHandler = (_req, res) => { res.writeHead(200, sseHead); res.end('data: a\n\n: sse-pr') }
+            const r = await get(portOf(proxy), target())
+            expect(r.body).toBe('data: a\n\n: sse-pr')
+        })
+    })
+
+    it('diagnostics default to on', () => {
+        expect(loadConfig({}).diagnostics).toBe(true)
+        expect(loadConfig({ PROXY_DIAGNOSTICS: '1' }).diagnostics).toBe(true)
     })
 })
 

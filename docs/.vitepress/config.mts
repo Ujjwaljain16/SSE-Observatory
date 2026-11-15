@@ -28,11 +28,16 @@ export default defineConfig({
                 {
                     text: 'Features',
                     items: [
+                        { text: 'Viewing events', link: '/guide/viewing-events' },
                         { text: 'Query DSL', link: '/guide/query-dsl' },
                         { text: 'Multi-Stream Correlation', link: '/guide/multi-stream' },
                         { text: 'JavaScript Interceptors', link: '/guide/interceptors' },
                         { text: 'Pattern Detection', link: '/guide/patterns' },
-                        { text: 'Mock Server & Replay', link: '/guide/mock-server' }
+                        { text: 'Mock Server & Replay', link: '/guide/mock-server' },
+                        { text: 'Stream Doctor (in the app)', link: '/guide/stream-doctor' },
+                        { text: 'Command Line (sse-doctor)', link: '/guide/cli' },
+                        { text: 'Redaction policy', link: '/guide/redaction-policy' },
+                        { text: 'Scenarios & CI', link: '/guide/cli-ci' }
                     ]
                 }
             ],
@@ -41,7 +46,14 @@ export default defineConfig({
                     text: 'Architecture',
                     items: [
                         { text: 'WebWorkers & Ring Buffers', link: '/technical/architecture' },
-                        { text: 'Known Limitations', link: '/technical/limitations' }
+                        { text: 'Proxy Diagnostics', link: '/technical/proxy-diagnostics' },
+                        { text: 'Diagnostics', link: '/technical/diagnostics' },
+                        { text: 'Capture Format', link: '/technical/capture-format' },
+                        { text: 'Known Limitations', link: '/technical/limitations' },
+                        { text: 'Testing Campaign', link: '/technical/testing-campaign' },
+                        { text: 'Security Review', link: '/technical/security' },
+                        { text: 'Later Track', link: '/technical/roadmap-later' },
+                        { text: 'Publishing sse-doctor', link: '/technical/publishing' }
                     ]
                 }
             ]

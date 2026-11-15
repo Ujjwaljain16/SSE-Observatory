@@ -1,0 +1,283 @@
+import fs from 'node:fs'
+import path from 'node:path'
+import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { main, EXIT, type CliIo } from '../index'
+import { serializeCapture } from '../../core/capture/format'
+import { defaultRules } from '../../core/diagnostics/rules'
+import { startFixtureServer, type FixtureServer } from '../../fixtures/server'
+import { observeFixture } from '../../fixtures/__tests__/observeFixture'
+import { parseScenarioText } from '../../core/scenario/validate'
+import type { Scenario } from '../../core/scenario/types'
+import { runScenario } from '../scenarioRunner'
+import { SecretRegistry } from '../secretRegistry'
+
+function host(files: Record<string, string> = {}, env: Record<string, string> = {}, signal?: AbortSignal) {
+    const written: Record<string, string> = {}
+    let out = ''
+    let err = ''
+    const io: CliIo = {
+        out: (t) => { out += t }, err: (t) => { err += t },
+        readText: async (p) => { if (p in files) return files[p]!; throw new Error('ENOENT') },
+        writeText: async (p, t) => { written[p] = t },
+        listDir: async (dir) => Object.keys(files).filter((f) => f.startsWith(`${dir}/`) && !f.slice(dir.length + 1).includes('/')).map((f) => f.slice(dir.length + 1)),
+        env, ...(signal ? { signal } : {}),
+    }
+    return { io, written, get out() { return out }, get err() { return err }, all: () => out + err + Object.values(written).join('\n') }
+}
+
+const contract = { use_sse_id: true, policy: 'consecutive' }
+const resumeScenario = (url: string, extra: Record<string, unknown> = {}, verify: unknown[] = ['no_unexplained_sequence_gaps', 'no_unexpected_duplicates', 'preserve_event_order']) => JSON.stringify({
+    version: 1, name: 'resume', target: { url, sequence: contract, ...extra },
+    steps: [{ collect_events: 4, timeout_ms: 10000 }, { disconnect: { mode: 'server' } }, { reconnect: { after_ms: 0 } }, { collect_events: 3, timeout_ms: 10000 }],
+    verify,
+})
+
+describe('sse-doctor test', () => {
+    it('passes a healthy resume, fails a resume that skips ids, and says why', async () => {
+        const ok = host({ 'ok.json': resumeScenario('fixture://f06-resumes?scale=0.05') })
+        expect(await main(['test', 'ok.json'], ok.io)).toBe(EXIT.ok)
+        expect(ok.out).toContain('PASS')
+
+        const bad = host({ 'bad.json': resumeScenario('fixture://f06-skips?scale=0.05') })
+        expect(await main(['test', 'bad.json'], bad.io)).toBe(EXIT.gateFailed)
+        expect(bad.out).toContain('FAIL')
+        expect(bad.out).toMatch(/no_unexplained_sequence_gaps: .*4-6|numbers between/)
+    })
+
+    it('expands a * in the last path segment where the shell does not (Windows), in order, and says when nothing matches', async () => {
+        const ok = resumeScenario('fixture://f06-resumes?scale=0.05')
+        const h = host({ 'sc/b.json': ok, 'sc/a.json': ok, 'sc/notes.txt': 'x' })
+        expect(await main(['test', 'sc/*.json', '--format', 'json'], h.io)).toBe(EXIT.ok)
+        expect(JSON.parse(h.out).scenarios.map((s: { file: string }) => s.file)).toEqual(['sc/a.json', 'sc/b.json'])
+        const none = host({ 'sc/a.txt': 'x' })
+        expect(await main(['test', 'sc/*.json'], none.io)).toBe(EXIT.usage)
+        expect(none.err).toContain('No file matches')
+    })
+
+    it('allow_gaps explains a gap only when an entry covers every missing number', async () => {
+        const make = (allow: Array<{ from: number; to: number }>) => JSON.stringify({
+            version: 1, name: 'gap', target: { url: 'fixture://f06-skips?scale=0.05', sequence: contract },
+            steps: [{ collect_events: 4, timeout_ms: 10000 }, { disconnect: { mode: 'server' } }, { reconnect: { after_ms: 0 } }, { collect_events: 2, timeout_ms: 10000 }],
+            verify: ['no_unexplained_sequence_gaps'], ...(allow.length ? { allow_gaps: allow } : {}),
+        })
+        // f06-skips drops ids 5, 6 and 7 at the resume
+        const covered = host({ 's.json': make([{ from: 5, to: 7 }]) })
+        expect(await main(['test', 's.json'], covered.io)).toBe(EXIT.ok)
+        expect(covered.out).toContain('all covered by allow_gaps')
+        const partly = host({ 's.json': make([{ from: 5, to: 6 }]) })
+        expect(await main(['test', 's.json'], partly.io)).toBe(EXIT.gateFailed)
+        expect(partly.out).toMatch(/no allow_gaps entry covers: 5-7/)
+        const none = host({ 's.json': make([]) })
+        expect(await main(['test', 's.json'], none.io)).toBe(EXIT.gateFailed)
+    })
+
+    it('a sequence check without a declared contract is inconclusive (exit 4), never a silent pass, unless allowed', async () => {
+        const text = JSON.stringify({ version: 1, name: 'x', target: { url: 'fixture://f06-resumes?scale=0.05' }, steps: [{ collect_events: 2, timeout_ms: 10000 }], verify: ['no_unexplained_sequence_gaps'] })
+        const h = host({ 's.json': text })
+        expect(await main(['test', 's.json'], h.io)).toBe(EXIT.inconclusive)
+        expect(h.out).toContain('INCONCLUSIVE')
+        expect(await main(['test', 's.json', '--allow-inconclusive'], host({ 's.json': text }).io)).toBe(EXIT.ok)
+    })
+
+    it('a step that times out fails with what was received', async () => {
+        const text = JSON.stringify({ version: 1, name: 'slow', target: { url: 'fixture://h01?scale=1&n=5' }, steps: [{ collect_events: 3, timeout_ms: 300 }] })
+        const h = host({ 's.json': text })
+        expect(await main(['test', 's.json'], h.io)).toBe(EXIT.gateFailed)
+        expect(h.out).toMatch(/received \d of 3 before the timeout/)
+    })
+
+    it('checks what the response should look like', async () => {
+        const bad = JSON.stringify({ version: 1, name: 'type', target: { url: 'fixture://f01-text-html' }, expect: { content_type: 'text/event-stream', status: 200 }, steps: [{ wait: { ms: 50 } }] })
+        const h = host({ 's.json': bad })
+        expect(await main(['test', 's.json'], h.io)).toBe(EXIT.gateFailed)
+        expect(h.out).toContain('expect content type')
+    })
+
+    it('the scenarios this repository ships (written before expect.max_silence_ms existed) give the same verdicts: pass, fail, inconclusive', async () => {
+        const dir = path.resolve(process.cwd(), 'scenarios/ci')
+        for (const [kind, exit] of [['pass', EXIT.ok], ['fail', EXIT.gateFailed], ['inconclusive', EXIT.inconclusive]] as const) {
+            for (const file of fs.readdirSync(path.join(dir, kind)).filter((f) => f.endsWith('.json'))) {
+                const text = fs.readFileSync(path.join(dir, kind, file), 'utf8')
+                expect(text, file).not.toContain('max_silence_ms')
+                const h = host({ [file]: text })
+                expect(await main(['test', file], h.io), `${kind}/${file}: ${h.out}${h.err}`).toBe(exit)
+                expect(h.out, file).not.toContain('expect max silence')
+            }
+        }
+    }, 60_000)
+    it('reports JSON, JUnit and markdown', async () => {
+        const files = { 'ok.json': resumeScenario('fixture://f06-resumes?scale=0.05'), 'bad.json': resumeScenario('fixture://f06-skips?scale=0.05') }
+        const json = host(files)
+        await main(['test', 'ok.json', 'bad.json', '--format', 'json'], json.io)
+        const parsed = JSON.parse(json.out)
+        expect(parsed.scenarios.map((s: { status: string }) => s.status)).toEqual(['pass', 'fail'])
+        const junit = host(files)
+        await main(['test', 'ok.json', 'bad.json', '--format', 'junit'], junit.io)
+        expect(junit.out.match(/<testsuite /g)).toHaveLength(2)
+        expect(junit.out).toContain('<failure')
+        const md = host(files)
+        await main(['test', 'bad.json', '--format', 'md'], md.io)
+        expect(md.out).toContain('| resume | FAIL |')
+    })
+
+    it('rejects an invalid scenario with the place of the mistake, and a literal secret, with exit 2', async () => {
+        const invalid = host({ 'i.json': '{ "version": 1, "name": "x", "steps": [] ' })
+        expect(await main(['test', 'i.json'], invalid.io)).toBe(EXIT.usage)
+        expect(invalid.err).toMatch(/line \d/)
+        const literal = host({ 'l.json': JSON.stringify({ version: 1, name: 'x', target: { url: 'https://x.test/s', headers: { Authorization: 'Bearer abcdefghijklmnop1234' } }, steps: [{ wait: { ms: 1 } }] }) })
+        expect(await main(['test', 'l.json'], literal.io)).toBe(EXIT.usage)
+        expect(literal.err).not.toContain('abcdefghijklmnop1234')
+        expect(await main(['test'], host().io)).toBe(EXIT.usage)
+        expect(await main(['test', 'missing.json'], host().io)).toBe(EXIT.couldNotRun)
+    })
+})
+
+describe('replay target and command', () => {
+    let fixtures: FixtureServer
+    beforeAll(async () => { fixtures = await startFixtureServer({ port: 0 }) })
+    afterAll(async () => { await fixtures.close() })
+
+
+    it('fills ${ENV:NAME} from the environment, names the variables that are missing, and scrubs the values from output', async () => {
+        const text = JSON.stringify({ version: 1, name: 'env', target: { url: '${ENV:STREAM_URL}', headers: { Authorization: '${ENV:STREAM_AUTH}' } }, steps: [{ collect_events: 1, timeout_ms: 10000 }] })
+        const missing = host({ 'e.json': text }, {})
+        expect(await main(['test', 'e.json'], missing.io)).toBe(EXIT.usage)
+        expect(missing.err).toMatch(/not set: (STREAM_AUTH, STREAM_URL|STREAM_URL, STREAM_AUTH)/)
+        const url = fixtures.urlFor('f08-token', { scale: 0.05, n: 2, token: 'canary-tok-4411' })
+        const h = host({ 'e.json': text }, { STREAM_URL: url, STREAM_AUTH: 'Bearer canary-auth-9902' })
+        expect([EXIT.ok, EXIT.gateFailed]).toContain(await main(['test', 'e.json', '--format', 'json', '--output', 'r.json'], h.io))
+        expect(h.all()).not.toContain('canary-tok-4411')
+        expect(h.all()).not.toContain('canary-auth-9902')
+    })
+
+    it('reads only STREAM_ and SSE_ variables, unless the person running it names another (S16)', async () => {
+        const text = JSON.stringify({ version: 1, name: 'steal', target: { url: 'http://127.0.0.1:9/x?x=${ENV:GITHUB_TOKEN}' }, steps: [{ collect_events: 1, timeout_ms: 1000 }] })
+        const refused = host({ 's.json': text }, { GITHUB_TOKEN: 'ghp-canary-value-1234' })
+        expect(await main(['test', 's.json'], refused.io)).toBe(EXIT.usage)
+        expect(refused.err).toContain('--allow-env GITHUB_TOKEN')
+        expect(refused.all()).not.toContain('ghp-canary-value-1234')
+        const allowed = host({ 's.json': text }, { GITHUB_TOKEN: 'ghp-canary-value-1234' })
+        expect(await main(['test', 's.json', '--allow-env', 'GITHUB_TOKEN'], allowed.io)).not.toBe(EXIT.usage)
+        expect(allowed.all()).not.toContain('ghp-canary-value-1234')
+    })
+
+    it('a scenario can run against a capture, and a test aid that drops an id makes it fail', async () => {
+        const original = await observeFixture(fixtures, defaultRules, 'f06-resumes', {}, true, { captureBytes: true })
+        const file = serializeCapture(original.capture)
+        const scenario = (replay: Record<string, unknown>) => JSON.stringify({
+            version: 1, name: 'replayed', target: { replay: { capture: 'c.sse-capture', ...replay }, sequence: contract },
+            steps: [{ collect_events: 4, timeout_ms: 10000 }, { disconnect: { mode: 'server' } }, { reconnect: { after_ms: 0 } }, { collect_events: 3, timeout_ms: 10000 }],
+            verify: ['no_unexplained_sequence_gaps'],
+        })
+        const ok = host({ 'c.sse-capture': file, 's.json': scenario({}) })
+        expect(await main(['test', 's.json'], ok.io)).toBe(EXIT.ok)
+        const skipped = host({ 'c.sse-capture': file, 's.json': scenario({ honor_last_event_id: true, test_aids: { skip_ids: ['6'] } }) })
+        expect(await main(['test', 's.json'], skipped.io)).toBe(EXIT.gateFailed)
+    })
+
+    it('replay serves a capture until interrupted', async () => {
+        const original = await observeFixture(fixtures, defaultRules, 'f09-healthy', {}, false, { captureBytes: true })
+        const controller = new AbortController()
+        const h = host({ 'c.sse-capture': serializeCapture(original.capture) }, {}, controller.signal)
+        const running = main(['replay', 'c.sse-capture', '--speed', '100'], h.io)
+        await new Promise((r) => setTimeout(r, 100))
+        const url = /http:\/\/127\.0\.0\.1:\d+\//.exec(h.out)![0]
+        const body = await (await fetch(url)).text()
+        expect(body).toContain('id: 1')
+        controller.abort()
+        expect(await running).toBe(EXIT.interrupted)
+    })
+
+    it('replay and fixtures refuse bad input', async () => {
+        expect(await main(['replay'], host().io)).toBe(EXIT.usage)
+        expect(await main(['replay', 'c', '--end', 'explode'], host({ c: serializeCapture({ header: (await observeFixture(fixtures, defaultRules, 'h01', { n: 1 }, false, { captureBytes: true })).capture.header, records: [] }) }).io)).toBe(EXIT.usage)
+        const list = host()
+        expect(await main(['fixtures', 'list'], list.io)).toBe(EXIT.ok)
+        expect(list.out).toContain('f06-skips')
+        expect(await main(['fixtures', 'bogus'], host().io)).toBe(EXIT.usage)
+    })
+})
+
+// Q4a: expect.max_silence_ms. The runner ends its observation at the last step, so a silence that follows was never judged; with the field it
+// keeps the connection open and observing for the limit (plus a margin) after the last step, and fails when the stream is silent for longer.
+describe('expect.max_silence_ms', () => {
+    let fixtures: FixtureServer
+    beforeAll(async () => { fixtures = await startFixtureServer({ port: 0 }) })
+    afterAll(async () => { await fixtures.close() })
+
+    const ioFor = (url: string): CliIo => ({ out: () => {}, err: () => {}, env: { STREAM_URL: url }, readText: async () => { throw new Error('none') }, writeText: async () => {} }) as CliIo
+    const scenario = (expectBlock: Record<string, unknown> | undefined, steps: unknown[] = [{ collect_events: 3, timeout_ms: 10_000 }]) => parseScenarioText(JSON.stringify({
+        version: 1, name: 'silence', target: { url: '${ENV:STREAM_URL}' }, ...(expectBlock ? { expect: expectBlock } : {}), steps,
+    })).value!
+    const run = (s: Scenario, url: string) => runScenario(s, 's.json', ioFor(url), new SecretRegistry())
+    const silenceCheck = (r: Awaited<ReturnType<typeof run>>) => r.checks.find((c) => c.name === 'expect max silence')
+    const settled = async (since: number, route: string) => {
+        const mine = () => fixtures.groundTruth.connections.slice(since).filter((c) => c.route === route)
+        for (let i = 0; i < 100 && mine().some((c) => c.endedBy === 'open'); i++) await new Promise((resolve) => setTimeout(resolve, 20))
+        return mine()
+    }
+
+    it('keeps observing after the last step, for the limit plus a margin, and fails on a stream that went silent (checked against the server\'s log)', async () => {
+        const since = fixtures.groundTruth.connections.length
+        const r = await run(scenario({ max_silence_ms: 400 }), fixtures.urlFor('f04-silent', { scale: 0.05, n: 3 }))
+        expect(r.status).toBe('fail')
+        expect(silenceCheck(r)?.status).toBe('fail')
+        expect(silenceCheck(r)?.message).toMatch(/no byte for \d+ ms after the last one, limit 400 ms/)
+        expect(r.durationMs).toBeGreaterThanOrEqual(400) // the three events take 150 ms; the rest is the observation
+        expect(r.durationMs).toBeLessThan(400 + 150 + 2000)
+        const [c] = await settled(since, 'f04-silent')
+        expect(c!.endedBy).toBe('client-closed')
+        expect(c!.writes.length).toBe(3) // the server wrote the three events and then nothing: the silence is the server's
+        expect(c!.endedAtMs! - c!.writes.at(-1)!.atMs).toBeGreaterThanOrEqual(400)
+    }, 30_000)
+
+    it('without the field the same steps end at the last step and the silence is not judged (existing scenarios are unchanged)', async () => {
+        const r = await run(scenario(undefined), fixtures.urlFor('f04-silent', { scale: 0.05, n: 3 }))
+        expect(r.status).toBe('pass')
+        expect(r.checks.map((c) => c.name)).not.toContain('expect max silence')
+        expect(r.durationMs).toBeLessThan(400)
+        const withOther = await run(scenario({ status: 200, content_type: 'text/event-stream' }), fixtures.urlFor('f04-silent', { scale: 0.05, n: 3 }))
+        expect(withOther.status).toBe('pass')
+        expect(withOther.checks.map((c) => c.name)).not.toContain('expect max silence')
+    }, 30_000)
+
+    it('passes a steady stream, and fails the same stream when the limit is shorter than the gaps between its events', async () => {
+        const url = fixtures.urlFor('h01', { scale: 0.05, n: 200 }) // an event every 50 ms
+        const ok = await run(scenario({ max_silence_ms: 1000 }), url)
+        expect(ok.status, ok.checks.map((c) => `${c.name}: ${c.message}`).join(' | ')).toBe('pass')
+        expect(silenceCheck(ok)?.message).toMatch(/longest silence \d+ ms, limit 1000 ms, observed to the end/)
+        const tight = await run(scenario({ max_silence_ms: 20 }), url)
+        expect(tight.status).toBe('fail')
+        expect(silenceCheck(tight)?.message).toMatch(/no byte for \d+ ms, limit 20 ms/)
+    }, 30_000)
+
+    it('a stall that bytes hide (heartbeats only) is caught as the stall.silent finding the stream opens during the observation', async () => {
+        const r = await run(scenario({ max_silence_ms: 1000 }, [{ collect_events: 12, timeout_ms: 10_000 }]), fixtures.urlFor('f04-heartbeats', { scale: 0.25, n: 12 })) // the rule needs a dozen gaps of its own rhythm before it judges an event silence
+        expect(r.status).toBe('fail')
+        expect(silenceCheck(r)?.message).toMatch(/stall\.silent:events/)
+    }, 30_000)
+
+    it('a scenario that closes the connection itself cannot observe the silence after its last step: inconclusive, unless a silence was already seen', async () => {
+        const steps = [{ collect_events: 3, timeout_ms: 10_000 }, { disconnect: { mode: 'client' } }]
+        const r = await run(scenario({ max_silence_ms: 500 }, steps), fixtures.urlFor('h01', { scale: 0.05, n: 50 }))
+        expect(silenceCheck(r)?.status).toBe('inconclusive')
+        expect(silenceCheck(r)?.message).toMatch(/closed the connection itself/)
+        expect(r.status).toBe('inconclusive')
+        expect(r.durationMs).toBeLessThan(500) // it did not wait for a window that cannot be observed
+        const seen = await run(scenario({ max_silence_ms: 10 }, steps), fixtures.urlFor('h01', { scale: 0.05, n: 50 }))
+        expect(silenceCheck(seen)?.status).toBe('fail') // a gap between two events already longer than the limit still fails
+    }, 30_000)
+
+    it('a stream that ends by itself before the observation is over has no silence to judge (the server closed it): pass, and it says so', async () => {
+        const r = await run(scenario({ max_silence_ms: 5000 }, [{ collect_events: 3, timeout_ms: 10_000 }]), fixtures.urlFor('h01', { scale: 0.05, n: 3 }))
+        expect(r.status, r.checks.map((c) => `${c.name}: ${c.status} ${c.message}`).join(' | ')).toBe('pass')
+        expect(silenceCheck(r)?.message).toMatch(/the stream (ended|failed) before that time was over/)
+        expect(r.durationMs).toBeLessThan(3000) // it did not sit out the whole 5.5 s
+    }, 30_000)
+
+    it('works after steps that reconnect, and a pause for the reconnect is not a silence', async () => {
+        const steps = [{ collect_events: 2, timeout_ms: 10_000 }, { disconnect: { mode: 'server' } }, { reconnect: { after_ms: 300 } }, { collect_events: 2, timeout_ms: 10_000 }]
+        const r = await run(scenario({ max_silence_ms: 200 }, steps), fixtures.urlFor('f05-resumes', { scale: 0.05, n: 8 }))
+        expect(silenceCheck(r)?.status, r.checks.map((c) => `${c.name}: ${c.status} ${c.message}`).join(' | ')).toBe('pass')
+    }, 30_000)
+})
