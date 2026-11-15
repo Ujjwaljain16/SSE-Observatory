@@ -1,6 +1,7 @@
 import { maxSeverity, type Deduction, type Evidence, type Fact, type FindingDraft, type Severity } from '../finding'
 import type { Rule, RuleContext } from '../rule'
 import type { GapInfo } from '../streamModel'
+import { stallLimit } from '../stallLimit'
 import { ev, fmtMs, plural } from './util'
 
 /**
@@ -18,6 +19,11 @@ import { ev, fmtMs, plural } from './util'
  * `onObservation`. A gap still going is judged in `onTick` (without changing state) and in `onEnd`.
  * Silence is not judged when the connection is not open, before the first byte of the connection (that is (i)), or
  * across a clock discontinuity (measuring restarts at the jump).
+ *
+ * A stall is `resolved` when data resumes on its own connection. One that ended because the connection closed stays `open`
+ * until a LATER connection delivers an event, which resolves it (decided: results Q12); the finding keeps what it was. A capture
+ * that ends in a stall (open, or closed with no later event) still has it open.
+ * A gap longer than its limit is not added to the cadence the next gap is judged by (StreamModel.baseline, results Q13).
  */
 
 type Subtype = 'no-bytes' | 'bytes' | 'origin' | 'events'
@@ -58,21 +64,8 @@ function judge(gap: GapInfo, endT: number, { thresholds: th, profile }: RuleCont
     }
 
     const heartbeatMs = gap.hbMedianMs ?? profile.expected?.heartbeatMs
-    const p95 = gap.stats.p95
-    let warnMs: number
-    let errorMs: number | undefined
-    let basis: Verdict['basis']
-    if (subtype !== 'no-bytes' && p95 !== undefined && gap.stats.count >= th.stallMinSamples) {
-        warnMs = Math.max(th.stallP95Factor * p95, th.stallHeartbeatFactor * (heartbeatMs ?? 0), th.stallMinSilenceMs)
-        errorMs = Math.max(th.stallErrorFactor * p95, th.stallErrorFactor * (heartbeatMs ?? 0), warnMs)
-        basis = 'cadence'
-    } else if (profile.expected?.maxSilenceMs !== undefined) {
-        warnMs = Math.max(profile.expected.maxSilenceMs, th.stallMinSilenceMs)
-        basis = 'profile'
-    } else {
-        warnMs = th.stallNoCadenceMs
-        basis = 'none'
-    }
+    // The limit is the stream's rhythm so far, and that rhythm holds no gap that was itself a stall (see StreamModel.closeGap).
+    const { warnMs, errorMs, basis } = stallLimit(gap.stats, heartbeatMs, th, profile, subtype !== 'no-bytes')
     // An event gap is only a finding when the stream has its own measured rhythm to compare with, and bytes were
     // really alive throughout (otherwise the byte clock already reports the silence).
     if (subtype === 'events') {
@@ -160,6 +153,8 @@ export const stallSilent: Rule = {
     requires: ['phases', 'chunks'],
     create(ctx) {
         const episodes = new Map<string, Episodes>()
+        /** Stalls that ended with their connection closing, as last reported (open), and the connection they were on. */
+        const unresolved = new Map<string, { draft: FindingDraft; conn: number }>()
 
         const build = (gap: GapInfo, endT: number, final: boolean): { draft: FindingDraft; next: Episodes } | undefined => {
             const v = judge(gap, endT, ctx)
@@ -184,13 +179,25 @@ export const stallSilent: Rule = {
         }
 
         return {
-            onObservation(_o, model) {
+            onObservation(o, model) {
                 const out: FindingDraft[] = []
                 for (const gap of model.delta.gaps) {
                     const built = build(gap, gap.endT ?? model.nowT, true)
                     if (!built) continue
                     episodes.set(built.draft.key, built.next)
                     out.push(built.draft)
+                    // A silence that ended because the connection closed is not resolved yet; one that ended with data on its own connection is.
+                    if (built.draft.status === 'open') unresolved.set(built.draft.key, { draft: built.draft, conn: gap.conn })
+                    else unresolved.delete(built.draft.key)
+                }
+                // A later connection delivering an event is the recovery. The stall stays on record with everything it was (its duration, its
+                // evidence, its count); it is only no longer open, so a recovered stream does not keep failing a gate.
+                if (o.kind === 'event') {
+                    for (const [key, u] of unresolved) {
+                        if (o.conn <= u.conn) continue
+                        out.push({ ...u.draft, status: 'resolved', facts: [...u.draft.facts, { text: `A later connection delivered an event at t=${fmtMs(o.t)}, so the stream recovered; the stall is kept as history.`, evidence: [ev(o.seq, o.t, 'a later connection delivered an event')] }] })
+                        unresolved.delete(key)
+                    }
                 }
                 return out
             },

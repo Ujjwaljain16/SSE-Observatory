@@ -41,6 +41,8 @@ export const proxyMasking: Rule = {
     requires: ['comments', 'response'],
     create({ thresholds: th, profile }: RuleContext) {
         const runs = new Map<number, Run>()
+        /** The masking finding as last reported open, and the connection it was seen on (until it resolves). */
+        let lastOpen: { draft: FindingDraft; conn: number } | undefined
         let episodes = 0
         let severity: Severity = 'warning'
         let firstSeenT: number | undefined
@@ -49,7 +51,7 @@ export const proxyMasking: Rule = {
         let mismatchSeverity: Severity = 'warning'
 
         const limitsFor = (model: StreamModel): { warnMs: number; errorMs: number; basis: 'cadence' | 'profile' | 'none' } => {
-            const origin = model.gaps.origin
+            const origin = model.baseline.origin // the rhythm without the silences that were already stalls, as R05 judges
             const p95 = origin.p95()
             const hb = model.originHeartbeatMedian() ?? profile.expected?.heartbeatMs
             if (p95 !== undefined && origin.count >= th.stallMinSamples) {
@@ -126,6 +128,14 @@ export const proxyMasking: Rule = {
                     return out
                 }
 
+                // The masking was reported on a connection that then closed, and a LATER connection delivers an event: the stream recovered (results Q12).
+                // The finding stays on record as it was, with one fact added; it is only no longer open.
+                if (o.kind === 'event' && lastOpen && o.conn > lastOpen.conn) {
+                    const { draft } = lastOpen
+                    lastOpen = undefined
+                    return [{ ...draft, status: 'resolved', facts: [...draft.facts, { text: `A later connection delivered an event at t=${fmtMs(o.t)}, so the stream recovered; the masking is kept as history.`, evidence: [ev(o.seq, o.t, 'a later connection delivered an event')] }] }]
+                }
+
                 if (o.kind !== 'comment' || o.source !== 'proxy') return
                 const tag = parseProxyComment(o.text.trim())
                 if (tag?.kind !== 'hb') return
@@ -135,7 +145,7 @@ export const proxyMasking: Rule = {
                 let run: Run
                 if (!prior || tag.upIdleMs < prior.last) {
                     // The upstream spoke (or this is the first heartbeat): a new stretch of idle time starts here.
-                    if (prior?.fired) out.push(maskingDraft(prior, model, true))
+                    if (prior?.fired) { out.push(maskingDraft(prior, model, true)); lastOpen = undefined }
                     run = { last: tag.upIdleMs, growing: 0, first: { seq: o.seq, t: o.t, upIdle: tag.upIdleMs }, latest: { seq: o.seq, t: o.t }, fired: false, thresholdFact: '' }
                 } else {
                     run = prior
@@ -152,7 +162,9 @@ export const proxyMasking: Rule = {
                     severity = level === 'error' || severity === 'error' ? 'error' : 'warning'
                     const how = lim.basis === 'cadence' ? `set from the stream's own rhythm (an error above ${fmtMs(lim.errorMs)})` : lim.basis === 'profile' ? 'the longest silence the stream profile allows' : 'the default, as the stream has no measured rhythm'
                     run.thresholdFact = `The stall threshold was ${fmtMs(lim.warnMs)}, ${how}.`
-                    out.push(maskingDraft(run, model, false))
+                    const draft = maskingDraft(run, model, false)
+                    lastOpen = { draft, conn: o.conn }
+                    out.push(draft)
                 }
                 return out
             },

@@ -52,7 +52,7 @@ export function createEngine(options: EngineOptions = {}): Engine {
     // The profile parser refuses an expected timing that is not above zero; an engine given a profile some other way gets the same treatment,
     // so a number that is not usable is left out and the check falls back to what it measures, instead of printing it as its limit.
     const profile = withUsableExpectations(options.profile ?? {})
-    const model = new StreamModel(thresholds)
+    const model = new StreamModel(thresholds, profile)
     // A rule listed twice (the default set plus the same rule added by hand) runs once.
     const rules = [...new Map((options.rules ?? defaultRules).map((rule) => [rule.id, rule])).values()]
     const entries: Entry[] = rules.map((rule) => ({ rule, instance: rule.create({ thresholds, profile }) }))

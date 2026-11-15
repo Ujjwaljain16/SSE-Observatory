@@ -56,6 +56,20 @@ describe('analyze', () => {
         expect(later.out).toContain('stall.silent')
     })
 
+    it('a stall that a later connection recovered from no longer fails the gate and is printed as resolved; a stall the capture ends in still fails it', async () => {
+        const stalled = () => healthyStart().repeat(12, 1000, (b, i) => b.frame('tick', String(i + 1))).silence(8000).reconnect({ delayMs: 500 }).silence(500).connect({ sentLastEventId: '12' }).response()
+        const recovered = host({ 'r.sse-capture': asFile(stalled().frame('tick', '13')) })
+        expect(await main(['analyze', 'r.sse-capture', '--fail-on', 'warning'], recovered.io)).toBe(EXIT.ok)
+        expect(recovered.out).toContain('stall.silent:bytes')
+        expect(recovered.out).toContain('resolved')
+        // The same stream, but the capture says it ended while the new connection was still silent.
+        const records = stalled()
+        const endsInSilence = serializeCapture({ header: newHeader({ kind: 'local-full', source: { kind: 'browser-app' } }), records: records.build(), footer: { endReason: 'stopped', counts: {}, endT: records.now + 60_000 } })
+        const stuck = host({ 's.sse-capture': endsInSilence })
+        expect(await main(['analyze', 's.sse-capture', '--fail-on', 'warning'], stuck.io)).toBe(EXIT.gateFailed)
+        expect(stuck.out).toContain('stall.silent:bytes')
+    })
+
     it('--fail-on moves the gate, and the other formats are well formed', async () => {
         const text = asFile(build().connect().response({ headers: { 'content-encoding': 'gzip' } }).repeat(3, 1000, (b, i) => b.frame('tick', String(i + 1))))
         const warn = host({ 'w.sse-capture': text })

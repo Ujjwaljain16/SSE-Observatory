@@ -47,6 +47,8 @@ export const firstEvent: Rule = {
     requires: ['connect', 'response', 'chunks'],
     create(ctx) {
         const seen = new Map<string, Seen>()
+        /** Stages that never completed because their connection ended, as last reported (open), and the connection they were on. */
+        const unresolved = new Map<string, { draft: FindingDraft; conn: number }>()
 
         const build = (stage: Stage, nowT: number): { draft: FindingDraft; next: Seen } | undefined => {
             const finish = stage.end ?? stage.endedAt
@@ -94,8 +96,19 @@ export const firstEvent: Rule = {
             for (const stage of stagesOf(c, ctx)) {
                 if (!names.includes(stage.name)) continue
                 const built = build(stage, nowT)
-                if (!built) continue
+                if (!built) {
+                    // The stage completed within its limit. If an earlier connection's stage never completed (the connection ended while it waited) and
+                    // is still open, this is the recovery (results Q12): it stays on record as it was, with one fact added, and is no longer open.
+                    const u = unresolved.get(KEY(stage.name))
+                    if (u && stage.end !== undefined && c.conn > u.conn) {
+                        out.push({ ...u.draft, status: 'resolved', facts: [...u.draft.facts, { text: `A later connection completed this stage within the limit (${fmtMs(stage.end.t - stage.start.t)}), so the stream recovered; the slow stage is kept as history.`, evidence: [ev(stage.end.seq, stage.end.t, 'a later connection completed this stage')] }] })
+                        unresolved.delete(u.draft.key)
+                    }
+                    continue
+                }
                 seen.set(built.draft.key, built.next)
+                if (built.draft.status === 'open') unresolved.set(built.draft.key, { draft: built.draft, conn: c.conn })
+                else unresolved.delete(built.draft.key)
                 out.push(built.draft)
             }
             return out

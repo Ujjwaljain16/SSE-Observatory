@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DoctorStore } from '../doctorStore'
 import { ObservationRegistry } from '../observationRegistry'
 import { capture, healthyStart } from '../../core/testing/captureBuilder'
+import { analyze } from '../../core/diagnostics/engine'
 import type { Observation } from '../../core/observe/observation'
 import type { DoctorView } from '../doctorSession'
 
@@ -148,6 +149,34 @@ describe('observation records the store ignores', () => {
         h.registry.receive('main', { captureId: 'c', batch: [...steady(3).observations(), weird] })
         await h.store.refresh()
         expect(h.view()).toBeDefined()
+    })
+})
+
+// Results Q12 (decided): the live view gives what the batch analysis gives. A stall that ended with the connection closing is open until a later
+// connection delivers an event; then it is history (kept, resolved), and the open counts and the health strip stop counting it.
+describe('a stall that a later connection recovered from', () => {
+    it('is counted as open until the new connection delivers, then kept as resolved and no longer counted, and the view equals a batch analysis', async () => {
+        const h = start()
+        const b = steady(12).silence(8000).reconnect({ delayMs: 500 }).silence(500).connect({ sentLastEventId: '12' }).response()
+        h.feed(b)
+        await h.store.refresh()
+        const waiting = h.view()!
+        expect(waiting.findings.find((f) => f.key === 'stall.silent:bytes')).toMatchObject({ status: 'open', occurrences: 1 })
+        expect(waiting.open.warning + waiting.open.error, 'the stall is counted while nothing has been delivered').toBeGreaterThan(0)
+        expect(waiting.worst).not.toBeNull()
+
+        b.silence(100).frame('tick', '13')
+        h.advance(1000)
+        h.feed(b)
+        await h.store.refresh()
+        const recovered = h.view()!
+        expect(recovered.findings.find((f) => f.key === 'stall.silent:bytes')).toMatchObject({ status: 'resolved', occurrences: 1 })
+        expect(recovered.open.warning + recovered.open.error + recovered.open.critical, 'a recovered stream is not counted').toBe(0)
+        expect(recovered.worst).toBeNull()
+        expect(recovered.findings.filter((f) => f.status === 'open')).toEqual([])
+        // The live view and the batch analysis of the same records agree on the stall, to the last field.
+        const batch = analyze(b.build(), { endT: b.now + 1000 }).findings.find((f) => f.key === 'stall.silent:bytes')
+        expect(recovered.findings.find((f) => f.key === 'stall.silent:bytes')).toEqual(batch)
     })
 })
 
