@@ -6,7 +6,7 @@ import type { EngineInput } from '../core/diagnostics/streamModel'
 import type { StreamProfile } from '../core/diagnostics/thresholds'
 import type { CaptureRecord } from '../core/capture/format'
 import type { PayloadProbeConfig } from '../core/observe/payloadProbe'
-import { createObservedStream } from '../core/sse/observedStream'
+import { createObservedStream, type ObservedStream } from '../core/sse/observedStream'
 import { safeFetch } from './safeFetch'
 import type { Scenario, ScenarioStep } from '../core/scenario/types'
 import { planReplay, sessionFromCapture } from '../../lib/mock/capturePlan.js'
@@ -134,9 +134,22 @@ export async function runScenario(scenario: Scenario, file: string, io: CliIo, s
         const startedClock = performance.now()
         let events = 0
         let phase = ''
-        const stream = createObservedStream({
+        // Q-I2. A scenario with an explicit `reconnect` step holds its client at a drop: the step is the reconnect (it waits after_ms and sends or
+        // withholds the cursor as it says), so the client must not reconnect on its own first. A scenario without one leaves the client's own
+        // reconnection alone, because that is the behaviour it tests.
+        const explicitReconnect = (scenario.steps as ScenarioStep[]).some((s) => 'reconnect' in s)
+        let openSinceStart = false // a connection was open: only the drop of an open connection is held, not a failed attempt the client retries
+        let held = false // the server dropped the connection and the runner holds its client until the next reconnect step
+        const stream: ObservedStream = createObservedStream({
             request: () => ({ url: target.url, headers: { Accept: 'text/event-stream', 'Cache-Control': 'no-cache', ...target.headers } }),
-            sinks: { onMessage: () => { events++ }, onPhase: (p) => { phase = p } },
+            sinks: {
+                onMessage: () => { events++ },
+                onPhase: (p) => {
+                    phase = p
+                    if (p === 'open') openSinceStart = true
+                    else if (p === 'reconnecting' && explicitReconnect && openSinceStart) { openSinceStart = false; held = true; stream.stop() }
+                },
+            },
             recording: { ...(Object.keys(probeOf(profile)).length > 0 ? { profile: probeOf(profile) } : {}), onObservations: (batch) => { records.push(...batch) }, flushMs: 10 },
             clientOptions: { initialDelayMs: 20, maxDelayMs: 200, jitter: 0, maxRetries: 5, fetchImpl: safeFetch },
         })
@@ -165,23 +178,29 @@ export async function runScenario(scenario: Scenario, file: string, io: CliIo, s
                 const base = countFrom ?? events
                 countFrom = undefined
                 const goal = base + step.collect_events
-                const ok = await waitFor(() => events >= goal || ended(), step.timeout_ms ?? 30_000)
+                const ok = await waitFor(() => events >= goal || ended() || held, step.timeout_ms ?? 30_000)
                 const got = events - base
-                check(`step ${index}: collect ${step.collect_events} events`, ok && events >= goal, events >= goal ? `received ${got}` : ended() ? `the stream ${phase} after ${got}` : `received ${got} of ${step.collect_events} before the timeout`)
+                check(`step ${index}: collect ${step.collect_events} events`, ok && events >= goal, events >= goal ? `received ${got}` : held ? `the server dropped the connection after ${got}, and the scenario's reconnect step has not run yet` : ended() ? `the stream ${phase} after ${got}` : `received ${got} of ${step.collect_events} before the timeout`)
             } else if ('disconnect' in step) {
                 if (step.disconnect.mode === 'client') {
                     stream.stop()
                     check(`step ${index}: disconnect (client)`, true, 'closed by the client')
                 } else {
-                    const ok = await waitFor(() => phase === 'reconnecting' || ended(), 15_000)
+                    // held: the client was stopped at the drop; otherwise it is already reconnecting by itself
+                    const ok = await waitFor(() => held || phase === 'reconnecting' || ended(), 15_000)
                     if (ok) countFrom = events
-                    check(`step ${index}: disconnect (server)`, ok, ok ? 'the server dropped the connection' : 'the server did not drop the connection')
+                    check(`step ${index}: disconnect (server)`, ok, ok ? (held ? 'the server dropped the connection; the runner holds its client until the reconnect step' : 'the server dropped the connection') : 'the server did not drop the connection')
                 }
             } else if ('reconnect' in step) {
+                // a connection still open (no drop before this step) is closed first: the step is the reconnect
+                const closedHere = stream.isRunning
+                if (closedHere) stream.stop()
+                held = false
                 if (step.reconnect.after_ms) await sleep(step.reconnect.after_ms)
                 if (step.reconnect.resume_from_last_event_id === false) stream.forgetLastEventId()
                 if (!stream.isRunning) stream.start()
-                check(`step ${index}: reconnect`, true, step.reconnect.resume_from_last_event_id === false ? 'without Last-Event-ID' : `with Last-Event-ID "${stream.lastId}"`)
+                countFrom = undefined
+                check(`step ${index}: reconnect`, true, `${closedHere ? 'closed the open connection, ' : ''}${step.reconnect.after_ms ? `after ${step.reconnect.after_ms} ms ` : ''}${step.reconnect.resume_from_last_event_id === false ? 'without Last-Event-ID' : `with Last-Event-ID "${stream.lastId}"`}`)
             } else if ('wait' in step) await sleep(step.wait.ms)
         }
         // expect.max_silence_ms: a silence needs time to show, and the analysis ends at the last record, so after the last step the
