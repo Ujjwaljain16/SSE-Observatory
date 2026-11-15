@@ -333,7 +333,7 @@ test.describe.serial('I1: the journey of a stalled stream', () => {
     })
 
     // -------------------------------------------------------------------------------------------------------- 6
-    test('6. the scenario is valid against the published schema and runs; today it passes on the stalled stream (KNOWN GAP, Q4a: pinned)', async () => {
+    test('6. the scenario is valid against the published schema and runs; it fails on the stalled stream (Q4a)', async () => {
         test.setTimeout(90_000)
         const bytes = fs.readFileSync(FILES.scenario)
         const scenario = JSON.parse(bytes.toString('utf8')) as { version: number; name: string; target: { url: string }; verify: unknown[] }
@@ -346,23 +346,18 @@ test.describe.serial('I1: the journey of a stalled stream', () => {
         const out = JSON.parse(run.stdout) as TestJson
         expect(validators.testOutput(out), complaint(validators.testOutput)).toBe(true)
         expect(out.scenarios).toHaveLength(1)
-        expect(['pass', 'fail', 'inconclusive']).toContain(out.scenarios[0]!.status)
-        expect(out.scenarios[0]!.events, 'it collected the events the stalled stream had').toBeGreaterThanOrEqual(12)
+                expect(out.scenarios[0]!.events, 'it collected the events the stalled stream had').toBeGreaterThanOrEqual(12)
         expect(sha(fs.readFileSync(FILES.scenario)), 'running a scenario does not change it').toBe(STATE.scenarioSha)
 
-        // KNOWN GAP (campaign page, Q4a): the scenario collects the events the capture had and stops, so the silence after them is never
-        // judged. This is pinned so the gap is visible; it flips, with the expected failure in step 7, the day the gap is closed.
-        expect({ code: run.code, status: out.scenarios[0]!.status }, 'Q4a: the scenario made from a stall capture does not catch the stall').toEqual({ code: 0, status: 'pass' })
+        // Q4a (decided and implemented): the scenario carries expect.max_silence_ms from the stall finding and keeps observing after its
+        // last step, so the silence is judged. Step 7 holds the full faulty/healthy pair.
+        const scenarioFile = JSON.parse(bytes.toString('utf8')) as { expect?: { max_silence_ms?: number } }
+        expect(scenarioFile.expect?.max_silence_ms, 'the scenario was made from a stall capture, so it carries a silence limit').toBeGreaterThan(0)
+        expect({ code: run.code, status: out.scenarios[0]!.status }, 'the scenario made from a stall capture catches the stall').toEqual({ code: 1, status: 'fail' })
     })
 
     // -------------------------------------------------------------------------------------------------------- 7 (the stall: the gap)
-    test('7. FAIL on the stalled stream, PASS on the healthy twin (KNOWN GAP, Q4a: expected to fail until the owner decides)', async () => {
-        // Q4a: a scenario made from a stall capture cannot fail on the stall (src/cli/__tests__/scenarioRoundTrip.test.ts has the same shape
-        // as `it.fails`). The plan says to keep the journey red and not weaken the assertion. test.fail() keeps the suite green while the gap
-        // is open and makes THIS test fail ("expected to fail, but passed"), loudly, the day the scenario starts failing on the stalled stream:
-        // then remove the annotation (and the pin in step 6). The assertions below are the plan's, unchanged. Step 6 pins that the scenario
-        // runs to a verdict, so an expected failure here is not a crash.
-        test.fail(true, 'Q4a: a scenario made from a stall capture passes on the stalled stream')
+    test('7. FAIL on the stalled stream, PASS on the healthy twin', async () => {
         test.setTimeout(90_000)
         const faulty = await cli(['test', FILES.scenario, '--format', 'json'], { env: scenarioEnv(urlOf('f04-silent', STATE.stallQuery)) })
         const out = JSON.parse(faulty.stdout) as TestJson
