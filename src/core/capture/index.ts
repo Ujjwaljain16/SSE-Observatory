@@ -3,6 +3,8 @@
 export { CAPTURE_FORMAT, CAPTURE_VERSION, CaptureFormatError, capabilitiesOf, captureEndT, countByKind, newHeader, parseCapture, serializeCapture, integrityOf } from './format'
 export type { Capture, CaptureFooter, CaptureHeader, CaptureKind, CaptureRecord, IntegrityStatus, ParsedCapture, UnknownRecord } from './format'
 export type { RedactedCapture } from './redacted'
+export { MAX_CAPTURE_PROBLEMS, describeCaptureProblems, recordShapeProblem, validateCaptureIntegrity } from './integrity'
+export type { CaptureProblem, CaptureProblemCode } from './integrity'
 export { importV1, isV1Recording, V1ImportError } from './importV1'
 export type { V1Event, V1Recording } from './importV1'
 export { connectionTexts, framesOf, hasPayloadText } from './streamText'

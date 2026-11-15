@@ -61,14 +61,19 @@ describe('S12: a secret header does not follow a redirect to another origin', ()
         await expect(safeFetch(`${odd}/a`)).rejects.toThrow(/not http or https/)
     })
 
-    it('probe never sends --header-env values to the origin it was redirected to', async () => {
+    it('probe never sends --header-env values to the origin it was redirected to (followed only with --follow-redirects, Q6)', async () => {
         const seen: Array<Record<string, string | string[] | undefined>> = []
         const b = await serve((req, res) => { seen.push(req.headers); oneEvent(req, res) })
         const a = await serve((_, res) => { res.writeHead(302, { Location: `${b}/stolen` }); res.end() })
         const h = host({}, { KEY: 'apikey-secret-CCCC' })
-        await main(['probe', `${a}/s`, '--header-env', 'X-Api-Key=KEY', '--max-events', '1', '--duration', '5'], h.io)
+        await main(['probe', `${a}/s`, '--header-env', 'X-Api-Key=KEY', '--follow-redirects', '--max-events', '1', '--duration', '5'], h.io)
         expect(seen.length).toBeGreaterThan(0)
         expect(seen.every((headers) => headers['x-api-key'] === undefined)).toBe(true)
+        // without the flag the redirect is not even followed
+        const refused = host({}, { KEY: 'apikey-secret-CCCC' })
+        seen.length = 0
+        expect(await main(['probe', `${a}/s`, '--header-env', 'X-Api-Key=KEY', '--max-events', '1', '--duration', '5'], refused.io)).toBe(EXIT.couldNotRun)
+        expect(seen).toEqual([])
     })
 })
 

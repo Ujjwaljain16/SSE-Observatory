@@ -12,7 +12,7 @@ import { redactUrl } from '../core/observe/redactUrl'
 import { compareCaptures } from '../core/capture/derived/compare'
 import { SEVERITY_RANK, type Finding } from '../core/diagnostics/finding'
 import { stringFlag, type ParsedArgs } from './args'
-import { analysisOf, observe, saveObserved, show, type Observed } from './commands'
+import { analysisOf, observe, refuseNoRedactWithSecrets, saveObserved, secretOptionsIn, show, type Observed } from './commands'
 import { CliError, EXIT, type CliIo } from './io'
 import type { SecretRegistry } from './secretRegistry'
 
@@ -30,6 +30,7 @@ export function sideArgs(args: ParsedArgs, side: Side): ParsedArgs {
         const own = args.multi[`${name}-${side}`]
         if (own && own.length > 0) multi[name] = own
     }
+    flags['side'] = side // not an option anyone can pass: it lets a message name the side's own option (--auth-env-a)
     return { positionals: args.positionals, flags, multi }
 }
 
@@ -56,6 +57,7 @@ export async function envDiffCommand(io: CliIo, args: ParsedArgs, secrets: Secre
     const labelB = stringFlag(args, 'label-b') ?? 'B'
     const outA = stringFlag(args, 'out-a')
     const outB = stringFlag(args, 'out-b')
+    refuseNoRedactWithSecrets(args, [...new Set([...secretOptionsIn(sideArgs(args, 'a'), urlA), ...secretOptionsIn(sideArgs(args, 'b'), urlB)])])
     if ((outA || outB) && args.flags['no-redact'] === true) io.err('warning: --no-redact writes captures that may contain secrets. Do not share them.\n')
 
     // One side failing to start (a variable that is not set, a bad flag) stops the other at once instead of leaving it to run out its time.

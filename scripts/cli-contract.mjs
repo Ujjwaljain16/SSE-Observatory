@@ -147,6 +147,34 @@ describe('F2: stdout is the answer and nothing else', () => {
         assert.ok(existsSync(out), 'the capture was written')
     })
 
+    it('--no-redact with a secret option is refused: exit 2, a message on stderr, stdout empty, no file', async () => {
+        const url = await serve((_, res) => { res.writeHead(200, { 'Content-Type': 'text/event-stream' }); res.write('data: a\n\n'); setTimeout(() => res.end(), 100) })
+        const out = path.join(tmp, 'refused.sse-capture')
+        const r = await run(['probe', url, '--duration', '2', '--auth-env', 'CONTRACT_TOKEN', '--no-redact', '--out', out], { env: { CONTRACT_TOKEN: 'contract-secret-71c4e9' } })
+        assert.equal(r.code, 2, r.stderr)
+        assert.match(r.stderr, /--no-redact was refused/)
+        assert.match(r.stderr, /--auth-env/)
+        assert.doesNotMatch(r.stdout + r.stderr, /contract-secret-71c4e9/)
+        assert.equal(r.stdout, '')
+        assert.ok(!existsSync(out), 'no capture was written')
+    })
+
+    it('a redirect to another origin with a secret option is refused (3) and followed with --follow-redirects (0), stderr naming what was not forwarded', async () => {
+        const target = await serve((_, res) => { res.writeHead(200, { 'Content-Type': 'text/event-stream' }); res.write('data: a\n\n'); setTimeout(() => res.end(), 100) })
+        const origin = await serve((_, res) => { res.writeHead(302, { Location: `${target}/landed` }); res.end() })
+        const env = { env: { CONTRACT_TOKEN: 'contract-secret-71c4e9' } }
+        const refused = await run(['probe', `${origin}/s`, '--duration', '2', '--max-events', '1', '--auth-env', 'CONTRACT_TOKEN'], env)
+        assert.equal(refused.code, 3, refused.stderr)
+        assert.match(refused.stderr, /--follow-redirects/)
+        assert.match(refused.stderr, /--auth-env/)
+        noStackTrace(refused.stderr, 'refused redirect')
+        const followed = await run(['probe', `${origin}/s`, '--duration', '2', '--max-events', '1', '--auth-env', 'CONTRACT_TOKEN', '--follow-redirects', '--format', 'json'], env)
+        assert.equal(followed.code, 0, followed.stderr)
+        assert.match(followed.stderr, /NOT forwarded/)
+        JSON.parse(followed.stdout)
+        assert.doesNotMatch(followed.stdout + followed.stderr, /contract-secret-71c4e9/)
+    })
+
     it('"test --output file" writes the chosen format to the file', async () => {
         const out = path.join(tmp, 'junit.xml')
         const r = await run(['test', 'scenarios/ci/pass/h01-steady.json', '--format', 'junit', '--output', out])

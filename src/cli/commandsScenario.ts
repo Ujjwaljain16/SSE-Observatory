@@ -1,7 +1,8 @@
 import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { parseScenarioText } from '../core/scenario'
-import { planReplay, sessionFromCapture, END_BEHAVIOURS } from '../../lib/mock/capturePlan.js'
+import { planReplay, END_BEHAVIOURS } from '../../lib/mock/capturePlan.js'
+import { loadReplaySession, syntheticNotice } from './replaySource'
 import { FIXTURE_ROUTES, startFixtureServer } from '../fixtures/server'
 import { numberFlag, stringFlag, type ParsedArgs } from './args'
 import { CliError, EXIT, requireFiles, type CliIo } from './io'
@@ -77,7 +78,7 @@ export async function testCommand(io: CliIo, args: ParsedArgs, secrets: SecretRe
             const lines = errors.map((e) => `  ${e.line !== undefined ? `line ${e.line}, column ${e.column}` : e.pointer || '(document)'}: ${e.message}`)
             throw new CliError(`"${file}" is not a valid scenario:\n${lines.join('\n')}`, EXIT.usage)
         }
-        runs.push(await runScenario(value, file, io, secrets, args.multi['allow-env'] ?? []))
+        runs.push(await runScenario(value, file, io, secrets, args.multi['allow-env'] ?? [], args.flags['follow-redirects'] === true))
     }
     const format = stringFlag(args, 'format') ?? 'human'
     let text: string
@@ -101,8 +102,10 @@ export async function replayCommand(io: CliIo, args: ParsedArgs): Promise<number
     const path = args.positionals[1]
     if (!path) throw new CliError('Usage: sse-doctor replay <capture> [--port n] [--speed x] [--honor-last-event-id] [--drop-after n] [--skip-ids a,b] [--end close|hold|rst|end-event]', EXIT.usage)
     const text = await requireFiles(io).readText(path).catch(() => { throw new CliError(`Cannot read "${path}".`, EXIT.couldNotRun) })
-    const { session, error } = sessionFromCapture(text)
+    // A capture without payload (the app's export) is replayed as a labelled synthetic copy built in memory; see replaySource.ts (Q-I1).
+    const { session, synthetic, error } = loadReplaySession(text)
     if (!session) throw new CliError(`"${path}": ${error ?? 'cannot be replayed'}`, EXIT.usage)
+    if (synthetic) io.err(syntheticNotice(synthetic))
     const end = stringFlag(args, 'end') ?? 'close'
     if (!END_BEHAVIOURS.includes(end)) throw new CliError(`--end must be one of ${END_BEHAVIOURS.join(', ')}.`, EXIT.usage)
     const speed = numberFlag(args, 'speed', 1) || 1
@@ -118,7 +121,7 @@ export async function replayCommand(io: CliIo, args: ParsedArgs): Promise<number
             connection: requests++, speed, honorLastEventId: args.flags['honor-last-event-id'] === true,
             lastEventId: String(req.headers['last-event-id'] ?? ''), skipIds, ...(dropAfter !== undefined ? { dropAfter } : {}),
         })
-        res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', ...(origin !== undefined ? { 'Access-Control-Allow-Origin': origin, Vary: 'Origin' } : {}), 'X-Mock-Fidelity': plan.mode })
+        res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', ...(origin !== undefined ? { 'Access-Control-Allow-Origin': origin, Vary: 'Origin' } : {}), 'X-Mock-Fidelity': plan.mode, ...(synthetic ? { 'X-Mock-Synthetic': 'placeholder-bodies' } : {}) })
         let closed = false
         res.on('close', () => { closed = true })
         void (async () => {
@@ -136,7 +139,7 @@ export async function replayCommand(io: CliIo, args: ParsedArgs): Promise<number
         })()
     })
     await new Promise<void>((resolve) => server.listen(numberFlag(args, 'port', 0), '127.0.0.1', resolve))
-    io.out(`Replaying ${path} at http://127.0.0.1:${(server.address() as AddressInfo).port}/ (Ctrl+C to stop)\n`)
+    io.out(`Replaying ${path} at http://127.0.0.1:${(server.address() as AddressInfo).port}/ (${synthetic ? 'synthetic replay, not byte-exact; ' : ''}Ctrl+C to stop)\n`)
     await new Promise<void>((resolve) => {
         if (io.signal?.aborted) resolve()
         io.signal?.addEventListener('abort', () => resolve())

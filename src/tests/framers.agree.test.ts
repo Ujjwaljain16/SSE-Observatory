@@ -1,11 +1,12 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
 import fc from 'fast-check'
-import { FrameTracker, errorEvent } from '../../lib/proxy/guard.js'
+import { FrameTracker } from '../../lib/proxy/guard.js'
+import { errorComment, heartbeatComment } from '../../lib/proxy/diagTags.js'
 import { SSEParser } from '../core/sse/sseParser'
 import { parseBytes, type RefResult } from '../core/testing/refSseParser'
 
-// The proxy writes its own bytes into the stream (a keep-alive comment, an `event: error` frame, `retry: 1000`) only when its FrameTracker
+// The proxy writes its own bytes into the stream (a keep-alive or tagged comment, the error notice (a comment since Q16), `retry: 1000`) only when its FrameTracker
 // says the bytes forwarded so far end on an event boundary. If the tracker is ever wrong in that direction, the proxy's own bytes get glued
 // onto the producer's half-written event. The property: wherever the tracker says "boundary", whatever the stream so far, the injected bytes
 // change nothing about the events before them, and arrive as exactly what they are. The specification's algorithm (the reference parser)
@@ -38,7 +39,8 @@ function split(bytes: Uint8Array, cuts: number[]): Uint8Array[] {
 }
 
 const injections: Array<[string, string, (r: RefResult) => void]> = [
-    ['an error event', errorEvent('upstream closed'), (r) => expect(r.events.at(-1)).toEqual({ type: 'error', data: '{"error":"upstream closed"}', lastEventId: r.events.at(-1)!.lastEventId })],
+    ['the error notice (a comment)', errorComment('upstream closed'), () => {}],
+    ['a tagged heartbeat', heartbeatComment(1234, 3), () => {}],
     ['a keep-alive comment', ': keep-alive\n\n', () => {}],
     ['the closing retry line', 'retry: 1000\n\n', (r) => expect(r.retries.at(-1)).toBe(1000)],
 ]
@@ -62,6 +64,23 @@ describe('the proxy only writes its own bytes where the tracker says an event ha
             )
         })
     }
+
+    // Q16: the proxy's own notices must not inject a business event into the application's stream: a comment adds no event, wherever it is written.
+    it('the error notice and the tagged comments add NO event and change no id or retry, wherever the tracker allows them', () => {
+        fc.assert(
+            fc.property(stream, fc.array(fc.nat({ max: 300 }), { maxLength: 8 }), (s, cuts) => {
+                const bytes = encoder.encode(s)
+                if (!trackerSays(split(bytes, cuts))) return
+                const before = parseBytes(bytes)
+                for (const injected of [errorComment('upstream closed'), errorComment('Upstream connection lost'), heartbeatComment(5, 1)]) {
+                    const after = parseBytes(encoder.encode(s + injected))
+                    expect(after.events).toEqual(before.events)
+                    expect(after.retries).toEqual(before.retries)
+                }
+            }),
+            { seed: 37, numRuns: 4000 },
+        )
+    })
 
     it('the tracker does not depend on how the bytes were chunked', () => {
         fc.assert(

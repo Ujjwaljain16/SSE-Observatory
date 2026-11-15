@@ -203,19 +203,23 @@ describe('records that break the format\'s own promises', () => {
     const rec = (seq: number, t: number, extra: Record<string, unknown> = {}): CaptureRecord => ({ seq, t, conn: 0, kind: 'comment', text: `c${seq}`, source: 'upstream', ...extra }) as CaptureRecord
     const file = (records: CaptureRecord[]) => serializeCapture({ header: header(), records })
 
-    it('a duplicate seq is read as it is: both records, in file order, with the integrity hash fine (documented open question: no warning)', () => {
+    // Owner decision (these two pinned "accepted, no warning" before): a duplicate seq or a backwards t is NOT healthy. The file is still read as far
+    // as it goes, so the damage can be shown, but it carries `problems` and the command line and the Doctor refuse it (see integrity.test.ts and
+    // integrityCli.test.ts).
+    it('a duplicate seq is read as it is (both records, in file order, the hash fine) and is reported as a problem, at its line', () => {
         const parsed = parseCapture(file([rec(0, 0), rec(1, 5), rec(1, 9), rec(2, 12)]))
         expect(parsed.capture.records.map((r) => [r.seq, r.t])).toEqual([[0, 0], [1, 5], [1, 9], [2, 12]])
         expect(parsed.integrity).toBe('ok')
-        expect(parsed.warnings).toEqual([])
+        expect(parsed.problems.map((p) => [p.code, p.seq, p.line])).toEqual([['seq.duplicate', 1, 4]])
         expect(() => analyze(parsed.capture.records as Observation[])).not.toThrow()
     })
 
-    it('a time that goes backwards is read as it is, and the capture ends at its LATEST time', () => {
+    it('a time that goes backwards is read as it is, the capture ends at its LATEST time, and the file is reported as invalid at the record that went back', () => {
         const parsed = parseCapture(file([rec(0, 100), rec(1, 40), rec(2, 70)]))
         expect(parsed.capture.records.map((r) => r.t)).toEqual([100, 40, 70])
         expect(captureEndT(parsed.capture)).toBe(100)
         expect(parsed.warnings).toEqual([])
+        expect(parsed.problems.map((p) => [p.code, p.seq, p.line])).toEqual([['t.backwards', 1, 3]])
     })
 
     it('analysis of out-of-order times does not throw and puts no NaN or Infinity in any finding', () => {
@@ -257,11 +261,14 @@ describe('records that break the format\'s own promises', () => {
         const withUnknown: CaptureRecord[] = []
         known.records.forEach((r, i) => {
             withUnknown.push(r)
-            if (i % 4 === 1) withUnknown.push({ seq: 1_000_000 + i, t: r.t, conn: r.conn, kind: i % 8 === 1 ? 'future.metric' : 'x', payload: { n: i, nested: [1, { deep: true }] } })
+            // a record of a kind a newer writer adds comes from the same counter and the same clock, so it sits between its neighbours (seq r.seq + 0.5): a
+            // capture whose seq repeats or goes down is invalid now, and this test is about unknown KINDS, not about a file that breaks the order
+            if (i % 4 === 1) withUnknown.push({ seq: r.seq + 0.5, t: r.t, conn: r.conn, kind: i % 8 === 1 ? 'future.metric' : 'x', payload: { n: i, nested: [1, { deep: true }] } })
         })
         const text = serializeCapture({ header: known.header, records: withUnknown })
         const parsed = parseCapture(text)
         expect(parsed.warnings).toEqual([])
+        expect(parsed.problems).toEqual([])
         expect(parsed.integrity).toBe('ok')
         expect(parsed.capture.records).toEqual(withUnknown) // same records, same order, unknown fields intact
         expect(parsed.capture.footer?.counts['future.metric']).toBeGreaterThan(0)
