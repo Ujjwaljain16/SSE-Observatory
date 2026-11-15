@@ -1,0 +1,19 @@
+name: Feature request
+description: Suggest an improvement or a new check
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: The situation first, then the idea. For a new diagnostic, what went wrong with a real stream and how you found out.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like?
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What have you tried or considered?

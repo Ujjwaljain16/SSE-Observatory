@@ -1,0 +1,39 @@
+name: Bug report
+description: Something does not work, or a finding is wrong (a false alarm, or a problem it missed)
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks. A **redacted** capture is the most useful thing you can attach: `sse-doctor probe <url> --out x.sse-capture` (secrets are redacted before the file is written) or the app's **Export**. Never attach a capture made with `--no-redact`.
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where did it happen?
+      options: [The app (Monitor / Multi-Stream / Mock Server), The Stream Doctor in the app, The sse-doctor command line, The server proxy, The documentation, Not sure]
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: "`sse-doctor --version`, or the footer of the app."
+      placeholder: 2.0.0
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How can it be reproduced?
+      description: The command, the steps, or a fixture (`sse-doctor fixtures list`). A stream that shows it, with the secrets removed, is best.
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      description: Browser and version, Node.js version, operating system, and whether a proxy or CDN sits in front of the stream.

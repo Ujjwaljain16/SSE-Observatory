@@ -11,7 +11,7 @@ export const Footer = ({ theme }: FooterProps) => {
                 ? 'text-slate-600'
                 : 'text-slate-600'
         }`}>
-            <p>SSE Monitor v2.0.0 | Built with React + Tailwind CSS</p>
+            <p>SSE Observatory v2.0.0 | Built with React + Tailwind CSS</p>
         </div>
     )
 }

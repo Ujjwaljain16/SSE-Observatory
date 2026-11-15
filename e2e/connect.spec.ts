@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-test.describe('SSE-Tester E2E', () => {
+test.describe('SSE Observatory E2E', () => {
     test('connects to SSE stream and receives events', async ({ page }) => {
         await page.goto('/');
 
