@@ -113,7 +113,7 @@ export function AppLayout() {
     const handleConnect = () => connect(url, bearerToken)
 
     return (
-        <div className={`min-h-screen transition-colors duration-300 overflow-x-hidden pb-20 ${theme === 'dark' ? 'bg-animated' : 'bg-gradient-to-br from-slate-50 via-white to-slate-100'
+        <div className={`min-h-screen transition-colors duration-300 overflow-x-hidden pb-24 ${theme === 'dark' ? 'bg-animated' : 'bg-gradient-to-br from-slate-50 via-white to-slate-100'
             }`}>
             <div className="container mx-auto px-4 py-8">
                 <Header theme={theme} onToggleTheme={toggleTheme} />
@@ -473,6 +473,8 @@ export function AppLayout() {
                             theme={theme}
                             connected={connected}
                             ratePerSecond={monitorRate}
+                            totalReceived={receivedCount}
+                            bufferedCount={allEvents.length}
                             filteredEvents={filteredEvents}
                             customFilters={customFilters}
                             copiedId={copiedId}

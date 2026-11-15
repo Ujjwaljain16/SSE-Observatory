@@ -16,7 +16,7 @@ Nothing is sent anywhere. The panel reads what the app recorded about the connec
 | Connection | the current state, the attempt number and how long it has been in that state |
 | Last byte / Last origin byte | when anything arrived, and when the origin (not a proxy) last spoke. A proxy keep-alive moves the first but never the second |
 | Last proxy heartbeat | only shown when the SSE Observatory proxy is in the path |
-| Last event | the age of the last complete event, and the count so far |
+| Last event | the age of the last complete event, and the count so far. This counts every event; the events list keeps only the newest 1,000, and once it is full its header says "newest 1,000 of 1,225 events" so the two numbers agree |
 | Origin heartbeat | comment lines from the server, and how often they come |
 | Reconnects | how many times the client had to reconnect |
 | Page processing | how long events waited in the page before being processed (95th percentile) and the queue length |

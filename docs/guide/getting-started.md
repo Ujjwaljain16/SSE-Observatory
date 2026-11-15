@@ -23,6 +23,8 @@ Open `http://localhost:3001`. `npm run dev` starts the Vite UI and the local API
 
 If the address is not an event stream at all (a web page or a JSON endpoint answers instead), the connection stops after the first attempt and says so, for example "The address answers with text/html, not text/event-stream, so there is nothing to retry." The same message appears with the proxy on or off. A server that is down, or answers 5xx, is retried with a countdown.
 
+After a reload the **Endpoint** field is filled with the address you connected to last, so you do not have to type it again. The app does **not** connect by itself: press **Connect** when you are ready. Only the address is kept, in this browser's `localStorage`: never the bearer token, and never an address that carries a credential (user info such as `user:password@host`, a query or fragment parameter whose name contains `token`, `key`, `secret`, `password`, `auth` or `sig`, or any parameter value of 20 or more characters). Connecting to such an address clears the remembered one, so a reload never offers an older address as if it were the last. A [saved profile](#connecting-to-a-stream) is the way to keep an address together with a name (and, if you tick **Remember token**, its token).
+
 Leave **Use Server Proxy** on for endpoints that do not send CORS headers. Turn it off to connect straight from the browser (the endpoint must allow your origin).
 
 ## Try it with the test servers

@@ -10,7 +10,7 @@ import { RawValuesLabel } from './RawValuesLabel'
 import { HighlightedJson, JsonTree } from './JsonViewer'
 import { prettyPayload, diffPayload } from '../utils/displayData'
 import { getParsedData } from '../utils/eventUtils'
-import { formatRate, toRows, type EventRow } from '../utils/eventStats'
+import { countLabel, formatRate, toRows, type EventRow } from '../utils/eventStats'
 import { shapeOf } from '../utils/jsonView'
 import { shownFor } from '../doctor/displayMapping'
 import { getProfile, subscribeProfile } from '../doctor/profileStore'
@@ -30,6 +30,10 @@ interface EventsListProps {
     isLive: boolean
     /** Events per second over the last few seconds, when the caller measures it. */
     ratePerSecond?: number | undefined
+    /** Events accepted since the last clear (keeps counting after the in-memory buffer is full), when the caller knows it. */
+    totalReceived?: number | undefined
+    /** Events the in-memory buffer holds right now, before any filter. */
+    bufferedCount?: number | undefined
     onCopyToClipboard: (text: string, eventId: string) => void
     getTraceForEvent?: (event: EventMessage) => TraceEntry | null
     onViewTrace?: (traceId: string) => void
@@ -87,6 +91,8 @@ export const EventsList = memo(function EventsList({
     jumpTarget,
     onJumpResult,
     ratePerSecond,
+    totalReceived,
+    bufferedCount,
 }: EventsListProps) {
     const isDark = theme === 'dark'
     const [diffEventId, setDiffEventId] = useState<string | null>(null)
@@ -165,7 +171,7 @@ export const EventsList = memo(function EventsList({
                             Event Stream
                         </h2>
                         <p data-testid="event-count" className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-                            {filteredEvents.length} events captured
+                            {countLabel(filteredEvents.length, bufferedCount, totalReceived)}
                         </p>
                         {filteredEvents.length > 0 && <RawValuesLabel theme={theme} />}
                     </div>

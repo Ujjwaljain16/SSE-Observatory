@@ -60,7 +60,8 @@ Export a report, a shareable capture, a curl command or a test scenario. Redacti
 
 - **Spec-compliant SSE client:** fetch-based, with named events, `Last-Event-ID` resume, exponential backoff with jitter, and a clear difference between retryable failures and fatal ones (wrong URL, 401/403/404, wrong content type, also through the proxy, which answers 415 and names the content type). `event: end` or a 204 stops a stream for good.
 - **Multi-Stream:** any number of lanes, each with an optional bearer token, merged into one list.
-- **Bounded, responsive pipeline:** the newest 1,000 events live in memory, the newest 100,000 in IndexedDB. Bursts are parsed and ingested in time-boxed slices, so a 20,000-event burst never blocks the page.
+- **Bounded, responsive pipeline:** the newest 1,000 events live in memory, the newest 100,000 in IndexedDB. Bursts are parsed and ingested in time-boxed slices, so a 20,000-event burst never blocks the page. Once the list is full its header reads "newest 1,000 of 1,225 events", matching the Doctor's count.
+- **Remembers the last address:** a reload refills the endpoint field (it does not connect by itself). The bearer token is never stored, and neither is an address that carries a credential.
 - **Query language:** `==`, `!=`, `>`, `>=`, `<`, `<=`, `contains`, `matches`, `in [..]`, `exists`, `AND`, `OR`, `NOT` and parentheses over event fields or payload paths (for example `type == "payment_failed" AND data.amount >= 100`).
 - **Interceptor sandbox:** write JavaScript to rewrite or drop events before they are stored. It runs in a locked-down Worker with no network or storage, no `eval`/`Function`, and a 100 ms kill timer.
 - **Schema inference:** a live view of field names, types and frequencies from recent payloads.

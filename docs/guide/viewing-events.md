@@ -2,6 +2,10 @@
 
 How the event list shows what arrived, and what each view does and does not tell you.
 
+## The count in the list header
+
+The list keeps the newest 1,000 events in memory, while the Doctor counts every event it saw. Once more than 1,000 have arrived, the header says so: **newest 1,000 of 1,225 events**, so the two numbers agree. If a search or filter is also narrowing the list, it reads **12 of the newest 1,000 events (1,225 received)**. Before that point (and for the Multi-Stream list, which does not track a total) it says **N events captured**. Clearing the events starts the total again.
+
 ## Payload views
 
 Every event row has a small switch above its payload:

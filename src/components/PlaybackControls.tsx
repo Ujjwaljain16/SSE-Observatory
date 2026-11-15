@@ -26,9 +26,11 @@ export const PlaybackControls = ({
     const isLive = !isPaused && currentEventIndex === 0
 
     return (
+        // Sits inside the timeline strip (fixed, 4rem tall, at the very bottom) instead of standing above it: a bar taller than
+        // the strip stuck out over the page content, on top of the toolbar row, wherever that row happened to be.
         <div className={`
-            fixed bottom-6 left-1/2 -translate-x-1/2 
-            flex items-center gap-2 p-2 rounded-2xl shadow-2xl border backdrop-blur-xl z-50
+            fixed bottom-1.5 left-1/2 -translate-x-1/2
+            flex items-center gap-2 p-1.5 rounded-2xl shadow-2xl border backdrop-blur-xl z-50
             transition-all duration-300 animate-slide-up
             ${isDark
                 ? 'bg-slate-900/90 border-slate-700/50 shadow-black/40'
@@ -52,7 +54,7 @@ export const PlaybackControls = ({
             <button
                 onClick={onTogglePause}
                 className={`
-                    w-12 h-12 flex items-center justify-center rounded-xl transition-all
+                    w-10 h-10 flex items-center justify-center rounded-xl transition-all
                     ${isPaused
                         ? 'bg-amber-500 hover:bg-amber-700 text-white shadow-lg shadow-amber-500/20'
                         : 'bg-slate-200 hover:bg-slate-300 text-slate-700 shadow-inner'
@@ -60,7 +62,7 @@ export const PlaybackControls = ({
                 `}
                 aria-label={isPaused ? "Resume Stream" : "Pause Stream"} title={isPaused ? "Resume Stream" : "Pause Stream"}
             >
-                {isPaused ? <Play className="w-6 h-6 fill-current" /> : <Pause className="w-6 h-6 fill-current" />}
+                {isPaused ? <Play className="w-5 h-5 fill-current" /> : <Pause className="w-5 h-5 fill-current" />}
             </button>
 
 
