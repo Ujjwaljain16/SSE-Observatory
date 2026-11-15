@@ -54,7 +54,7 @@ export const proxyMasking: Rule = {
             const origin = model.baseline.origin // the rhythm without the silences that were already stalls, as R05 judges
             const p95 = origin.p95()
             const hb = model.originHeartbeatMedian() ?? profile.expected?.heartbeatMs
-            if (p95 !== undefined && origin.count >= th.stallMinSamples) {
+            if (p95 !== undefined && (origin.count >= th.stallMinSamples || origin.trusted)) {
                 const warnMs = Math.max(th.stallP95Factor * p95, th.stallHeartbeatFactor * (hb ?? 0), th.stallMinSilenceMs)
                 return { warnMs, errorMs: Math.max(th.stallErrorFactor * p95, th.stallErrorFactor * (hb ?? 0), warnMs), basis: 'cadence' }
             }
