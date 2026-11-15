@@ -7,6 +7,7 @@ import RequestView from '../doctor/RequestView'
 import TimelineView from '../doctor/TimelineView'
 import { useEventRate } from '../../hooks/useEventRate'
 import { observationRegistry } from '../../doctor/observationRegistry'
+import * as captureLibrary from '../../doctor/captureLibrary'
 import { capture } from '../../core/testing/captureBuilder'
 import type { DoctorView } from '../../doctor/doctorSession'
 import type { EventMessage } from '../../types'
@@ -179,5 +180,37 @@ describe('TimelineView', () => {
         expect(rows.map((r) => within(r).getByRole('rowheader').textContent)).toEqual(['#1', '#2', '#3', '#4'])
         expect(screen.getAllByTestId('timeline-retry').map((c) => c.textContent)).toEqual(['0', '1', '1', '1'])
         expect(screen.getByRole('img', { name: /Timeline of 4 connection attempts/ })).toBeInTheDocument()
+    })
+
+    // Found by the Node 20 leg of CI: the bookmarks are read from IndexedDB, which a test does not have, so the read fails a moment later and the
+    // catch set state when the test (and its jsdom) were already gone: "window is not defined", reported as an unhandled error that fails the run.
+    // A read that finishes after the view is gone must not touch state. The environment's teardown is simulated by taking `window` away after the
+    // view is removed: React reads it when a state update is asked for, so an update after removal throws, and nothing may throw.
+    it('does not set state when the bookmarks come back after the view was removed', async () => {
+        const b = capture().connect().response().frame('tick', '1')
+        const records = b.observations()
+        observationRegistry.receive('timeline-unmount', { captureId: 'timeline-u', batch: records })
+        let reject!: (e: Error) => void
+        const late = new Promise<captureLibrary.Bookmark[]>((_resolve, rej) => { reject = rej })
+        vi.spyOn(captureLibrary, 'listBookmarks').mockReturnValue(late)
+        const { unmount } = render(<TimelineView theme="light" streamId="timeline-unmount" view={view(records.length)} />)
+        unmount()
+
+        const runnerHandlers = process.listeners('unhandledRejection')
+        process.removeAllListeners('unhandledRejection')
+        const escaped: unknown[] = []
+        const mine = (reason: unknown) => { escaped.push(reason) }
+        process.on('unhandledRejection', mine)
+        vi.stubGlobal('window', undefined)
+        try {
+            reject(new Error('indexedDB is not defined'))
+            await new Promise((r) => setTimeout(r, 20))
+        } finally {
+            vi.unstubAllGlobals()
+            process.off('unhandledRejection', mine)
+            for (const h of runnerHandlers) process.on('unhandledRejection', h)
+            vi.restoreAllMocks()
+        }
+        expect(escaped.map(String), 'errors that escaped after the view was removed').toEqual([])
     })
 })
