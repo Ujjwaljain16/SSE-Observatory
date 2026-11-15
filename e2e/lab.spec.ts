@@ -4,6 +4,35 @@ import { test, expect, type Page } from '@playwright/test'
 // The failure lab, against the captures that ship in public/lab. No stream is connected: the Doctor reads recordings of the built-in
 // faulty and healthy streams.
 
+// A first-time visitor on a fresh page: nothing is connected, there is no Captures tab, and the lab is still one click from the empty Doctor.
+test.describe('Failure lab before any stream is connected', () => {
+    test('is reachable from the empty Doctor, and runs a faulty stream and then its healthy twin, with no stream', async ({ page }) => {
+        test.setTimeout(60_000)
+        await page.goto('/')
+        await page.getByTestId('doctor-toggle').click()
+        await expect(page.getByTestId('doctor-empty')).toContainText('Connect to a stream')
+        await expect(page.getByTestId('doctor-tab-captures')).toHaveCount(0)
+        await expect(page.getByTestId('failure-lab')).toHaveCount(0)
+
+        await page.getByTestId('doctor-try-lab').click()
+        await expect(page.getByTestId('lab-entry').first()).toBeVisible({ timeout: 10_000 })
+
+        await page.getByRole('button', { name: 'Run the Doctor on f04-silent' }).click()
+        const result = page.getByTestId('lab-result')
+        await expect(result.getByTestId('lab-verdict')).toContainText('found what this stream was built to show')
+        await expect(result.locator('[data-testid="doctor-finding"][data-finding-key^="stall.silent"]')).toBeVisible()
+
+        await page.getByTestId('lab-twin').click()
+        await expect(result.getByRole('heading', { name: /^h02:/ })).toBeVisible()
+        await expect(result.getByTestId('lab-expectations')).toContainText('none appeared')
+        await expect(result.locator('[data-testid="doctor-finding"]')).toHaveCount(0)
+        await expect(result).toContainText('No findings.')
+
+        // still no stream: the lab never connected anything
+        await expect(page.getByTestId('doctor-health')).toHaveCount(0)
+    })
+})
+
 test.describe('Failure lab', () => {
     async function toLab(page: Page) {
         await page.goto('/')
