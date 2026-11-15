@@ -1,4 +1,3 @@
-# Ignore files for the 'sse-monitor' Vite project.
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
 # Logs
@@ -62,3 +61,6 @@ vite.config.d.ts
 
 # Generated sse-doctor package (npm run build:cli)
 dist-cli/
+
+# Local-only Playwright configs (a different browser channel or port for one machine)
+playwright.*local*.config.ts

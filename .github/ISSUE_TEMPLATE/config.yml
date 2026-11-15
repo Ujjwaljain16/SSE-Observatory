@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security problem
+    url: https://github.com/Ujjwaljain16/SSE-Observatory/security/policy
+    about: Please do not open a public issue for a vulnerability. Read the security policy first.
+  - name: Documentation
+    url: https://sse-observatory.vercel.app/docs/
+    about: Guides, the command line reference, the diagnostics rules and the known limitations.

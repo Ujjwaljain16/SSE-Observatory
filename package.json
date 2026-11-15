@@ -1,6 +1,10 @@
 {
   "name": "sse-monitor",
   "private": true,
+  "description": "Real-time observability for Server-Sent Event streams: a live viewer, and a Stream Doctor that says why a stream is stuck, late or losing events.",
+  "license": "MIT",
+  "author": "Ujjwaljain16",
+  "keywords": ["sse", "server-sent-events", "debugging", "observability", "developer-tools", "streaming"],
   "version": "2.0.0",
   "type": "module",
   "repository": {

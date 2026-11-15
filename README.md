@@ -4,6 +4,11 @@
   <img src="./public/logo.png" alt="SSE Observatory Logo" width="160" style="border-radius: 20px;"/>
   <h3>Real-Time Observability for Server-Sent Event Streams</h3>
   <p><a href="https://sse-observatory.vercel.app">Live demo</a> · <a href="https://sse-observatory.vercel.app/docs/">Documentation</a> · <a href="https://github.com/Ujjwaljain16/SSE-Observatory/releases/tag/v2.0.0">v2.0.0 release notes</a></p>
+  <p>
+    <a href="https://github.com/Ujjwaljain16/SSE-Observatory/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Ujjwaljain16/SSE-Observatory/actions/workflows/ci.yml/badge.svg?branch=main"/></a>
+    <a href="https://www.npmjs.com/package/sse-doctor"><img alt="npm: sse-doctor" src="https://img.shields.io/npm/v/sse-doctor?label=sse-doctor"/></a>
+    <a href="LICENSE"><img alt="MIT licence" src="https://img.shields.io/github/license/Ujjwaljain16/SSE-Observatory"/></a>
+  </p>
 </div>
 
 > **Version 2.0.0 (2026-11-15): the Stream Doctor.** Besides the live viewer, the app now says *why* a stream is stuck, late or losing events, with the evidence, and the `sse-doctor` command line turns a captured failure into a CI test. What changed, and what you may notice: [What's new in 2.0](https://sse-observatory.vercel.app/docs/guide/whats-new). How it was tested, and what was not: [the testing campaign](https://sse-observatory.vercel.app/docs/technical/testing-campaign).
@@ -281,6 +286,10 @@ The built-in proxy (`/api/sse`) relays browser requests to third-party SSE endpo
 
 See `.env.example` for the full list. A `Dockerfile` (non-root, with a healthcheck) is included for self-hosting.
 
-## 14. License
+## 14. Contributing and community
 
-This project is licensed under the MIT License.
+Contributions are welcome: [CONTRIBUTING.md](CONTRIBUTING.md) says how to set up, what to run before a pull request and what a good change looks like (a test that fails first, the healthy path as well as the faulty one, and a plain statement of what was not checked). Please read the [Code of Conduct](CODE_OF_CONDUCT.md); report a vulnerability privately as described in [SECURITY.md](SECURITY.md). What changed in each release is in the [CHANGELOG](CHANGELOG.md).
+
+## 15. License
+
+This project is licensed under the MIT License (see [LICENSE](LICENSE)).
