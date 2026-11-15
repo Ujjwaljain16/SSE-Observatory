@@ -2,6 +2,12 @@
 
 All notable changes are written here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/). The command line, the capture format (`2.x`) and the scenario schema (`1`) are versioned separately; the release notes of each [GitHub release](https://github.com/Ujjwaljain16/SSE-Observatory/releases) say which changed.
 
+## [Unreleased]
+
+### Fixed
+
+- `report`, `redact` and `probe --out` printed one stderr warning per event whose id "looks like a random token" (462 lines for a 468-event capture of the public Wikimedia stream, whose ids are JSON arrays). An id with structure (JSON, or whitespace, quotes, braces, brackets, commas) is no longer taken for a token, and the ids that still are reported once, with a count and the first event.
+
 ## [2.0.0] - 2026-11-15
 
 The Stream Doctor release: the app and a command line that say **why** a stream is stuck, late or losing events, with the evidence, and turn the diagnosis into a repeatable test. Full account: [What's new in 2.0](https://sse-observatory.vercel.app/docs/guide/whats-new). How it was tested, and what was not: [the testing campaign](docs/technical/testing-campaign.md).

@@ -65,6 +65,10 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 /** A long, random-looking token that no pattern recognised. Flagged by the residual scan, never auto-replaced. */
 export function looksLikeRandomToken(token: string): boolean {
     if (token.length < 24 || UUID.test(token) || hasPlaceholder(token)) return false
+    // A structured value (a JSON object or array, a line of key=value pairs, a quoted string) is not one token. Quotes, braces, brackets, whitespace and
+    // commas never appear inside a real token (base64, url-safe base64, hex), so a value with any of them is a document, and the residual scan, which
+    // cuts text at exactly these characters, still looks at each piece of it.
+    if (/[\s"'`{}[\],;<>]/.test(token)) return false
     // A long run of hex is a hash, a trace id or a key, and its entropy is capped at 4 bits, so it never reaches the test below.
     if (/^[0-9a-f]{32,}$/i.test(token)) return true
     if (!/[A-Za-z]/.test(token) || !/\d/.test(token)) return false

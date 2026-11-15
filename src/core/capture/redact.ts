@@ -264,6 +264,32 @@ function walk(value: unknown, key: string, redactor: Redactor, partitions: boole
 
 const looksLikeSecretId = (id: string): boolean => SECRET_PATTERNS.some((p) => new RegExp(p.regex.source, p.regex.flags).test(id)) || looksLikeRandomToken(id)
 
+/**
+ * What to tell a person about the event ids of a capture: at most one line for ids that look like a token and were kept, and one for ids that were a
+ * credential and were replaced. Each line counts the events and names the first one (never an id). It never makes a line per event: a stream of
+ * thousands of events must not bury the one warning that matters.
+ */
+function idWarningsOf(ids: string[], redactor: Redactor): string[] {
+    const verdict = new Map<string, 'kept' | 'replaced' | null>()
+    const kept = { count: 0, first: 0 }
+    const replaced = { count: 0, first: 0 }
+    ids.forEach((id, i) => {
+        if (!id) return
+        if (!verdict.has(id)) verdict.set(id, looksLikeSecretId(id) ? (redactor.text(id) === id ? 'kept' : 'replaced') : null)
+        const v = verdict.get(id)
+        const bucket = v === 'kept' ? kept : v === 'replaced' ? replaced : null
+        if (!bucket) return
+        if (bucket.count === 0) bucket.first = i + 1
+        bucket.count++
+    })
+    const lines: string[] = []
+    if (kept.count === 1) lines.push(`1 event id looks like a random token but matches no known secret format, so it was kept; check it before sharing (event id #${kept.first})`)
+    else if (kept.count > 1) lines.push(`${kept.count} event ids look like random tokens but match no known secret format, so they were kept; check them before sharing (first: event id #${kept.first})`)
+    if (replaced.count === 1) lines.push(`1 event id was a credential and was replaced; sequence checks on this stream cannot use ids (event id #${replaced.first})`)
+    else if (replaced.count > 1) lines.push(`${replaced.count} event ids were credentials and were replaced; sequence checks on this stream cannot use ids (first: event id #${replaced.first})`)
+    return lines
+}
+
 function sameShape(before: Capture, after: Capture): void {
     const a = framesOf(before)
     const b = framesOf(after)
@@ -309,10 +335,7 @@ export function redactCapture(capture: Capture, policy: RedactionPolicy = {}): R
     const byRule = { ...redactor.counts }
     header.redaction = { policy: policyName, version: REDACTION_POLICY_VERSION, applied: Object.keys(byRule).sort(), placeholders: redactor.size }
     const brand = markRedacted(redacted)
-    const secretIds = new Set(framesOf(capture).map((f) => f.id).filter((id) => id && looksLikeSecretId(id)))
-    const idWarnings = [...secretIds].map((id, i) => (redactor.text(id) === id
-        ? `event id #${i + 1} looks like a random token but matches no known secret format, so it was kept; check it before sharing`
-        : `event id #${i + 1} was a credential and was replaced; sequence checks on this stream cannot use ids`))
+    const idWarnings = idWarningsOf(framesOf(capture).map((f) => f.id), redactor)
     return { capture: brand, report: { placeholders: redactor.size, byRule, residual: scanResidual(brand, policy), idWarnings } }
 }
 

@@ -138,7 +138,9 @@ describe('E1 (CLI): every output of every command, searched for what was planted
         const writers = everything.filter((r) => ((r.argv[0] === 'redact' && r.argv.includes('--output')) || (r.argv[0] === 'probe' && r.argv.includes('--out') && !r.argv.includes('--no-redact')) || (r.argv[0] === 'report' && r.argv.includes('--redact'))))
         expect(writers.length).toBeGreaterThan(0)
         for (const r of writers) {
-            expect(r.err, `${r.argv.slice(0, 2).join(' ')} warns`).toMatch(/looks like a random token/)
+            // one summary line, so the wording follows the count (issue 78): "N event ids look like random tokens" or, for one, "looks like a random token"
+            expect(r.err, `${r.argv.slice(0, 2).join(' ')} warns`).toMatch(/event ids? looks? like (a )?random tokens?/)
+            expect(r.err.split('\n').filter((l) => /random token/.test(l)), `${r.argv.slice(0, 2).join(' ')} warns once, not once per event`).toHaveLength(1)
             expect(survivors(r.err, token), 'the warning does not print the token').toEqual([])
         }
     })
