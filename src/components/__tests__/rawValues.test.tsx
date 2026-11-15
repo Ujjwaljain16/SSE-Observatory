@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { RawCopyButton } from '../RawCopyButton'
+import { RawCopyButton, RawCopyProvider } from '../RawCopyButton'
 import { RawValuesLabel } from '../RawValuesLabel'
 import RequestView from '../doctor/RequestView'
 import SequenceView from '../doctor/SequenceView'
@@ -157,5 +157,50 @@ describe('the live Doctor views carry the label', () => {
         await userEvent.click(screen.getByRole('button', { name: 'Copy' }))
         expect(write).toHaveBeenCalledWith('curl -N "$URL"')
         expect(screen.queryByRole('alertdialog')).toBeNull()
+    })
+})
+
+// Found by the live check of the deployed site (scripts/live-smoke.mjs, after the v2.0.0 release): on a fast stream the warning was drawn from the
+// row's own state, and a row in the virtualised list is removed or re-used as events arrive, so the warning closed itself within a second and the
+// copy could not be confirmed (or, with a re-used row, would have copied another event's text). The state belongs to the list, not to the row.
+describe('RawCopyProvider: the warning belongs to the list, not to the row that opened it', () => {
+    const rows = (show: boolean, text: string, onCopy: (t: string) => void) => (
+        <RawCopyProvider theme="dark">{show ? <RawCopyButton theme="dark" text={text} onCopy={onCopy}>Copy</RawCopyButton> : <p>the row is gone</p>}</RawCopyProvider>
+    )
+
+    it('stays open when the row that opened it is removed, and a confirmation copies the value that was asked for', async () => {
+        const onCopy = vi.fn()
+        const { rerender } = render(rows(true, 'value A', onCopy))
+        await userEvent.click(screen.getByRole('button', { name: 'Copy' }))
+        expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+        rerender(rows(false, 'value A', onCopy))
+        expect(screen.getByText('the row is gone')).toBeInTheDocument()
+        expect(screen.getByRole('alertdialog'), 'the warning outlives its row').toBeInTheDocument()
+        await userEvent.click(screen.getByRole('button', { name: RAW_COPY_CONFIRM }))
+        expect(onCopy).toHaveBeenCalledTimes(1)
+        expect(onCopy).toHaveBeenCalledWith('value A')
+        expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    })
+
+    it('copies what was clicked even if the row is re-used for another event while the warning is open', async () => {
+        const onCopy = vi.fn()
+        const { rerender } = render(rows(true, 'value A', onCopy))
+        await userEvent.click(screen.getByRole('button', { name: 'Copy' }))
+        rerender(rows(true, 'value B', onCopy)) // the same row now shows the next event
+        await userEvent.click(screen.getByRole('button', { name: RAW_COPY_CONFIRM }))
+        expect(onCopy).toHaveBeenCalledTimes(1)
+        expect(onCopy).toHaveBeenCalledWith('value A')
+    })
+
+    it('cancel and Escape copy nothing, and only one warning is ever open', async () => {
+        const onCopy = vi.fn()
+        render(<RawCopyProvider theme="dark"><RawCopyButton theme="dark" text="one" onCopy={onCopy}>Copy one</RawCopyButton><RawCopyButton theme="dark" text="two" onCopy={onCopy}>Copy two</RawCopyButton></RawCopyProvider>)
+        await userEvent.click(screen.getByRole('button', { name: 'Copy one' }))
+        expect(screen.getAllByRole('alertdialog')).toHaveLength(1)
+        await userEvent.keyboard('{Escape}')
+        expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+        await userEvent.click(screen.getByRole('button', { name: 'Copy two' }))
+        await userEvent.click(screen.getByRole('button', { name: RAW_COPY_CANCEL }))
+        expect(onCopy).not.toHaveBeenCalled()
     })
 })

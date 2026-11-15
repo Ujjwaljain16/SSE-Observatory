@@ -14,6 +14,8 @@ const DATA = '{"seq":1,"token":"q19-secret-token-0123456789","note":"two  spaces
 const SENTINEL = 'sentinel: nothing has been copied yet'
 
 let plain: PlainServer
+let busy: PlainServer
+let busyDelayMs = 400
 let fx: FixtureServer
 test.beforeAll(async () => {
     fx = await startFixtureServer({ port: 0 })
@@ -21,8 +23,24 @@ test.beforeAll(async () => {
         res.writeHead(200, STREAM_HEAD)
         res.write(`id: ${ID}\nevent: tick\ndata: ${DATA}\n\n`) // one event, then the stream stays open and quiet
     })
+    // A stream whose rate the test changes: slow while it clicks (a button that moves every 25 ms cannot be clicked by a test on a slow runner: "element is
+    // not stable"), then forty events a second under the open warning, the way the hosted demo's public stream arrives.
+    busy = await startPlainServer((req, res, log) => {
+        res.writeHead(200, STREAM_HEAD)
+        let n = 0
+        let stopped = false
+        const next = (): void => {
+            if (stopped) return
+            res.write(`id: ${n}\nevent: tick\ndata: {"n":${n},"token":"q19-busy-${n}"}\n\n`)
+            log.writes++
+            n++
+            setTimeout(next, busyDelayMs)
+        }
+        next()
+        req.on('close', () => { stopped = true })
+    })
 })
-test.afterAll(async () => { await plain.close(); await fx.close() })
+test.afterAll(async () => { await plain.close(); await busy.close(); await fx.close() })
 
 const clipboard = (page: Page): Promise<string> => page.evaluate(() => navigator.clipboard.readText())
 
@@ -102,5 +120,32 @@ test.describe('Q19: raw values are labelled, and a copy of one asks first', () =
         await expect(dialog).toBeHidden()
         await expect.poll(() => clipboard(page)).toBe(DATA)
         await expect(row.getByRole('button', { name: 'Copied!' })).toBeVisible()
+    })
+})
+
+test.describe('Q19: the warning survives a fast stream (found on the deployed site)', () => {
+    test('the warning stays open while events keep arriving, and Copy anyway copies the value that was clicked', async ({ page, context }) => {
+        test.setTimeout(60_000)
+        await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+        await page.goto('/')
+        busyDelayMs = 400
+        await connectDirect(page, `${busy.url}/stream`)
+        const row = page.getByTestId('event-row').first()
+        await expect(row).toBeVisible({ timeout: 15_000 })
+        await page.evaluate((s) => navigator.clipboard.writeText(s), SENTINEL)
+        await row.getByRole('button', { name: 'Copy', exact: true }).click({ timeout: 20_000 })
+        const dialog = page.getByRole('alertdialog', { name: 'Copy a raw value?' })
+        await expect(dialog).toBeVisible()
+        busyDelayMs = 25 // now the list moves forty times a second under the open warning
+        // the list keeps moving under the open warning: more than a hundred events arrive while it is open, and it must still be there
+        const written = () => busy.connections.reduce((n, c) => n + c.writes, 0)
+        const before = written()
+        await expect.poll(written, { timeout: 15_000 }).toBeGreaterThan(before + 100)
+        await expect(dialog).toBeVisible()
+        expect(await clipboard(page), 'nothing is copied until it is confirmed').toBe(SENTINEL)
+        await dialog.getByRole('button', { name: 'Copy anyway' }).click()
+        await expect(dialog).toBeHidden()
+        // exactly one event's data, as the server wrote it
+        await expect.poll(() => clipboard(page)).toMatch(/^\{"n":\d+,"token":"q19-busy-\d+"\}$/)
     })
 })
