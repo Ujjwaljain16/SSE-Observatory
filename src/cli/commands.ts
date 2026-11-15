@@ -3,6 +3,7 @@ import type { EngineInput } from '../core/diagnostics/streamModel'
 import type { StreamProfile } from '../core/diagnostics/thresholds'
 import { parseCapture, serializeCapture, newHeader, captureEndT, CaptureFormatError, type Capture, type CaptureRecord } from '../core/capture/format'
 import { importV1, isV1Recording, V1ImportError } from '../core/capture/importV1'
+import { describeCaptureProblems, validateCaptureIntegrity, type CaptureProblem } from '../core/capture/integrity'
 import { redactCapture, RedactionError, type RedactionPolicy, type RedactionReport } from '../core/capture/redact'
 import { describePolicy, isCustomPolicy, parseRedactionPolicy } from '../core/capture/policy'
 import { isSensitiveName } from '../core/capture/secrets'
@@ -25,7 +26,11 @@ import type { SecretRegistry } from './secretRegistry'
 
 // ---------------------------------------------------------------- reading input
 
-/** Reads a capture file: `.sse-capture` v2 (NDJSON) or an old `.sse-record` v1 recording. */
+function refuseInvalid(path: string, problems: CaptureProblem[]): void {
+    if (problems.length > 0) throw new CliError(`"${path}": ${describeCaptureProblems(problems)}`, EXIT.usage)
+}
+
+/** Reads a capture file: `.sse-capture` v2 (NDJSON) or an old `.sse-record` v1 recording. A capture with invalid records is refused (exit 2). */
 export async function loadCapture(io: CliIo, path: string): Promise<{ capture: Capture; warnings: string[] }> {
     const files = requireFiles(io)
     let text: string
@@ -35,9 +40,15 @@ export async function loadCapture(io: CliIo, path: string): Promise<{ capture: C
             let whole: unknown
             // an editor or a PowerShell redirect may have put a byte order mark in front; JSON.parse does not accept one
             try { whole = JSON.parse(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text) } catch { whole = undefined }
-            if (isV1Recording(whole)) return { capture: importV1(whole), warnings: ['Imported an old .sse-record file: its timeline is rebuilt from event gaps, so rules that need chunks, headers or reconnects are not evaluated.'] }
+            if (isV1Recording(whole)) {
+                const imported = importV1(whole)
+                refuseInvalid(path, validateCaptureIntegrity(imported.records))
+                return { capture: imported, warnings: ['Imported an old .sse-record file: its timeline is rebuilt from event gaps, so rules that need chunks, headers or reconnects are not evaluated.'] }
+            }
         }
         const parsed = parseCapture(text)
+        // A capture whose records repeat a seq or go back in time is not analysed: it would be judged as if it were a healthy recording.
+        refuseInvalid(path, parsed.problems)
         return { capture: parsed.capture, warnings: parsed.warnings }
     } catch (error) {
         if (error instanceof CaptureFormatError || error instanceof V1ImportError) throw new CliError(`"${path}": ${error.message}`, EXIT.usage)

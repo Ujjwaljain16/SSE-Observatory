@@ -9,6 +9,7 @@ import { isMockStreamUrl } from '../../doctor/mockReplay'
 import { recordingEnabled } from '../../doctor/recordingConfig'
 import { HealthStrip } from './HealthStrip'
 import { FindingCard } from './FindingCard'
+import { RawValuesLabel } from '../RawValuesLabel'
 import { Tabs } from './Tabs'
 import SequenceView from './SequenceView'
 import TimelineView from './TimelineView'
@@ -153,6 +154,7 @@ export default function DoctorPanel({ theme, streamId, title = 'Stream Doctor', 
                                     </p>
                                 )}
                                 {jumpResult === 'found' && <p role="status" className="sr-only">The event is shown in the events list.</p>}
+                                {open.length > 0 && <RawValuesLabel theme={theme} />}
                                 {open.length > 0 ? (
                                     <ul className="space-y-2" aria-label="Open findings">
                                         {open.map((f, i) => <FindingCard key={f.key} theme={theme} streamId={streamId} finding={f} sectionHeading={sectionHeading} onShowEvent={showEvent} defaultOpen={i === 0 && f.severity !== 'info'} />)}

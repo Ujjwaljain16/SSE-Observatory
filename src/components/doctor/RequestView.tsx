@@ -3,6 +3,7 @@ import type { Theme } from '../../types'
 import type { DoctorView } from '../../doctor/doctorSession'
 import { observationRegistry } from '../../doctor/observationRegistry'
 import { inspectRequests, type RequestInfo } from '../../doctor/requestInspector'
+import { RawValuesLabel } from '../RawValuesLabel'
 import { fmtDuration } from './format'
 
 interface Props {
@@ -33,7 +34,7 @@ function Attempt({ r, dark, defaultOpen, H }: { r: RequestInfo; dark: boolean; d
     return (
         <details open={defaultOpen} className={`rounded-lg border ${dark ? 'border-slate-700' : 'border-slate-200'}`} data-testid="request-attempt">
             <summary className={`cursor-pointer px-3 py-2 text-sm font-medium ${strong}`}>
-                Attempt {r.attempt + 1}: {r.response ? `${r.response.status}${ok ? '' : ' (not a success)'}` : 'no response'}
+                Connection {r.number}{r.retry !== undefined ? ` (retry ${r.retry})` : ''}: {r.response ? `${r.response.status}${ok ? '' : ' (not a success)'}` : 'no response'}
                 <span className={`font-normal ${muted}`}> · {r.events.toLocaleString()} event{r.events === 1 ? '' : 's'} · {r.open ? 'still open' : (r.endReason ?? 'ended')}</span>
             </summary>
             <div className={`px-3 pb-3 space-y-3 text-sm ${strong}`}>
@@ -47,7 +48,7 @@ function Attempt({ r, dark, defaultOpen, H }: { r: RequestInfo; dark: boolean; d
                     )}
                     <p className={muted}>
                         Header names sent: {r.requestHeaderNames.length > 0 ? <span className="font-mono">{r.requestHeaderNames.join(', ')}</span> : 'none recorded'}. Values are never recorded.
-                        {' '}Last-Event-ID: <span className="font-mono">{r.sentLastEventId || (r.attempt === 0 ? 'none (first connection)' : 'none sent')}</span>.
+                        {' '}Last-Event-ID: <span className="font-mono">{r.sentLastEventId || (r.number === 1 ? 'none (first connection)' : 'none sent')}</span>.
                     </p>
                 </section>
 
@@ -117,6 +118,7 @@ export default function RequestView({ theme, streamId, view, sectionHeading = 'h
                 What was asked and what came back, for each connection attempt, newest first. Only the response headers that explain buffering, caching
                 and proxy behaviour are kept; request header values are never recorded, only their names.
             </p>
+            <RawValuesLabel theme={theme} />
             {attempts.length > shown.length && <p className={`text-sm ${muted}`}>Showing the latest {shown.length} of {attempts.length} attempts.</p>}
             <div className="space-y-2">
                 {shown.map((r, i) => <Attempt key={r.conn} r={r} dark={dark} defaultOpen={i === 0} H={sectionHeading} />)}

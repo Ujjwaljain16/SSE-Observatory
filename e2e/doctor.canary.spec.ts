@@ -193,8 +193,9 @@ for (const s of SCENARIOS) {
                 await page.getByTestId(`doctor-tab-${tab}`).click()
                 surfaces[tab] = `${await text()}\n${await attributes()}`
             }
-            // OPEN QUESTION (Q-G2, campaign page): the live Doctor shows what was recorded, and the Sequence view lists the event ids as received, so a
-            // token used as an event id is on screen there (the exports redact it; the screen does not). Pinned: this flips on purpose if the view is redacted.
+            // Q19 (decided, campaign page): the live Doctor shows what was recorded, as received, and labels it ("Raw values — as received, not redacted."; see
+            // doctor.raw.spec.ts). The Sequence view lists the event ids as received, so a token used as an event id is on screen there (the exports redact it; the
+            // screen does not). Kept on purpose: the exact received values stay.
             const asRecorded = s.idsShownAsRecorded ? [C['jwtInId']!] : []
             if (s.idsShownAsRecorded) expect(found(surfaces['sequence']!, asRecorded).length, 'the Sequence view lists the ids as received').toBeGreaterThan(0)
             const mustNotShow = s.must.filter((c) => !asRecorded.includes(c))

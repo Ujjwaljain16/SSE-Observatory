@@ -5,6 +5,8 @@ import type { TraceEntry } from '../hooks/useCorrelationTracker'
 import type { EventJump, JumpResult } from '../context/UIContext'
 import { Inbox, Radio, Clock, Hash, Copy, Check, MessageSquare, SplitSquareHorizontal, GitBranch, Layers } from 'lucide-react'
 import { JsonDiffView } from './JsonDiffView'
+import { RawCopyButton } from './RawCopyButton'
+import { RawValuesLabel } from './RawValuesLabel'
 import { HighlightedJson, JsonTree } from './JsonViewer'
 import { prettyPayload, diffPayload } from '../utils/displayData'
 import { getParsedData } from '../utils/eventUtils'
@@ -164,6 +166,7 @@ export const EventsList = memo(function EventsList({
                         <p data-testid="event-count" className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                             {filteredEvents.length} events captured
                         </p>
+                        {filteredEvents.length > 0 && <RawValuesLabel theme={theme} />}
                     </div>
                 </div>
 
@@ -393,8 +396,10 @@ export const EventsList = memo(function EventsList({
                                                         </button>
                                                     )}
 
-                                                    <button
-                                                        onClick={() => onCopyToClipboard(event.data, event.id)}
+                                                    <RawCopyButton
+                                                        theme={theme}
+                                                        text={event.data}
+                                                        onCopy={(text) => onCopyToClipboard(text, event.id)}
                                                         className={`
                                                             px-3 py-1.5 text-xs rounded-lg font-semibold transition-all duration-300
                                                             flex items-center gap-1.5 hover:scale-105
@@ -408,7 +413,7 @@ export const EventsList = memo(function EventsList({
                                                     >
                                                         {copiedId === event.id ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
                                                         {copiedId === event.id ? 'Copied!' : 'Copy'}
-                                                    </button>
+                                                    </RawCopyButton>
                                                 </div>
                                             </div>
 

@@ -49,6 +49,23 @@ const deliveryOf = (profile: unknown): Delivery | undefined => {
     return DELIVERIES.find((x) => x === d)
 }
 
+/**
+ * The silence a stall finding allowed, in milliseconds, read from the finding's own statement of its limit ("The threshold was 1 s ..."): the
+ * rule does not hand the number over as data. The text is rounded to a tenth of a second (a millisecond below one second), so the value is taken
+ * at the top of what it could mean: a scenario must never be stricter than the rule it came from. Undefined when there is no such statement.
+ */
+const THRESHOLD_FACT = /^The threshold was (\d+(?:\.\d+)?) (ms|s)\b/
+export function stallLimitMs(finding: Finding): number | undefined {
+    for (const fact of finding.facts) {
+        const m = THRESHOLD_FACT.exec(fact.text)
+        if (!m) continue
+        const value = Number(m[1])
+        const ms = m[2] === 's' ? value * 1000 + (m[1]!.includes('.') ? 50 : 0) : value + 0.5
+        return Number.isFinite(ms) && ms > 0 ? Math.ceil(ms) : undefined
+    }
+    return undefined
+}
+
 const isSequenceFinding = (f: Finding): boolean => /^(seq|sequence|delivery|ordering)/i.test(f.key) || /^(seq|sequence)/i.test(f.ruleId)
 
 function verifyFrom(findings: readonly Finding[]): { verify: VerifyCheck[]; threshold: Severity } {
@@ -106,11 +123,14 @@ export function toScenario(capture: RedactedCapture, analysis: Analysis, opts: T
     // Expectations from what the first response did.
     const expectBlock: NonNullable<Scenario['expect']> = {}
     if (response) {
-        expectBlock.status = response.status
+        // A scenario is a regression check: it must fail on the problem it came from and pass once that is fixed. So a response that was not a
+        // healthy event stream is never expected again; the scenario expects the healthy one.
         const mediaType = response.contentType.split(';')[0]!.trim().toLowerCase()
-        if (mediaType) expectBlock.content_type = mediaType
-        if (response.status !== 200 || !/text\/event-stream/.test(mediaType)) {
-            notes.push(`The captured response was ${response.status} ${mediaType || 'with no content type'}; the scenario expects the same. Change "expect" if that was the problem being investigated.`)
+        const healthy = response.status === 200 && mediaType === 'text/event-stream'
+        expectBlock.status = 200
+        expectBlock.content_type = 'text/event-stream'
+        if (!healthy) {
+            notes.push(`The captured response was ${response.status} ${mediaType || 'with no content type'}, which is not a healthy event stream. The scenario is designed to verify the fix, not to reproduce the broken response: it expects HTTP 200 and text/event-stream, so it fails on a response like the captured one and passes once the stream is fixed.`)
         }
     } else {
         notes.push('The capture has no response record, so the scenario does not check the status or content type.')
@@ -122,6 +142,17 @@ export function toScenario(capture: RedactedCapture, analysis: Analysis, opts: T
         notes.push('The capture has no events, so the scenario waits for one event and does not check the time to the first event.')
     }
 
+    // A stall: the scenario collects the events the capture had and then stops, so a silence that follows would never be judged. The scenario
+    // therefore carries the longest silence the stall rule allowed this stream, and the runner keeps observing for that long after the last step.
+    const stalls = analysis.findings.filter((f) => f.key.startsWith('stall.silent'))
+    if (stalls.length > 0) {
+        const limits = stalls.map(stallLimitMs).filter((n): n is number => n !== undefined)
+        if (limits.length > 0) {
+            const limit = Math.min(...limits)
+            expectBlock.max_silence_ms = limit
+            notes.push(`The capture shows a stall (${stalls.map((f) => f.key).join(', ')}). The scenario sets expect.max_silence_ms to ${limit}, the longest silence the stall rule allowed for this stream's own rhythm: after the last step it keeps the connection open for that long and fails if the stream sends nothing for longer or a stall finding opens. A stream with a different rhythm needs another value.`)
+        } else notes.push(`The capture shows a stall (${stalls.map((f) => f.key).join(', ')}), but the limit could not be read from the finding, so expect.max_silence_ms was left out and the scenario does not check for the stall. Add it by hand.`)
+    }
     // Steps: one collect step per connection segment, with a disconnect and reconnect between segments.
     const modelled = reconnects.slice(0, MAX_RECONNECTS)
     if (reconnects.length > modelled.length) notes.push(`The capture reconnected ${reconnects.length} times; only the first ${MAX_RECONNECTS} are in the scenario.`)

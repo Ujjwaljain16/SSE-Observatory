@@ -8,6 +8,7 @@ import { suggestFields } from '../../doctor/fieldSuggestions'
 import { getPins, setPins, subscribePins } from '../../doctor/pins'
 import { getProfile, setProfile, subscribeProfile } from '../../doctor/profileStore'
 import { shownFor } from '../../doctor/displayMapping'
+import { RawValuesLabel } from '../RawValuesLabel'
 
 interface Props {
     theme: Theme
@@ -204,6 +205,7 @@ export default function ProfileEditor({ theme }: Props) {
 
             <section aria-label="Fields in recent events" className="space-y-2">
                 <h3 className={`text-sm font-semibold ${strong}`}>Fields in recent events</h3>
+                {suggestions.length > 0 && <RawValuesLabel theme={theme} />}
                 {suggestions.length === 0 ? (
                     <p className={`text-sm ${muted}`}>Connect to a stream that sends JSON and its numeric fields are listed here, so a sequence or a timestamp can be picked instead of typed.</p>
                 ) : (

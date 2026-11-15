@@ -130,12 +130,16 @@ test.describe('G1: a stream that behaves in a known way is diagnosed the way the
     })
 })
 
-/** The timeline table as rows of cells: the attempt, then the cells under the headings in the order the table has them. */
-async function timelineRows(page: Page): Promise<Array<{ attempt: string; started: string; response: string; events: string; ended: string; resumedFrom: string }>> {
-    return page.getByTestId('timeline-table').locator('tbody tr').evaluateAll((rows) => rows.map((tr) => {
-        const cells = Array.from(tr.querySelectorAll('td')).map((td) => td.textContent ?? '')
-        return { attempt: tr.querySelector('th')?.textContent ?? '', started: cells[0] ?? '', response: cells[1] ?? '', events: cells[4] ?? '', ended: cells[7] ?? '', resumedFrom: cells[8] ?? '' }
-    }))
+/** The timeline table as rows of cells: the connection label (the row heading), then the cells found by the heading above them. */
+async function timelineRows(page: Page): Promise<Array<{ connection: string; retry: string; started: string; response: string; events: string; ended: string; resumedFrom: string }>> {
+    return page.getByTestId('timeline-table').evaluate((table) => {
+        const headings = Array.from(table.querySelectorAll('thead th')).map((th) => th.textContent ?? '')
+        return Array.from(table.querySelectorAll('tbody tr')).map((tr) => {
+            const cells = [tr.querySelector('th')?.textContent ?? '', ...Array.from(tr.querySelectorAll('td')).map((td) => td.textContent ?? '')]
+            const under = (heading: string): string => cells[headings.indexOf(heading)] ?? ''
+            return { connection: under('Connection'), retry: under('Retry'), started: under('Started'), response: under('Response'), events: under('Events'), ended: under('Ended'), resumedFrom: under('Resumed from id') }
+        })
+    })
 }
 
 test.describe('G8: a stream that is dropped and resumed is shown the way the server logged it', () => {
@@ -157,9 +161,13 @@ test.describe('G8: a stream that is dropped and resumed is shown the way the ser
 
         await page.getByTestId('doctor-tab-timeline').click()
         const rows = await timelineRows(page)
-        // OPEN QUESTION (Q-G1, campaign page): the label is the client's retry counter, which starts again after each connection that opened,
-        // so three different rows are all "#2". Pinned as it is; nothing else in this test depends on the label.
-        expect(rows.map((r) => r.attempt)).toEqual(['#1', '#2', '#2', '#2'])
+        // Q18 (decided): a row is labelled by the connection it is, in order. This pin used to record the old label, the client's retry
+        // counter, which starts again after each connection that opened ('#1', '#2', '#2', '#2'); it is now '#1' to '#4', and the counter
+        // has its own column (0, then 1 each time: each reconnect was the first retry after a connection that had opened).
+        expect(rows.map((r) => r.connection)).toEqual(['#1', '#2', '#3', '#4'])
+        expect(rows.map((r) => r.retry)).toEqual(['0', '1', '1', '1'])
+        // The Nth row is the Nth connection the server saw: its own log gives the id each request carried, and the events it wrote, in order.
+        expect(rows.map((r) => (r.resumedFrom === '–' ? '' : r.resumedFrom))).toEqual(fx.groundTruth.lastEventIdHeaders('f05-drops').slice(-4))
         expect(rows.map((r) => r.resumedFrom)).toEqual(['–', '3', '6', '9'])
         expect(rows.map((r) => Number(r.events))).toEqual(conns.map((c) => framesOf(c)))
         expect(rows.every((r) => r.response.startsWith('200'))).toBe(true)

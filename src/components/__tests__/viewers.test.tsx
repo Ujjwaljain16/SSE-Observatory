@@ -1,9 +1,10 @@
-import { render, screen, renderHook, act } from '@testing-library/react'
+import { render, screen, renderHook, act, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { HighlightedJson, JsonTree } from '../JsonViewer'
 import { TypeChart } from '../TypeChart'
 import RequestView from '../doctor/RequestView'
+import TimelineView from '../doctor/TimelineView'
 import { useEventRate } from '../../hooks/useEventRate'
 import { observationRegistry } from '../../doctor/observationRegistry'
 import { capture } from '../../core/testing/captureBuilder'
@@ -135,8 +136,8 @@ describe('RequestView', () => {
 
         const attempts = screen.getAllByTestId('request-attempt')
         expect(attempts).toHaveLength(2)
-        expect(attempts[0]).toHaveTextContent('Attempt 2: 503 (not a success)') // newest first
-        expect(attempts[1]).toHaveTextContent('Attempt 1: 200')
+        expect(attempts[0]).toHaveTextContent('Connection 2 (retry 1): 503 (not a success)') // newest first
+        expect(attempts[1]).toHaveTextContent('Connection 1 (retry 0): 200')
         const first = attempts[1]!
         expect(first).toHaveTextContent('GET http://stream.test/events')
         expect(first).toHaveTextContent('Header names sent: accept')
@@ -156,5 +157,27 @@ describe('RequestView', () => {
         expect(screen.getByText('No response arrived on this attempt.')).toBeInTheDocument()
         expect(screen.getByTestId('request-proxy-note')).toHaveTextContent("the app's server proxy")
         expect(screen.getAllByRole('heading', { level: 4 }).length).toBeGreaterThan(0)
+    })
+})
+
+describe('TimelineView', () => {
+    const view = (records: number, nowT = 2000) => ({ health: { capture: { records } }, nowT, captureId: 'timeline-c' }) as unknown as DoctorView
+
+    // Q18: after a connection that opened the client's retry counter restarts, so rows 2, 3 and 4 of f05-drops all carry retry 1.
+    it('labels the rows by connection (1, 2, 3, 4) and shows the retry counter in its own column', () => {
+        const b = capture().connect().response().frame('tick', '3')
+        for (const last of ['3', '6', '9']) b.reconnect({ attempt: 1, delayMs: 100, lastEventIdSent: last }).silence(100).connect({ sentLastEventId: last }).response().frame('tick', String(Number(last) + 3))
+        const records = b.observations().map((r) => (r.kind === 'connect' ? { ...r, attempt: Math.min(r.conn, 1) } : r)) // the counter reads 0, 1, 1, 1
+        observationRegistry.receive('timeline-view', { captureId: 'timeline-c', batch: records })
+        render(<TimelineView theme="light" streamId="timeline-view" view={view(records.length)} />)
+
+        const table = screen.getByTestId('timeline-table')
+        const headers = within(table).getAllByRole('columnheader').map((h) => h.textContent)
+        expect(headers.slice(0, 2)).toEqual(['Connection', 'Retry'])
+        expect(headers).not.toContain('Attempt')
+        const rows = within(table).getAllByRole('row').slice(1)
+        expect(rows.map((r) => within(r).getByRole('rowheader').textContent)).toEqual(['#1', '#2', '#3', '#4'])
+        expect(screen.getAllByTestId('timeline-retry').map((c) => c.textContent)).toEqual(['0', '1', '1', '1'])
+        expect(screen.getByRole('img', { name: /Timeline of 4 connection attempts/ })).toBeInTheDocument()
     })
 })

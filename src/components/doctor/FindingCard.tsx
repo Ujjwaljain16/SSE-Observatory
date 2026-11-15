@@ -4,6 +4,7 @@ import type { Finding, Severity } from '../../core/diagnostics'
 import type { Theme } from '../../types'
 import type { Observation } from '../../core/observe/observation'
 import { CONSUMER_SEQ_BASE, recordFor } from '../../doctor/recordLookup'
+import { RawValuesLabel } from '../RawValuesLabel'
 import { fmtDuration, SEVERITY_BORDER, SEVERITY_LABEL, SEVERITY_TEXT } from './format'
 
 interface Props {
@@ -42,6 +43,7 @@ function EvidenceChip({ theme, streamId, seq, t, note, lookup, onShowEvent }: { 
             {shown && record?.kind === 'event' && onShowEvent && (
                 <button type="button" onClick={() => onShowEvent(seq)} data-testid="show-event" className={`mr-1.5 mb-1 px-2 py-0.5 rounded text-xs ${dark ? 'bg-teal-800 text-white hover:bg-teal-700' : 'bg-teal-700 text-white hover:bg-teal-600'}`}>Show this event in the list</button>
             )}
+            {shown && <RawValuesLabel theme={theme} className="mt-1" />}
             {shown && (
                 <pre id={id} tabIndex={0} aria-label={`Raw record ${seq}`} className={`block my-1 p-2 rounded text-xs overflow-auto max-h-48 ${dark ? 'bg-slate-900 text-slate-200' : 'bg-slate-50 text-slate-800 border border-slate-200'}`}>
                     {record ? JSON.stringify(record, null, 2) : 'This record is no longer held: the recording keeps a bounded amount, and older detail is folded away first.'}

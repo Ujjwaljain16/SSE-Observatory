@@ -57,6 +57,28 @@ A redirect to another origin (another scheme, host or port) is treated as for `p
 
 `expect` checks the status, the content type and the time to the first event. `fail_on_severity` (default `error`) fails the scenario on any open finding that severe.
 
+### `expect.max_silence_ms`: a stream must not go silent
+
+A scenario that stops at its last step never sees what the stream does next, so a stream that sends its events and then stalls would pass. `expect.max_silence_ms` (a whole number of milliseconds, 1 or more) closes that gap. After the last step the runner keeps the connection open and observing for that long, plus a margin (a tenth of the limit, at least 100 ms), and the check `expect max silence` fails when:
+
+- the longest stretch without any byte on one connection, **including the stretch still going when the observation ends**, is longer than the limit (a heartbeat is a byte; the pause of a reconnect is not a silence), or
+- a `stall.silent` finding was raised, which also catches a stream that keeps sending heartbeats but no events.
+
+```json
+"expect": { "status": 200, "content_type": "text/event-stream", "max_silence_ms": 3000 }
+```
+
+If the scenario closes the connection itself in its last step (`disconnect` with `mode: "client"`), nothing can be observed after it: the check is **inconclusive** (exit 4), unless a silence longer than the limit was already seen, which fails. If the server ends the stream by itself before the time is over there is no silence left to judge, and the check passes and says so.
+
+The field is optional and additive: the scenario format stays at version 1 and the schema at `sse-scenario-1.json`, and a scenario without the field runs exactly as before (it ends at its last step and has no silence check).
+
+### Scenarios made from a capture
+
+`sse-doctor repro <capture> --scenario <file>` (and the Doctor's "Test scenario" export) writes a scenario from a capture and says in its `meta.notes` what it did:
+
+- **A stall in the capture** (a `stall.silent` finding) sets `expect.max_silence_ms` to the limit the stall rule used for that stream's own rhythm, so the scenario fails on a stream that stalls again. A stream with another rhythm needs another value. Without a stall finding the field is left out.
+- **A response that was not a healthy event stream** (not HTTP 200 with `text/event-stream`) is **not** expected again: the scenario expects HTTP 200 and `text/event-stream`, and a note says so. It is designed to verify the fix, not to reproduce the broken response, so it fails on the response that was captured and passes once the stream is fixed.
+
 **A sequence check on a stream that declares no sequence is inconclusive, not a pass**: ids that look sequential prove nothing, so the tool will not claim there was no loss. Inconclusive exits 4 unless you pass `--allow-inconclusive`.
 
 | Exit | Meaning |
