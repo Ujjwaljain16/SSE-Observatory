@@ -46,6 +46,21 @@ describe('buildTimeline', () => {
         expect(t.connections[1]!.heartbeats.map((h) => h.source)).toEqual(['proxy', 'upstream'])
     })
 
+    // Q16: the proxy's notice that the upstream connection was lost is a comment; the timeline keeps its reason on the connection it ended, and does not draw it as a heartbeat.
+    it('keeps the proxy\'s error notice as the reason on the connection it ended, not as a heartbeat', () => {
+        const b = healthyStart()
+        b.frame('tick', '1').beat('proxy', 'sse-proxy hb up_idle=5 n=1').beat('proxy', 'sse-proxy error {"error":"Upstream connection lost"}')
+        b.reconnect({ attempt: 1, delayMs: 100, reason: 'Stream closed by server', lastEventIdSent: '1' })
+        b.silence(100).connect({ sentLastEventId: '1' }).response().frame('tick', '2')
+        const t = buildTimeline(b.observations())
+        const [first, second] = t.connections as [typeof t.connections[0], typeof t.connections[0]]
+        expect(first.proxyNotice).toBe('Upstream connection lost')
+        expect(first.heartbeats.map((h) => h.source)).toEqual(['proxy'])
+        expect(describeConnection(first, t.endT)).toContain('the proxy said: Upstream connection lost')
+        expect(second.proxyNotice).toBeUndefined()
+        expect(describeConnection(second, t.endT)).not.toContain('the proxy said')
+    })
+
     it('copes with an empty recording and with time that passed since the last record', () => {
         expect(buildTimeline([]).connections).toEqual([])
         expect(buildTimeline(healthyStart().frame('tick', '1').observations(), 9000).endT).toBe(9000)
