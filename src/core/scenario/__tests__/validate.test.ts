@@ -165,6 +165,18 @@ describe('parseScenarioText', () => {
         expect(run({ wait: { ms: 1 }, collect_events: 2 }).length).toBeGreaterThan(0)
     })
 
+    it('expect.max_silence_ms is optional, additive (version stays 1), and a whole number of milliseconds above 0', () => {
+        const run = (expectBlock: Record<string, unknown>) => parseScenarioText(JSON.stringify({ ...GOOD, expect: expectBlock }))
+        expect(run({ status: 200, max_silence_ms: 1000 }).errors).toEqual([])
+        expect(run({ max_silence_ms: 1 }).errors).toEqual([])
+        // a scenario written before the field existed is still valid, and says nothing about silence
+        const old = run({ status: 200, content_type: 'text/event-stream', first_event_within_ms: 3000 })
+        expect(old.errors).toEqual([])
+        expect((old.value?.expect as Record<string, unknown>).max_silence_ms).toBeUndefined()
+        expect(parseScenarioText(JSON.stringify({ ...GOOD, version: 1, expect: { max_silence_ms: 500 } })).value?.version).toBe(1)
+        for (const bad of [0, -1, 1.5, '1000', null, true]) expect(pointers(run({ max_silence_ms: bad } as never).errors), `max_silence_ms ${JSON.stringify(bad)}`).toEqual(['/expect/max_silence_ms'])
+        expect(pointers(run({ max_silence: 1000 }).errors)).toEqual(['/expect/max_silence'])
+    })
     it('verify objects take one severity, allow_gaps takes ranges', () => {
         const run = (extra: Record<string, unknown>) => parseScenarioText(JSON.stringify({ ...GOOD, ...extra })).errors
         expect(run({ verify: [{ no_findings_at_or_above: 'critical' }] })).toEqual([])

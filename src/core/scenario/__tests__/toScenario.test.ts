@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect } from 'vitest'
-import { toScenario, serializeScenario, headerEnvName } from '../toScenario'
+import { toScenario, serializeScenario, headerEnvName, stallLimitMs } from '../toScenario'
 import { parseScenarioText } from '../validate'
 import { newHeader, type Capture, type CaptureHeader } from '../../capture/format'
 import { markRedacted, type RedactedCapture } from '../../capture/redacted'
@@ -45,13 +45,90 @@ describe('toScenario', () => {
         expect(run(fast).scenario.expect?.first_event_within_ms).toBe(1000)
     })
 
-    it('keeps the response media type without parameters, and says when the response was not healthy', () => {
-        const c = redacted(build().connect().response({ status: 503, contentType: 'text/html; charset=utf-8' }).frame())
-        const { scenario, notes } = run(c)
-        expect(scenario.expect).toMatchObject({ status: 503, content_type: 'text/html' })
-        expect(notes.join(' ')).toMatch(/response was 503/)
+    // Q4b: a scenario is a regression check, so a bad captured response is never expected again; the healthy one is.
+    it('expects HTTP 200 and text/event-stream when the captured response was not healthy, and says it verifies the fix', () => {
+        for (const bad of [{ status: 503, contentType: 'text/html; charset=utf-8' }, { status: 200, contentType: 'text/html' }, { status: 200, contentType: '' }, { status: 401, contentType: 'text/event-stream' }, { status: 404, contentType: 'application/json' }]) {
+            const { scenario, notes } = run(redacted(build().connect().response(bad).frame()))
+            expect(scenario.expect, JSON.stringify(bad)).toMatchObject({ status: 200, content_type: 'text/event-stream' })
+            const note = notes.find((n) => /not a healthy event stream/.test(n))
+            expect(note, JSON.stringify(bad)).toBeDefined()
+            expect(note).toContain(`was ${bad.status} `)
+            expect(note).toMatch(/designed to verify the fix, not to reproduce the broken response/)
+            expect(note).toMatch(/expects HTTP 200 and text\/event-stream/)
+            expect(scenario.meta?.notes).toContain(note)
+        }
     })
 
+    it('says nothing about the response when it was a healthy event stream (parameters do not matter)', () => {
+        for (const contentType of ['text/event-stream', 'text/event-stream; charset=utf-8', 'TEXT/Event-Stream']) {
+            const { scenario, notes } = run(redacted(build().connect().response({ status: 200, contentType }).frame()))
+            expect(scenario.expect).toMatchObject({ status: 200, content_type: 'text/event-stream' })
+            expect(notes.join(' ')).not.toMatch(/healthy event stream|verify the fix/)
+        }
+    })
+
+    // Q4a: a stall in the capture becomes expect.max_silence_ms, from the stall rule's own limit.
+    const steadyThenSilent = (everyMs: number, silenceMs: number, events = 12): CaptureBuilder => {
+        const b = build().connect().response({ ttfbMs: 20 })
+        for (let i = 0; i < events; i++) b.silence(everyMs).frame('message', String(i + 1))
+        return b.silence(silenceMs)
+    }
+    const stalled = (b: CaptureBuilder) => { const c = redacted(b); return { c, analysis: analyze(c.records as EngineInput[], { endT: b.now }) } }
+
+    it('sets expect.max_silence_ms from the limit of the capture\'s stall finding, and says what it did', () => {
+        // a limit is three times the 95th percentile of the stream's own gaps, at least a second: 250 ms events -> 1 s, 1 s events -> 3 s, 1.111 s events -> 3.333 s
+        for (const [every, expected] of [[250, 1000], [1000, 3000], [1111, 3333.3]] as const) {
+            const { c, analysis } = stalled(steadyThenSilent(every, 60_000))
+            const finding = analysis.findings.find((f) => f.key.startsWith('stall.silent'))
+            expect(finding, `a ${every} ms stream that went silent has a stall finding`).toBeDefined()
+            const exact = finding!.firstSeenT - finding!.facts[0]!.evidence[0]!.t // when the stall rule crossed its limit, counted from the last byte
+            expect(exact).toBeCloseTo(expected, 0)
+            const { scenario, notes } = toScenario(c, analysis)
+            const value = scenario.expect?.max_silence_ms
+            expect(value, `${every} ms`).toBeGreaterThanOrEqual(Math.ceil(exact)) // never stricter than the rule it came from
+            expect(value, `${every} ms`).toBeLessThanOrEqual(exact + 50) // and not looser than the text it is read from can say
+            const note = notes.find((n) => /max_silence_ms/.test(n))
+            expect(note).toBeDefined()
+            expect(note).toContain(`stall.silent:bytes`)
+            expect(note).toContain(String(value))
+            expect(scenario.meta?.notes).toContain(note)
+            expect(parseScenarioText(serializeScenario(scenario)).errors).toEqual([])
+        }
+    })
+
+    it('leaves max_silence_ms out when the capture has no stall finding', () => {
+        const { scenario, notes } = run(redacted(healthy()))
+        expect(scenario.expect?.max_silence_ms).toBeUndefined()
+        expect(notes.join(' ')).not.toMatch(/max_silence_ms|stall/)
+        const quiet = stalled(steadyThenSilent(250, 300)) // a pause below the limit is not a stall
+        expect(quiet.analysis.findings.some((f) => f.key.startsWith('stall.silent'))).toBe(false)
+        expect(toScenario(quiet.c, quiet.analysis).scenario.expect?.max_silence_ms).toBeUndefined()
+        // a finding of another rule does not count
+        const c = redacted(healthy())
+        expect(toScenario(c, withFindings(c, [finding('delivery.bursty', 'warning')])).scenario.expect?.max_silence_ms).toBeUndefined()
+    })
+
+    it('takes the shortest limit when the capture has several stall findings, and says so when a limit cannot be read', () => {
+        const c = redacted(healthy())
+        const stall = (key: string, text: string): Finding => ({ ...finding(key, 'error'), facts: [{ text: 'No data.', evidence: [] }, { text, evidence: [] }] })
+        const many = withFindings(c, [stall('stall.silent:events', 'The threshold was 20 s (50 s for an error), set from this stream\'s own rhythm.'), stall('stall.silent:bytes', 'The threshold was 3.0 s (5 s for an error), set from this stream\'s own rhythm.')])
+        expect(toScenario(c, many).scenario.expect?.max_silence_ms).toBe(3050)
+        const unreadable = toScenario(c, withFindings(c, [finding('stall.silent:bytes', 'error')]))
+        expect(unreadable.scenario.expect?.max_silence_ms).toBeUndefined()
+        expect(unreadable.notes.join(' ')).toMatch(/limit could not be read.*does not check for the stall/)
+    })
+
+    it('reads the limit from the stall rule\'s own wording (the text this depends on is the rule\'s, so a change there fails here)', () => {
+        const fact = (text: string): Finding => ({ ...finding('stall.silent:bytes', 'error'), facts: [{ text, evidence: [] }] })
+        expect(stallLimitMs(fact('The threshold was 1 s (1.3 s for an error), set from this stream\'s own rhythm: p95 gap 266 ms over 11 gaps.'))).toBe(1000)
+        expect(stallLimitMs(fact('The threshold was 3.3 s (5 s for an error).'))).toBe(3350)
+        expect(stallLimitMs(fact('The threshold was 400 ms (2 s for an error).'))).toBe(401)
+        expect(stallLimitMs(fact('The threshold was 30 s: the stream has no measured cadence yet, so the default applies.'))).toBe(30_000)
+        expect(stallLimitMs(fact('The threshold was 2 s, the longest silence the stream profile allows.'))).toBe(2000)
+        expect(stallLimitMs(fact('The threshold was NaN s'))).toBeUndefined()
+        expect(stallLimitMs(fact('No bytes arrived for 3.0 s.'))).toBeUndefined()
+        expect(stallLimitMs({ ...finding('stall.silent:bytes', 'error'), facts: [] })).toBeUndefined()
+    })
     it('caps collect_events at 100 and uses at least 1', () => {
         const many = build().connect().response()
         for (let i = 0; i < 250; i++) many.silence(10).frame('message', String(i))
