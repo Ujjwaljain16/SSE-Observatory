@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import type { Observation } from '../../core/observe/observation'
 import { buildTimeline, describeConnection } from '../timeline'
 import { capture, healthyStart } from '../../core/testing/captureBuilder'
 
@@ -33,6 +34,53 @@ describe('buildTimeline', () => {
         expect(second.events).toHaveLength(2)
         expect(second.endT).toBeUndefined()
         expect(describeConnection(second, t.endT)).toContain('resumed from id 3')
+    })
+
+    // Q18: the client's retry counter starts again after a connection that opened, so it cannot number the rows. Each row is numbered by
+    // the connection it is (1, 2, 3, ...); the retry counter is its own field.
+    describe('numbering: the connection number and the retry counter are separate', () => {
+        /** The same capture the client writes: the connect record's `attempt` is the retry counter, which the builder does not restart. */
+        const withRetryCounters = (records: Observation[], counters: number[]): Observation[] => {
+            let i = 0
+            return records.map((r) => (r.kind === 'connect' ? { ...r, attempt: counters[i++]! } : r))
+        }
+
+        it('numbers the rows 1, 2, 3, 4 when every connection opened and the retry counter restarted each time (f05-drops)', () => {
+            const b = healthyStart()
+            for (const last of ['3', '6', '9']) {
+                b.repeat(3, 100, (x, i) => x.frame('tick', String(Number(last) - 2 + i)))
+                b.reconnect({ attempt: 1, delayMs: 100, lastEventIdSent: last }).silence(100).connect({ sentLastEventId: last }).response()
+            }
+            b.repeat(3, 100, (x, i) => x.frame('tick', String(10 + i)))
+            const t = buildTimeline(withRetryCounters(b.observations(), [0, 1, 1, 1]))
+            expect(t.connections.map((c) => c.number)).toEqual([1, 2, 3, 4])
+            expect(t.connections.map((c) => c.retry)).toEqual([0, 1, 1, 1])
+            expect(t.connections.map((c) => c.sentLastEventId)).toEqual(['', '3', '6', '9'])
+            const sentences = t.connections.map((c) => describeConnection(c, t.endT))
+            expect(sentences[2]).toMatch(/^connection 3, retry 1,/)
+            expect(sentences[2]).not.toMatch(/attempt/)
+            expect(sentences[0]).toMatch(/^connection 1, retry 0,/)
+        })
+
+        it('numbers the rows by connection, not by the counter, when the retries pile up and then restart', () => {
+            const b = capture().connect().response({ status: 503 })
+            b.silence(10).connect().response({ status: 503 }) // retry 1
+            b.silence(10).connect().response() // retry 2: opens
+            b.frame('tick', '1')
+            b.silence(10).connect().response() // the counter restarted: retry 1 again
+            const t = buildTimeline(withRetryCounters(b.observations(), [0, 1, 2, 1]))
+            expect(t.connections.map((c) => c.number)).toEqual([1, 2, 3, 4])
+            expect(t.connections.map((c) => c.retry)).toEqual([0, 1, 2, 1])
+        })
+
+        it('keeps the true connection number when the recording starts after the first connections', () => {
+            const b = healthyStart().frame('tick', '1')
+            b.silence(10).connect().response().frame('tick', '2')
+            b.silence(10).connect().response().frame('tick', '3')
+            const all = b.observations()
+            const later = all.filter((r) => r.conn >= 1) // the first connection's records are gone
+            expect(buildTimeline(later).connections.map((c) => c.number)).toEqual([2, 3])
+        })
     })
 
     it('counts heartbeats by source and keeps a failed connection that never opened', () => {

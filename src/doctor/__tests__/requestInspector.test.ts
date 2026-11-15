@@ -30,6 +30,17 @@ describe('inspectRequests', () => {
         expect(second!.open).toBe(true)
     })
 
+    // Q18: the same numbering as the Timeline: the connection number counts connections; the retry counter is its own field and restarts.
+    it('numbers each entry by connection and keeps the retry counter apart (it restarts after a connection that opened)', () => {
+        const b = healthyStart().frame('tick', '1')
+        b.reconnect({ attempt: 1, delayMs: 100, lastEventIdSent: '1' }).silence(100).connect({ sentLastEventId: '1' }).response().frame('tick', '2')
+        b.reconnect({ attempt: 1, delayMs: 100, lastEventIdSent: '2' }).silence(100).connect({ sentLastEventId: '2' }).response()
+        const records = b.observations().map((r) => (r.kind === 'connect' ? { ...r, attempt: Math.min(r.conn, 1) } : r)) // the counter reads 0, 1, 1
+        const list = inspectRequests(records, 2000)
+        expect(list.map((r) => r.number)).toEqual([1, 2, 3])
+        expect(list.map((r) => r.retry)).toEqual([0, 1, 1])
+    })
+
     it('keeps an attempt that never got a response, without inventing timings for it', () => {
         const b = capture().connect()
         b.silence(5000).phase('failed', { attempt: 0, reason: 'connection refused' })
