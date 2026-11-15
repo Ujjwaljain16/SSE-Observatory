@@ -64,6 +64,19 @@ describe('the CI workflow still holds what the project depends on', () => {
         expect(J[other!]).toMatch(/continue-on-error:\s*true/)
     })
 
+    it('every browser job builds the command line itself before Playwright, because the journey spec runs dist-cli and a job does not share files with verify', () => {
+        const browserJobs = Object.keys(J).filter((k) => /^e2e/.test(k))
+        expect(browserJobs.length, 'the Chromium job and the other-browsers job').toBeGreaterThanOrEqual(2)
+        for (const job of browserJobs) {
+            const steps = (J[job] ?? '').split('\n').map((l) => l.trim())
+            const build = steps.indexOf('- run: npm run build:cli')
+            const play = steps.findIndex((l) => /^- run: (npm run test:e2e|npx playwright test)/.test(l))
+            expect(build, `${job} must run "npm run build:cli"`).toBeGreaterThanOrEqual(0)
+            expect(play, `${job} runs Playwright`).toBeGreaterThanOrEqual(0)
+            expect(build, `${job} builds the command line before Playwright`).toBeLessThan(play)
+        }
+    })
+
     it('the Docker image is built and started', () => {
         expect(J['docker']).toMatch(/docker build/)
         expect(J['docker']).toMatch(/healthz/)
@@ -140,6 +153,16 @@ describe('the release-candidate workflow', () => {
         const j = jobs(rc)
         expect(j['e2e']).not.toMatch(/continue-on-error:\s*true/)
         expect(j['other-browsers']).toMatch(/continue-on-error:\s*true/)
+    })
+    it('every browser job builds the command line itself before Playwright (the journey spec runs dist-cli)', () => {
+        const j = jobs(rc)
+        for (const job of ['e2e', 'other-browsers']) {
+            const steps = (j[job] ?? '').split('\n').map((l) => l.trim())
+            const build = steps.indexOf('- run: npm run build:cli')
+            const play = steps.findIndex((l) => /^- run: (npm run test:e2e|npx playwright test)/.test(l))
+            expect(build, `${job} must run "npm run build:cli"`).toBeGreaterThanOrEqual(0)
+            expect(build, `${job} builds before Playwright`).toBeLessThan(play)
+        }
     })
     it('names only files and scripts that exist', () => {
         const missing: string[] = []
