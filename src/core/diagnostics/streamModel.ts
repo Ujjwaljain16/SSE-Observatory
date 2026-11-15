@@ -15,7 +15,8 @@
 import type { Observation, Stamp } from '../observe/observation'
 import type { SSEPhase } from '../sse/sseClient'
 import { RollingStats, type StatSnapshot } from './stats'
-import type { Thresholds } from './thresholds'
+import { stallLimit } from './stallLimit'
+import type { StreamProfile, Thresholds } from './thresholds'
 
 /** Raised by a host that noticed the clock jump (a laptop woke up, a tab was frozen). Not an `Observation` kind: records of unknown kind are allowed to pass through a capture. */
 export interface ClockDiscontinuityRecord extends Stamp {
@@ -139,7 +140,14 @@ export class StreamModel {
     lastOriginByteT: number | undefined
     lastCompleteEventT: number | undefined
 
+    /** Every gap that ended with a byte, stalls included: what the longest silence was, and the typical gap, for the rules that only describe. */
     readonly gaps: Record<ClockName, RollingStats> = { byte: new RollingStats(), origin: new RollingStats(), event: new RollingStats() }
+    /**
+     * The stream's own rhythm, which is what a stall is judged against: `gaps` without the gaps that were stalls. A gap is left out when it
+     * was longer than the limit that applied while it was open (the rule's own verdict, see `stallLimit`), so a failure that was already
+     * reported does not teach the detector to tolerate the same failure again.
+     */
+    readonly baseline: Record<ClockName, RollingStats> = { byte: new RollingStats(), origin: new RollingStats(), event: new RollingStats() }
     readonly heartbeats: Record<HeartbeatSource, HeartbeatStats> = {
         proxy: { count: 0, intervals: new RollingStats() },
         upstream: { count: 0, intervals: new RollingStats() },
@@ -150,7 +158,7 @@ export class StreamModel {
     /** What changed in the most recent `update`. */
     delta: Delta = { gaps: [] }
 
-    constructor(private readonly thresholds: Thresholds) {}
+    constructor(private readonly thresholds: Thresholds, private readonly profile: StreamProfile = {}) {}
 
     /** The connection of the latest `connect` record (or the one a stray record names). */
     current(): ConnectionState | undefined { return this.conns.get(this.latest) }
@@ -185,7 +193,7 @@ export class StreamModel {
     private describeGap(c: ConnectionState, clock: ClockName, start: Mark & { kind: StartKind }): GapInfo {
         return {
             clock, conn: c.conn, startT: start.t, startSeq: start.seq, startKind: start.kind,
-            stats: this.gaps[clock].snapshot(), hbMedianMs: this.originHeartbeatMedian(),
+            stats: this.baseline[clock].snapshot(), hbMedianMs: this.originHeartbeatMedian(),
             proxyCount: c.proxySinceOrigin, aliveChunks: c.chunksSinceEvent, lastByteT: c.lastByte?.t, maxByteGapMs: c.maxByteGapSinceEvent,
         }
     }
@@ -200,7 +208,12 @@ export class StreamModel {
         gap.via = via
         if (aliveChunks !== undefined) gap.aliveChunks = aliveChunks
         this.delta.gaps.push(gap)
-        if (via === 'next' && start.kind === 'byte') this.gaps[clock].push(o.t - start.t)
+        if (via === 'next' && start.kind === 'byte') {
+            const length = o.t - start.t
+            this.gaps[clock].push(length)
+            // The limit that applied while the gap was open is the one the snapshot taken above gives (the baseline before this gap).
+            if (length <= stallLimit(gap.stats, gap.hbMedianMs ?? this.profile.expected?.heartbeatMs, this.thresholds, this.profile).warnMs) this.baseline[clock].push(length)
+        }
     }
 
     /** Gaps still going on the connection that is currently open. */

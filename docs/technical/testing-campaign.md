@@ -30,6 +30,7 @@ The campaign's idea: more tests of the same shape find few bugs, so it uses **in
 | H4 (overhead harness with arms and CIs), H5 (workloads) | The plan's paired-block harness with an A/A calibration, and the full list of workloads | not started; the existing `scripts/bench.mjs` (above) is what was run |
 | I | The end-to-end journey | handed to an agent (see the next row when it reports) |
 | G9 | Converting the waits in `e2e/doctor.spec.ts` to signals | not done (it edits an existing spec) |
+| Q12, Q13 | The owner's two decisions on stalls: a stall that a later connection recovered from is resolved and kept as history (R05, R13, R04); a gap that was a stall is kept out of the rhythm the next stall is judged by | done, each with the failing test first (see the two sections under "Open decisions"); **2 more defects** of the same shape found on the way: R13 and R04 also stayed open for ever after a recovery |
 
 ## Release readiness (v2 to main)
 
@@ -100,19 +101,22 @@ It expects the captured status and content type, so it passes on the fault and f
 - **Option 1 (recommended):** when the captured response was not a healthy event stream, expect a healthy one (200, `text/event-stream`) and say so in the notes.
 - **Option 2:** keep it and emit a failing check that states the choice.
 
-### Q12. A stall that ended with a closed connection stays open after a healthy reconnect
+### Q12. A stall that ended with a closed connection stays open after a healthy reconnect: decided and implemented
 
-The stall finding is `resolved` only when data resumes on the same connection. A silence that ended because the connection closed stays `open`, even after the client reconnects and the new connection is healthy. Exit-code gates and the health strip read `open`. Test: `src/core/diagnostics/__tests__/lifecycle.test.ts`.
+The stall finding was `resolved` only when data resumed on the same connection. A silence that ended because the connection closed stayed `open`, even after the client reconnected and the new connection was healthy; exit-code gates and the Doctor's open counts read `open`.
 
-- **Option 1:** resolve it when a later connection delivers data. A capture analysed after the fact would then stop failing a gate for a stall that was followed by recovery.
-- **Option 2 (current):** keep it open: the problem happened and was not proven fixed by this capture. Say so in the finding.
+**The owner's decision:** "Resolve the active stall finding when a subsequent connection successfully delivers an event. Preserve the original stall as historical evidence, including its duration, connection and occurrence count. A recovered stream should not continue failing an active-health gate just because an earlier connection experienced a stall."
 
-### Q13. An early stall becomes part of the rhythm the next one is judged by
+**Implemented:** R05 (`stall.silent`), R13 (`proxy.masking`) and R04 (`timing.first-event`, a stage that never completed because its connection ended) now resolve when a later connection delivers an event (for R04, completes that stage within its limit). The finding keeps every fact, number and the evidence of the stall and gains one fact, with evidence pointing at the event that ended it. A later connection that has delivered nothing, or only heartbeats, does not resolve it; a capture that ends in a stall still has it open; a new silence after a recovery reopens it with the count raised. Tests: `lifecycle.test.ts` ("a reconnect while a silence is open"), `recovery.test.ts` (R13 and R04, both paths), `src/doctor/__tests__/doctorStore.test.ts` (the live view equals the batch analysis), `src/cli/__tests__/commands.test.ts` (the exit code of `analyze`). Not changed, because they are not the same shape: R10's late heartbeat (it is judged only while its connection is open, so it is never left open by a closing connection), and the findings that are a fact about the capture and never resolve (R01 status and type, R02, R03, R07 loops, R08, R09, R12, R15).
 
-The limit is three times the 95th-percentile gap of the stream's own history. With about a dozen gaps of history, one 8 s stall becomes that percentile, so the same stall again (limit 24 s) is not reported; with about forty gaps it does not move. Test: `lifecycle.test.ts` ("KNOWN LIMIT").
 
-- **Option 1 (recommended):** keep a gap that was itself reported as a stall out of the baseline it is judged by.
-- **Option 2:** document it in the known limitations.
+### Q13. An early stall becomes part of the rhythm the next one is judged by: decided and implemented
+
+The limit is three times the 95th-percentile gap of the stream's own history. With about a dozen gaps of history, one 8 s stall became that percentile, so the same stall again (limit 24 s) was not reported; with about forty gaps it did not move.
+
+**The owner's decision:** "Exclude gaps already classified as stalls from the baseline used to detect subsequent stalls. A previous failure must not teach the detector to tolerate the same failure again. Add a regression test with approximately 12 gaps, an 8-second stall, and another 8-second stall."
+
+**Implemented:** the model keeps two sets of gap statistics: `gaps` (every gap that ended with a byte, which R07, R10's "no heartbeats seen" and R11 read) and `baseline` (the same without the stalls), which R05 and R13 judge by. "Classified as a stall" means the rule's own verdict at the time: the gap was longer than the limit that applied while it was open (3 x p95 or twice the heartbeat interval, never under 1 s; the declared longest silence; or 30 s before enough gaps were seen), computed by one shared function (`stallLimit`), so a gap of exactly the limit stays in the baseline and one a millisecond longer does not. Tests, `lifecycle.test.ts`: twelve gaps, an 8 s stall and another 8 s stall (both reported); the forty-gap variant; the edge at 3000 and 3001 ms; a slow stream's long gap under its own limit; the declared-silence edge; the default limit. A consequence to know: a stream whose normal rhythm slows down for good is reported on every slow gap until its profile declares the new cadence (written in `limitations.md`).
 
 ### Q14. A `--no-redact` capture keeps the wire bytes as recorded, so the secrets you gave may be in them
 
