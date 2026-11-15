@@ -3,6 +3,7 @@ import type { Theme } from '../../types'
 import type { DoctorView } from '../../doctor/doctorSession'
 import { observationRegistry } from '../../doctor/observationRegistry'
 import { readSequence, trustOf, type CellState } from '../../doctor/sequenceView'
+import { RawValuesLabel } from '../RawValuesLabel'
 import { fmtDuration } from './format'
 
 interface Props {
@@ -42,6 +43,7 @@ export default function SequenceView({ theme, streamId, view, onDeclare }: Props
 
     return (
         <section aria-label="Sequence" className="space-y-4" data-testid="doctor-sequence">
+            <RawValuesLabel theme={theme} />
             <div>
                 <p className={`text-sm font-semibold ${strong}`} data-testid="sequence-trust">
                     {trust === 'declared' && `Declared: the stream's own numbers are ${contract?.useSseId ? 'its SSE ids' : `read from ${contract?.field}`}, counted ${contract?.policy === 'consecutive' ? 'one by one (a skipped number is a loss)' : 'upwards (jumps are fine, repeats and going backwards are not)'}.`}
