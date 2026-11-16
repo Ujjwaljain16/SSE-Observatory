@@ -4,13 +4,22 @@ All notable changes are written here. The format follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-11-16
+
+A fixes-only release found by a production acceptance test of 2.0.0 (the app, the live site and the published `sse-doctor`). Nine issues, #75 to #83, each fixed test first; the web app already ran these fixes on the hosted demo, 2.0.1 puts them in the npm package and the tag.
+
 ### Fixed
 
+- `sse-doctor repro --scenario` built the scenario from the minimal capture, which for a stall has no events, so the scenario passed on the stalled stream it came from (#75). It is built from the original capture now.
+- Captures and reports said `tool.version: "dev"` in the app and in the published command line; one `toolVersion()` fed from `package.json` now writes the real version, and the footer reads it too (#79).
 - `report`, `redact` and `probe --out` printed one stderr warning per event whose id "looks like a random token" (462 lines for a 468-event capture of the public Wikimedia stream, whose ids are JSON arrays). An id with structure (JSON, or whitespace, quotes, braces, brackets, commas) is no longer taken for a token, and the ids that still are reported once, with a count and the first event.
 
 - A stream connected through the app's server proxy exported a curl command of `POST '/api/sse'`, a report and issue body with the same, and a scenario note that said the URL could not be parsed. These now say that the stream went through the app's proxy, that its address was not recorded because it may carry a secret, and to set `STREAM_URL` to the address given to the app; the curl command is `curl -N -H 'Accept: text/event-stream' "$STREAM_URL"`. Captures with a real URL (the command line's own) are unchanged.
 
 - A target that answers 200 with something that is not an event stream (a web page) is no longer retried for ever through the proxy. The proxy answers HTTP 415 with the target's content type instead of a retryable 502, and the client stops after one attempt with "The address answers with text/html, not text/event-stream, so there is nothing to retry." (#77)
+
+- **App.** The Failure Lab opens from the empty Doctor state, its "not in the lab" reasons are written for users and seven newer fixtures are in the lab, 30 entries (#80). The last URL is remembered across a refresh (never the token, never a URL that carries a secret), the event list says "newest 1,000 of 1,225 events" once it is capped, and the playback bar no longer covers the toolbar (#81). Connection failures are announced as an alert and retries as a polite status without a per-second countdown, and every target is at least 24x24 px at 360 px (#82).
+- The flaky multi-stream lanes test in CI clicked the first "Connect" button, which turned into "Disconnect" on lane 1 as it connected; it clicks each lane's own button now (#83). No product change.
 
 ## [2.0.0] - 2026-11-15
 

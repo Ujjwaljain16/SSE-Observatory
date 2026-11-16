@@ -1,4 +1,5 @@
 import type { Theme } from '../types'
+import { toolVersion } from '../core/version'
 
 interface FooterProps {
     theme: Theme
@@ -11,7 +12,7 @@ export const Footer = ({ theme }: FooterProps) => {
                 ? 'text-slate-600'
                 : 'text-slate-600'
         }`}>
-            <p>SSE Observatory v2.0.0 | Built with React + Tailwind CSS</p>
+            <p>SSE Observatory v{toolVersion()} | Built with React + Tailwind CSS</p>
         </div>
     )
 }
