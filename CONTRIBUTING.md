@@ -54,6 +54,17 @@ e2e/             Playwright specs        docs/  the VitePress site (guide, techn
 
 [Architecture](docs/technical/architecture.md), [the diagnostics rules](docs/technical/diagnostics.md) and [the testing campaign](docs/technical/testing-campaign.md) (how the project was tested before 2.0, and what it does not cover) explain the design.
 
+## Testing under network faults
+
+`src/fixtures/faultProxy.ts` is a TCP proxy for tests only. Put it between a client and a fixture server and give it a plan; it then dribbles the response a byte at a time, delays it, throttles it, resets or closes the connection after N bytes, goes silent without closing, or makes the port refuse:
+
+```ts
+const proxy = await startFaultProxy({ target: { port: server.port }, plan: (index) => (index === 0 ? { fault: { kind: 'rst', at: { payloadBytes: 76 } } } : {}) })
+const url = proxy.through(server.urlFor('h01', { scale: 0.05 })) // same path and query, through the proxy
+```
+
+Rules for a fault test: use a fixture server on port 0; give the fault an explicit byte count or a seed (never a random one); run the same route with no fault as the control (a benign fault, such as re-chunking, must change nothing on a healthy twin); assert what the client did, what the Doctor said and what the server's own log says (`faults.network.test.ts` has the helpers: `observeWindow` runs the client with the live engine for a fixed time, which a stream that never ends needs); keep the time assertions as generous lower or upper bounds and use the fixtures' `scale`. The proxy is a simulation at the TCP level (no TLS, HTTP/2, CDN or mobile network) and must stay out of `src/core` and `src/cli`, so it never reaches the package; a test checks that. How it was used and what it found: [the testing campaign](docs/technical/testing-campaign.md).
+
 ## Adding a diagnostic rule
 
 A rule is a pure function over what a client observed. Add it with: a faulty fixture and its healthy twin in `src/fixtures`, a boundary test at the threshold minus one, at it and plus one, a line in the rule table of `docs/technical/diagnostics.md`, and evidence that points at real records (`src/core/diagnostics/__tests__/evidenceIsReal.test.ts` checks it).

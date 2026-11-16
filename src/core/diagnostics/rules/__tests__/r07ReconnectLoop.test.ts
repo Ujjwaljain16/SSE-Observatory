@@ -45,6 +45,17 @@ describe('R07 reconnect.loop', () => {
         expect(f.deductions[0]!.statement).toMatch(/^Likely: something cuts the connection repeatedly/)
     })
 
+    // A live view evaluates the finding when the newest connection has just been made and its headers have not arrived: that connection is
+    // waiting, not refused, so it must not turn the wording into "attempts ... answered" (the browser test caught this).
+    it('does not count a connection that is still waiting for its headers as unanswered', () => {
+        const b = capture()
+        connection(b, { lifetimeMs: 8000, first: true })
+        connection(b, { lifetimeMs: 9000 })
+        b.at(b.now + 7000).reconnect({ delayMs: 500 }).silence(500).connect() // the fourth connection: no response yet
+        const f = find(run(b, reconnectLoop).findings, LOOP)!
+        expect(f.facts[0]!.text).toMatch(/4 connections were opened within/)
+    })
+
     it('is an error when connections are refused and no event ever arrives', () => {
         const a = run(refused(4), reconnectLoop)
         const f = find(a.findings, LOOP)!
