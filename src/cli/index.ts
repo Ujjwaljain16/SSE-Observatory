@@ -106,5 +106,7 @@ export async function main(argv: string[], rawIo: CliIo): Promise<number> {
         if (error instanceof CliError) { io.err(`${sanitizeText(error.message)}\n`); return error.exit }
         io.err(`sse-doctor could not finish: ${sanitizeText(error instanceof Error ? error.message : String(error))}\n`)
         return EXIT.couldNotRun
+    } finally {
+        io.flush() // what an output held back because it could have been the start of a secret
     }
 }
