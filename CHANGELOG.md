@@ -6,7 +6,14 @@ All notable changes are written here. The format follows [Keep a Changelog](http
 
 ### Added
 
+- The command line's secret scrub recognises more encodings of a registered secret: hexadecimal (either case); a space written as `+` and `! ' ( ) * ~` percent-encoded (`URLSearchParams`, Python, PHP, Go, Java dialects); percent-encoded twice; JSON with `\uXXXX` escapes for non-ASCII characters and surrogate pairs, PHP's `\/` and Go's escapes for `<`, `>` and `&`; HTML entities; and base64 of the secret inside a larger base64 value at any alignment (a Basic header built by hand, `user:secret`) for secrets of 7 bytes or more. Text that merely resembles an encoding (a hash, `a+b`, `&amp;`, a JWT) is not altered. What is still not recognised is listed in the [CLI guide](docs/guide/cli.md#what-the-scrub-covers-and-what-it-does-not).
+- A secret written in two or more pieces to standard output or standard error is now caught.
 - Tests only: a TCP fault-injection proxy for tests (`src/fixtures/faultProxy.ts`, not part of the package) and tests that run the real client, the Doctor and `sse-doctor probe` through it: per-byte and random re-chunking, latency, a bandwidth limit, reset and close in the middle of an event, a blackhole (a half-open connection), a slow loris, a late first byte, a cut gzip body, and a port that refuses after the first success, each with a no-fault control and checked against the fixture server's own log. They pin that the client has no timeouts of its own and what bounds a `probe`.
+
+### Changed
+
+- Two secrets that overlap without one containing the other (`secret-AAAA`, `AAAA-tail99` in `secret-AAAA-tail99`) are now replaced together as one mask; before, a fragment of the second stayed. A mask is no longer scanned again, so a secret that is a piece of the mask cannot cut into it.
+- The end of a write to standard output or standard error that could be the start of a secret is held back until the next write or the end of the command (it is delayed, never changed); every other write goes out at once, as before.
 
 ### Fixed
 
