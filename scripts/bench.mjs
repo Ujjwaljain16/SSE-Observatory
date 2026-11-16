@@ -19,10 +19,13 @@
 //   open    the Doctor panel open as well (health strip refreshing every second)
 // --runs N   repeat each case N times and report medians (default 1; 5 or more is needed to say anything about a difference)
 //
+// "whole-browser CPU" is the CPU time of all Chromium processes (CDP SystemInfo.getProcessInfo) per second of wall time, as a percentage of one core:
+// the end-to-end figure, SharedWorker included. --out FILE also writes the results as JSON.
 // "main-thread busy" is the share of wall time the page's main thread spent running tasks (CDP Performance.TaskDuration).
 // It does not include the SharedWorker, which does the recording; that cost is measured separately by the records/s and
 // per-record cost the recorder reports. A difference smaller than the spread between repeated runs of one case is noise.
 
+import fs from 'node:fs'
 import { chromium } from '@playwright/test'
 
 const args = process.argv.slice(2)
@@ -33,6 +36,7 @@ const RUNS = Math.max(1, Number(flag('runs', 1)))
 const VARIANTS = DOCTOR === 'all' ? ['off', 'closed', 'open'] : DOCTOR ? DOCTOR.split(',') : ['']
 const APP = flag('app', 'http://localhost:3001')
 const CHAOS = flag('chaos', 'http://localhost:4000')
+const OUT = flag('out', '')
 
 const SCENARIOS = [
     { name: 'burst', url: `${CHAOS}/api/burst?count=20000`, seconds: 8 },
@@ -43,6 +47,10 @@ const percentile = (sorted, p) => (sorted.length ? sorted[Math.min(sorted.length
 
 const browser = await chromium.launch(process.env.BROWSER_CHANNEL ? { channel: process.env.BROWSER_CHANNEL, args: ['--enable-precise-memory-info'] } : { args: ['--enable-precise-memory-info'] })
 const results = []
+// Whole-browser CPU: the CPU seconds of every Chromium process (browser, renderers, the SharedWorker's, GPU, utility) from the operating system's
+// own accounting, through CDP SystemInfo.getProcessInfo. This is the end-to-end "x% of one core" figure that the main-thread figure leaves out.
+const browserSession = await browser.newBrowserCDPSession()
+const cpuSeconds = async () => (await browserSession.send('SystemInfo.getProcessInfo')).processInfo.reduce((sum, p) => sum + p.cpuTime, 0)
 
 const median = (xs) => { const s = [...xs].sort((a, b) => a - b); return s.length ? s[Math.floor(s.length / 2)] : 0 }
 
@@ -72,9 +80,11 @@ for (const [scenario, variant, run] of SCENARIOS.flatMap((sc) => VARIANTS.flatMa
     await page.getByTestId('event-row').first().waitFor({ timeout: 30000 })
     const firstRowMs = Date.now() - t0
     const busy0 = await busy()
+    const cpu0 = await cpuSeconds()
     const w0 = Date.now()
     await page.waitForTimeout(scenario.seconds * 1000)
     const busy1 = await busy()
+    const cpu1 = await cpuSeconds()
     const wall = (Date.now() - w0) / 1000
 
     const stats = await page.evaluate(() => ({ late: window.__bench.late, frames: window.__bench.frames.filter((f) => f.start >= window.__bench.connectAt).map((f) => f.duration), heap: performance.memory.usedJSHeapSize, rows: document.querySelectorAll('[data-testid="event-row"]').length }))
@@ -84,6 +94,7 @@ for (const [scenario, variant, run] of SCENARIOS.flatMap((sc) => VARIANTS.flatMa
         variant,
         run,
         mainBusyPct: Math.round(((busy1.task - busy0.task) / wall) * 1000) / 10,
+        browserCpuPct: Math.round(((cpu1 - cpu0) / wall) * 1000) / 10,
         scriptBusyPct: Math.round(((busy1.script - busy0.script) / wall) * 1000) / 10,
         longFrameTotalMs: Math.round(stats.frames.reduce((a, b) => a + b, 0)),
         firstRowMs,
@@ -103,13 +114,13 @@ await browser.close()
 console.log(`\nCPU throttle: ${THROTTLE}x   (${new Date().toISOString().slice(0, 10)})\n`)
 if (DOCTOR) {
     console.log(`Doctor variants, medians of ${RUNS} run${RUNS === 1 ? '' : 's'} (spread = min to max)\n`)
-    console.log('| scenario | doctor | main-thread busy | script busy | timer late p50 / p95 | long frames (total ms) | worst frame | heap growth |')
-    console.log('|---|---|---|---|---|---|---|---|')
+    console.log('| scenario | doctor | whole-browser CPU | main-thread busy | script busy | timer late p50 / p95 | long frames (total ms) | worst frame | heap growth |')
+    console.log('|---|---|---|---|---|---|---|---|---|')
     for (const sc of SCENARIOS) {
         for (const v of VARIANTS) {
             const rs = results.filter((r) => r.scenario === sc.name && r.variant === v)
             const span = (key) => `${median(rs.map((r) => r[key]))} (${Math.min(...rs.map((r) => r[key]))} to ${Math.max(...rs.map((r) => r[key]))})`
-            console.log(`| ${sc.name} | ${v} | ${span('mainBusyPct')} % | ${span('scriptBusyPct')} % | ${median(rs.map((r) => r.timerLateP50))} / ${median(rs.map((r) => r.timerLateP95))} ms | ${median(rs.map((r) => r.longFrames))} (${median(rs.map((r) => r.longFrameTotalMs))}) | ${median(rs.map((r) => r.worstFrameMs))} ms | ${median(rs.map((r) => r.heapGrowthMB))} MB |`)
+            console.log(`| ${sc.name} | ${v} | ${span('browserCpuPct')} % | ${span('mainBusyPct')} % | ${span('scriptBusyPct')} % | ${median(rs.map((r) => r.timerLateP50))} / ${median(rs.map((r) => r.timerLateP95))} ms | ${median(rs.map((r) => r.longFrames))} (${median(rs.map((r) => r.longFrameTotalMs))}) | ${median(rs.map((r) => r.worstFrameMs))} ms | ${median(rs.map((r) => r.heapGrowthMB))} MB |`)
         }
     }
     console.log('')
@@ -119,4 +130,6 @@ console.log('|---|---|---|---|---|---|')
 for (const r of results) {
     console.log(`| ${r.scenario} | ${r.firstRowMs} ms | ${r.timerLateP50} / ${r.timerLateP95} / ${r.timerLateMax} ms | ${r.longFrames} (${r.worstFrameMs} ms) | ${r.heapMB} MB (${r.heapGrowthMB >= 0 ? '+' : ''}${r.heapGrowthMB}) | ${r.domRows} |`)
 }
-console.log('\n' + JSON.stringify({ throttle: THROTTLE, results }))
+const payload = JSON.stringify({ throttle: THROTTLE, results })
+console.log('\n' + payload)
+if (OUT) fs.writeFileSync(OUT, payload)
