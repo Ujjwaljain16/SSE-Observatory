@@ -22,8 +22,17 @@ describe('byte order mark', () => {
         const r = collect([bytes])
         expect(r.events).toEqual(['a'])
         expect(r.violations).toEqual(['BOM_STRIPPED'])
-        // a BOM split across the first two reads is still stripped by the decoder; no false claim is made about it
-        expect(collect([bytes.slice(0, 2), bytes.slice(2)]).events).toEqual(['a'])
+        // a BOM split across reads is stripped by the decoder and is noticed all the same (this used to be silent: found by cutting a stream into one-byte writes, see faults.network.test.ts)
+        for (const cuts of [[2], [1], [1, 2], [3], [1, 2, 3]]) {
+            const parts: Uint8Array[] = []
+            let from = 0
+            for (const at of [...cuts, bytes.length]) { parts.push(bytes.slice(from, at)); from = at }
+            const r = collect(parts)
+            expect(r.events, `cuts ${cuts}`).toEqual(['a'])
+            expect(r.violations, `cuts ${cuts}`).toEqual(['BOM_STRIPPED'])
+        }
+        // bytes that only begin like a BOM are not one
+        expect(collect([new Uint8Array([0xef, 0xbb]), new Uint8Array([0xbe, 0x64, 0x3a, 0x20, 0x61, 0x0a, 0x0a])]).violations).not.toContain('BOM_STRIPPED')
         expect(collect([new TextEncoder().encode('data: a\n\n')]).violations).toEqual([])
     })
 

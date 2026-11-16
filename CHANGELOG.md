@@ -4,6 +4,16 @@ All notable changes are written here. The format follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Added
+
+- Tests only: a TCP fault-injection proxy for tests (`src/fixtures/faultProxy.ts`, not part of the package) and tests that run the real client, the Doctor and `sse-doctor probe` through it: per-byte and random re-chunking, latency, a bandwidth limit, reset and close in the middle of an event, a blackhole (a half-open connection), a slow loris, a late first byte, a cut gzip body, and a port that refuses after the first success, each with a no-fault control and checked against the fixture server's own log. They pin that the client has no timeouts of its own and what bounds a `probe`.
+
+### Fixed
+
+- A byte order mark split across the first reads of a stream (cut anywhere by the network) is now reported as `BOM_STRIPPED` like one that arrives whole; it used to be dropped silently, so the note depended on where the stream was cut.
+
+- `reconnect.loop` said "N connections were opened" when some of the attempts were refused and never reached the server. It now says "N connection attempts were made (M answered)" when any got no response; the wording for answered connections is unchanged.
+
 ## [2.0.1] - 2026-11-16
 
 A fixes-only release found by a production acceptance test of 2.0.0 (the app, the live site and the published `sse-doctor`). Nine issues, #75 to #83, each fixed test first; the web app already ran these fixes on the hosted demo, 2.0.1 puts them in the npm package and the tag.

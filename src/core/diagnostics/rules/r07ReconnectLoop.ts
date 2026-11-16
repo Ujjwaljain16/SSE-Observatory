@@ -67,7 +67,11 @@ export const reconnectLoop: Rule = {
             if (best && best.count >= th.loopMinConnections) {
                 events = best.connConns.reduce((sum, c) => sum + (model.conn(c)?.events ?? 0), 0)
                 evidence = connects.filter((c) => best !== undefined && best.connConns.includes(c.conn)).slice(0, 5).map((c) => ev(c.seq, c.t, `connection ${c.conn}`))
-                facts.push({ text: `${plural(best.count, 'connection')} were opened within ${fmtMs(best.last.t - best.first.t)} (connections ${best.first.conn} to ${best.last.conn}); the limit is ${th.loopMinConnections} within ${fmtMs(th.loopWindowMs)}.`, evidence })
+                // A connection that never got a response (refused, reset or silent before the headers) was attempted, not opened: say so, so the count agrees with what the server accepted.
+                const answered = best.connConns.filter((c) => model.conn(c)?.response !== undefined).length
+                const span = `within ${fmtMs(best.last.t - best.first.t)} (connections ${best.first.conn} to ${best.last.conn}`
+                const limit = `the limit is ${th.loopMinConnections} within ${fmtMs(th.loopWindowMs)}.`
+                facts.push({ text: answered === best.count ? `${plural(best.count, 'connection')} were opened ${span}); ${limit}` : `${plural(best.count, 'connection attempt')} were made ${span}; ${answered === 1 ? '1 was' : `${answered} were`} answered); ${limit}`, evidence })
                 facts.push({ text: events === 0 ? 'No event was delivered on any of them.' : `${plural(events, 'event')} were delivered across them, so the stream made progress between drops.`, evidence: [] })
             }
             if (maxRun >= th.loopNoEventReconnects) {

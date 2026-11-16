@@ -53,6 +53,8 @@ export class SSEParser {
     private buffer = ''
     private pendingCR = false
     private sawFirstChunk = false
+    /** The first bytes of the stream (up to three), kept until the first text comes out: a byte order mark can arrive split over reads, and TextDecoder strips it without a word. */
+    private firstBytes: number[] = []
     /** The bytes of a character that has started but not finished: the decoder holds them, so the text buffer does not show them. */
     private heldBytes: number[] = []
 
@@ -100,7 +102,9 @@ export class SSEParser {
     feed(chunk: Uint8Array | string, chunkIndex?: number): void {
         this.currentChunk = chunkIndex ?? this.feedCount++
         // TextDecoder drops a leading byte order mark by itself, so for bytes it has to be noticed before decoding.
-        const startsWithBom = typeof chunk !== 'string' && !this.sawFirstChunk && chunk.length >= 3 && chunk[0] === 0xef && chunk[1] === 0xbb && chunk[2] === 0xbf
+        // (The first three bytes are collected across reads, so the notice does not depend on where the network cut the stream.)
+        if (typeof chunk !== 'string' && !this.sawFirstChunk) for (let i = 0; i < chunk.length && this.firstBytes.length < 3; i++) this.firstBytes.push(chunk[i]!)
+        const startsWithBom = typeof chunk !== 'string' && !this.sawFirstChunk && this.firstBytes.length >= 3 && this.firstBytes[0] === 0xef && this.firstBytes[1] === 0xbb && this.firstBytes[2] === 0xbf
         if (typeof chunk !== 'string') this.noteHeldBytes(chunk)
         let text = typeof chunk === 'string' ? chunk : this.decoder.decode(chunk, { stream: true })
         if (!this.sawFirstChunk && (text.length > 0 || startsWithBom)) {
@@ -208,6 +212,7 @@ export class SSEParser {
         this.eventChars = 0
         this.decoder = new TextDecoder('utf-8')
         this.sawFirstChunk = false
+        this.firstBytes = []
         this.lineEnding = null
         this.mixedEndingsReported = false
         this.frameHadId = false
