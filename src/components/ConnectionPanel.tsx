@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import type { Theme } from '../types'
 import { formatTime } from '../utils/eventUtils'
+import { RetryMessage } from './RetryMessage'
 import {
     Link, Globe, Lock, Save, AlertTriangle, Check,
     Clock, Play, Square, Trash2, Loader2,
@@ -65,6 +66,9 @@ export const ConnectionPanel = ({
         return () => clearInterval(t)
     }, [connectedAt])
     const connectionTime = connectedAt === null ? 0 : Math.max(0, Math.floor((now - connectedAt) / 1000))
+    // The message belongs to a retry while the client is waiting to reconnect; otherwise it says why the attempt ended.
+    const retryMessage = reconnecting ? error : ''
+    const finalError = reconnecting ? '' : error
 
     return (
         <div className={`
@@ -264,26 +268,30 @@ export const ConnectionPanel = ({
             {/* Status & Actions Row */}
             <div className={`mt-4 flex flex-col md:flex-row md:items-center justify-between gap-4 pt-4 border-t ${isDark ? 'border-slate-700/50' : 'border-slate-200/70'}`}>
                 <div className="flex items-center gap-4 flex-wrap">
-                    {error && (
-                        <div className="text-red-500 text-sm flex items-center gap-1.5 font-medium">
-                            <AlertTriangle className="w-4 h-4" /> {error}
+                    {/* Failures that end the attempt are announced at once (an alert). A retry is a polite status in the one live
+                        region that exists for the whole life of the connection, announced once per attempt (see RetryMessage). */}
+                    {finalError && (
+                        <div role="alert" data-testid="connection-error" className="text-red-500 text-sm flex items-center gap-1.5 font-medium">
+                            <AlertTriangle className="w-4 h-4" aria-hidden="true" /> {error}
                         </div>
                     )}
 
-                    {!error && (
-                        <div className="flex items-center gap-2">
-                            <div className={`w-2.5 h-2.5 rounded-full ${connected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse' : (isLoading || reconnecting) ? 'bg-amber-400 animate-pulse' : 'bg-slate-400'}`} />
-                            <span
-                                data-testid="connection-status"
-                                role="status" aria-live="polite"
-                                className={`text-sm font-semibold ${connected ? 'text-emerald-600 dark:text-emerald-400' : isDark ? 'text-slate-400' : 'text-slate-600'}`}
-                            >
-                                {connected ? (
-                                    <span>Connected to <span className="text-slate-700 dark:text-slate-300 font-mono ml-1">{(() => { try { return new URL(url).hostname } catch { return 'Endpoint' } })()}</span></span>
-                                ) : isLoading ? 'Connecting...' : reconnecting ? 'Reconnecting...' : 'Disconnected'}
-                            </span>
-                        </div>
-                    )}
+                    <div className="flex items-center gap-2">
+                        {!finalError && <div className={`w-2.5 h-2.5 rounded-full ${connected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse' : (isLoading || reconnecting) ? 'bg-amber-400 animate-pulse' : 'bg-slate-400'}`} />}
+                        <span
+                            data-testid="connection-status"
+                            role="status" aria-live="polite"
+                            className={retryMessage
+                                ? 'text-red-500 text-sm flex items-center gap-1.5 font-medium'
+                                : `text-sm font-semibold ${connected ? 'text-emerald-600 dark:text-emerald-400' : isDark ? 'text-slate-400' : 'text-slate-600'}`}
+                        >
+                            {finalError ? null : retryMessage ? (
+                                <><AlertTriangle className="w-4 h-4" aria-hidden="true" /> <span><RetryMessage message={retryMessage} /></span></>
+                            ) : connected ? (
+                                <span>Connected to <span className="text-slate-700 dark:text-slate-300 font-mono ml-1">{(() => { try { return new URL(url).hostname } catch { return 'Endpoint' } })()}</span></span>
+                            ) : isLoading ? 'Connecting...' : reconnecting ? 'Reconnecting...' : 'Disconnected'}
+                        </span>
+                    </div>
 
                     {connected && !error && (
                         <>

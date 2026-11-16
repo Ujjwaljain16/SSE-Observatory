@@ -52,7 +52,7 @@ describe('useMultiStream lane connections', () => {
         act(() => { result.current.connectStream(laneId) })
 
         await waitFor(() => expect(result.current.streams[0]!.error).toMatch(/404/))
-        expect(result.current.streams[0]).toMatchObject({ connected: false, isLoading: false })
+        expect(result.current.streams[0]).toMatchObject({ connected: false, isLoading: false, retrying: false }) // a failure, not a retry: announced as an alert
         await new Promise((r) => setTimeout(r, 50))
         expect(fetchMock).toHaveBeenCalledTimes(1)
     })
@@ -88,6 +88,18 @@ describe('useMultiStream lane connections', () => {
 
         await waitFor(() => expect(result.current.streams[0]!.error).toMatch(/Retrying in/))
         expect(result.current.streams[0]!.error).toMatch(/HTTP 502/)
+    })
+
+    it('marks a lane that is waiting to reconnect as retrying, so its message is announced as a retry and not as a failure', async () => {
+        vi.stubGlobal('fetch', vi.fn(async () => new Response('bad gateway', { status: 502, headers: { 'content-type': 'text/plain' } })))
+
+        const { result } = renderHook(() => useMultiStream())
+        let laneId = ''
+        act(() => { laneId = result.current.addStream('Flaky', 'http://api.test/flaky') })
+        act(() => { result.current.connectStream(laneId) })
+
+        await waitFor(() => expect(result.current.streams[0]!.error).toMatch(/Retrying in \d+s \(attempt 1\)/))
+        expect(result.current.streams[0]).toMatchObject({ connected: false, retrying: true })
         act(() => { result.current.disconnectStream(laneId) })
     })
 

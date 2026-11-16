@@ -9,6 +9,7 @@ import type { RedactedCapture } from '../capture/redacted'
 import type { Analysis } from '../diagnostics/engine'
 import { SEVERITY_RANK, type Finding, type Severity } from '../diagnostics/finding'
 import type { Observation, ObservationKind } from '../observe/observation'
+import { isProxiedCapture, PROXIED_CAPTURE_NOTE } from '../capture/derived/proxied'
 import { SCENARIO_SCHEMA_URL } from './schema'
 import type { Delivery, Scenario, ScenarioSequence, ScenarioStep, SequencePolicy, VerifyCheck } from './types'
 import { validateScenario } from './validate'
@@ -96,7 +97,10 @@ export function toScenario(capture: RedactedCapture, analysis: Analysis, opts: T
     // Target: the URL always comes from the environment; the capture's origin is kept for reference only.
     const envNames = ['STREAM_URL']
     const headers: Record<string, string> = {}
-    const requestHeaderNames = header.request ? Object.keys(header.request.headers) : connects[0]?.headerNames ?? []
+    // Through the app's server proxy the request headers were the app's own, to its proxy, and the address is not in the capture: no
+    // header becomes a variable the run would need, and the note says what to set instead of claiming the URL could not be read.
+    const viaProxy = isProxiedCapture(capture)
+    const requestHeaderNames = viaProxy ? [] : header.request ? Object.keys(header.request.headers) : connects[0]?.headerNames ?? []
     for (const name of requestHeaderNames) {
         if (SKIPPED_HEADERS.has(name.toLowerCase())) continue
         const env = headerEnvName(name)
@@ -107,7 +111,8 @@ export function toScenario(capture: RedactedCapture, analysis: Analysis, opts: T
 
     let origin: string | undefined
     const capturedUrl = connects[0]?.url ?? header.request?.url
-    if (capturedUrl) {
+    if (viaProxy) notes.push(PROXIED_CAPTURE_NOTE)
+    else if (capturedUrl) {
         try { origin = new URL(capturedUrl).origin } catch { notes.push('The captured URL could not be parsed, so the origin was not recorded.') }
     }
 

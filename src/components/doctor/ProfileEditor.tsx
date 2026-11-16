@@ -223,9 +223,9 @@ export default function ProfileEditor({ theme }: Props) {
                                 </button>
                                 <code className="font-semibold">{s.path}</code>
                                 <span className={muted}>e.g. {s.sample}{KIND_LABEL[s.kind] ? ` · ${KIND_LABEL[s.kind]}` : ''}</span>
-                                <button type="button" onClick={() => setForm((f) => ({ ...f, mode: 'field', field: s.path })) } className={`px-2 py-0.5 rounded text-xs ${dark ? 'bg-slate-700 text-slate-100 hover:bg-slate-600' : 'bg-slate-200 text-slate-900 hover:bg-slate-300'}`} data-testid={`use-seq-${s.path}`}>Use as sequence</button>
+                                <button type="button" onClick={() => setForm((f) => ({ ...f, mode: 'field', field: s.path })) } className={`px-2 py-1 min-h-6 rounded text-xs ${dark ? 'bg-slate-700 text-slate-100 hover:bg-slate-600' : 'bg-slate-200 text-slate-900 hover:bg-slate-300'}`} data-testid={`use-seq-${s.path}`}>Use as sequence</button>
                                 {s.kind !== 'counter' && (
-                                    <button type="button" onClick={() => setForm((f) => ({ ...f, timestampField: s.path }))} className={`px-2 py-0.5 rounded text-xs ${dark ? 'bg-slate-700 text-slate-100 hover:bg-slate-600' : 'bg-slate-200 text-slate-900 hover:bg-slate-300'}`}>Use as timestamp</button>
+                                    <button type="button" onClick={() => setForm((f) => ({ ...f, timestampField: s.path }))} className={`px-2 py-1 min-h-6 rounded text-xs ${dark ? 'bg-slate-700 text-slate-100 hover:bg-slate-600' : 'bg-slate-200 text-slate-900 hover:bg-slate-300'}`}>Use as timestamp</button>
                                 )}
                             </li>
                         ))}

@@ -1,10 +1,12 @@
 /**
  * A curl command that repeats the request of a capture. Header values and query values are never written: a capture
  * may be shared, and a command copied out of a report must not carry a token. Each one becomes an environment variable
- * named after the header or parameter, which the person running the command sets themselves.
+ * named after the header or parameter, which the person running the command sets themselves. A capture made through the app's server
+ * proxy has no address (see proxied.ts), so its command reads `$STREAM_URL` and a comment says to set it.
  */
 
 import type { RedactedCapture } from '../redacted'
+import { isProxiedCapture, PROXIED_CAPTURE_NOTE } from './proxied'
 import { ofKind } from './records'
 
 export type CurlShell = 'posix' | 'powershell'
@@ -84,11 +86,24 @@ function requestOf(capture: RedactedCapture): RequestFacts {
 export function toCurl(capture: RedactedCapture, opts: CurlOptions = {}): string {
     const shell = opts.shell ?? 'posix'
     const word = shell === 'powershell' ? powershellWord : posixWord
+    const exe = shell === 'powershell' ? 'curl.exe' : 'curl'
+    const joiner = shell === 'powershell' ? ' `\n  ' : ' \\\n  '
+
+    // Through the app's server proxy the request was `POST /api/sse` with the stream's address in a body that is never recorded. Writing that
+    // path would be a command that cannot run; the headers were the app's own to its proxy. So: a plain GET of the address the person gives.
+    if (isProxiedCapture(capture)) {
+        const lastEventId = requestOf(capture).lastEventId
+        const lines = [`${exe} -N`, `-H ${word([lit('Accept: text/event-stream')])}`]
+        if (lastEventId !== '') lines.push(`-H ${word([lit(`Last-Event-ID: ${lastEventId}`)])}`)
+        lines.push(word([env('STREAM_URL')]))
+        return `# ${PROXIED_CAPTURE_NOTE}\n${lines.join(joiner)}`
+    }
+
     const req = requestOf(capture)
 
     // one option and its value per line, so a long command stays readable and each line can be edited
     // (curl is an alias of Invoke-WebRequest in Windows PowerShell, so the real binary is named)
-    const lines: string[] = [`${shell === 'powershell' ? 'curl.exe' : 'curl'} -N`]
+    const lines: string[] = [`${exe} -N`]
     if (req.method.toUpperCase() !== 'GET') lines.push(`-X ${word([lit(req.method)])}`)
     lines.push(`-H ${word([lit('Accept: text/event-stream')])}`)
     const seen = new Set<string>()
@@ -100,6 +115,5 @@ export function toCurl(capture: RedactedCapture, opts: CurlOptions = {}): string
     }
     if (req.lastEventId !== '') lines.push(`-H ${word([lit(`Last-Event-ID: ${req.lastEventId}`)])}`)
     lines.push(word(req.url === '' ? [env('STREAM_URL')] : urlPieces(req.url)))
-    const joiner = shell === 'powershell' ? ' `\n  ' : ' \\\n  '
     return lines.join(joiner)
 }

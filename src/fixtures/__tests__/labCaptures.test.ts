@@ -22,6 +22,17 @@ describe('the failure lab', () => {
         expect(index.entries.length).toBeGreaterThanOrEqual(20)
     })
 
+    it('gives a user, not a maintainer, the reason a fixture is not shown: nothing about how to rebuild the lab, and what is missing where a fixture needs more than a recording', () => {
+        for (const s of index.skipped) {
+            expect(s.reason, `${s.id}: the reason is shown to users`).not.toMatch(/npm |lab:build|regenerat|thresholds|ship[s ]/i)
+            expect(s.reason, `${s.id}: the page adds the full stop`).not.toMatch(/\.$/)
+        }
+        const reasonOf = (id: string) => index.skipped.find((s) => s.id === id)?.reason ?? ''
+        expect(reasonOf('f10-steady')).toMatch(/page's own measurements/)
+        expect(reasonOf('f08-token')).toMatch(/request that carries a token/)
+        expect(reasonOf('f02-open')).toMatch(/never completes an event/)
+    })
+
     it('says what each entry expects exactly as the fixture declares it', () => {
         for (const e of index.entries) {
             const route = FIXTURE_ROUTES.find((r) => r.id === e.id)!

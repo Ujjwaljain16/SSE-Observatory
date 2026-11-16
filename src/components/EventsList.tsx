@@ -445,7 +445,7 @@ export const EventsList = memo(function EventsList({
                                                             data-testid={`view-${id}`}
                                                             aria-pressed={view === id}
                                                             onClick={() => setViews((v) => ({ ...v, [key]: id }))}
-                                                            className={`px-2 py-0.5 text-xs rounded-md font-semibold ${view === id
+                                                            className={`px-2 py-1 min-h-6 text-xs rounded-md font-semibold ${view === id
                                                                 ? (isDark ? 'bg-sky-600 text-white' : 'bg-sky-700 text-white')
                                                                 : (isDark ? 'bg-slate-700/70 text-slate-300 hover:bg-slate-600' : 'bg-slate-200 text-slate-800 hover:bg-slate-300')}`}
                                                         >

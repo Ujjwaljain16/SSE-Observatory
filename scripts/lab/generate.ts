@@ -29,6 +29,17 @@ const MAX_BYTES = 40 * 1024
 const SCALES = (process.env['LAB_SCALES'] ?? '0.25,1').split(',').map(Number)
 const only = process.env['LAB_ONLY']?.split(',')
 
+/**
+ * What a fixture needs that a recording of a plain run does not have. The lab shows these reasons to users, so they say what is missing
+ * and not how to regenerate the lab. Used when a fixture does not meet its expectations on a plain run; a fixture not listed here gets
+ * the generic reason, with the problems the check found. Keep in step with the "skipped" entries of public/lab/index.json.
+ */
+const NEEDS: Record<string, string> = {
+    'f02-open': 'its recording never completes an event, so the Doctor reports the missing first event, not the silence its author expects; judging that silence needs a stream with a rhythm to compare with',
+    'f08-token': 'it needs a request that carries a token in its URL; the lab shows recordings of a plain request, which has none to find',
+    'f10-steady': "it needs the page's own measurements of a consumer that cannot keep up, which a recording of the stream does not contain",
+}
+
 interface Entry { id: string; family: string; title: string; description: string; expected: string[]; forbidden: string[]; healthyTwin: string | null; file: string; events: number; seconds: number; scale: number }
 interface Skipped { id: string; family: string; title: string; reason: string }
 
@@ -81,7 +92,7 @@ for (const route of FIXTURE_ROUTES) {
             const analysis = analyze(records as never, { ...(route.profile ? { profile: route.profile } : {}), endT: endT + silenceAfter })
             const check = checkExpectations(analysis.findings.map((f) => f.key), route.expectedFindings, route.forbiddenFindings)
             if (!answered) reason = 'the server never answered a plain request (it needs a detail the lab does not send)'
-            else if (!check.ok) reason = `under the default thresholds it did not meet its own expectations: ${check.problems.join('; ')}`
+            else if (!check.ok) reason = NEEDS[route.id] ?? `the Doctor, with the app's default thresholds, did not find what this stream's author expects of it (${check.problems.join('; ')})`
             else {
                 const capture = localCapture(records, {
                     source: { kind: 'fixture', client: 'node-undici' },
@@ -92,7 +103,7 @@ for (const route of FIXTURE_ROUTES) {
                 capture.footer = { ...(capture.footer ?? { endReason: 'stopped', counts: {} }), endT: endT + silenceAfter }
                 const file = `${route.id}.sse-capture`
                 const text = serializeCapture(redactCapture(capture).capture)
-                if (text.length > MAX_BYTES) { reason = `the capture is ${(text.length / 1024).toFixed(0)} KB, over the ${MAX_BYTES / 1024} KB a static lab ships`; break }
+                if (text.length > MAX_BYTES) { reason = `its recording is ${(text.length / 1024).toFixed(0)} KB, over the ${MAX_BYTES / 1024} KB limit for the lab`; break }
                 fs.writeFileSync(path.join(outDir, file), text)
                 entries.push({ id: route.id, family: route.family, title: route.title, description: route.description, expected: route.expectedFindings, forbidden: route.forbiddenFindings, healthyTwin: route.healthyTwin, file, events, seconds: Math.round((endT + silenceAfter) / 100) / 10, scale })
                 console.log(`ok      ${route.id.padEnd(22)} scale ${scale}: ${events} events, ${((endT + silenceAfter) / 1000).toFixed(1)} s recorded, ${((Date.now() - t0) / 1000).toFixed(1)} s to make`)

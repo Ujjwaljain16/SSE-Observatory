@@ -383,91 +383,91 @@
       "id": "f02-closed",
       "family": "F02",
       "title": "Event never terminated, connection closed",
-      "reason": "the capture is 87 KB, over the 40 KB a static lab ships"
+      "reason": "its recording is 87 KB, over the 40 KB limit for the lab"
     },
     {
       "id": "f02-open",
       "family": "F02",
       "title": "Event never terminated, connection open",
-      "reason": "under the default thresholds it did not meet its own expectations: stall.silent:bytes was expected but not found (found: timing.first-event:first-event)"
+      "reason": "its recording never completes an event, so the Doctor reports the missing first event, not the silence its author expects; judging that silence needs a stream with a rhythm to compare with"
     },
     {
       "id": "f08-token",
       "family": "F08",
       "title": "Token in the URL",
-      "reason": "under the default thresholds it did not meet its own expectations: security.credentials-in-metadata:url was expected but not found (found: http.status)"
+      "reason": "it needs a request that carries a token in its URL; the lab shows recordings of a plain request, which has none to find"
     },
     {
       "id": "f05-cap",
       "family": "F05",
       "title": "Every connection is cut after the same duration",
-      "reason": "the capture is 80 KB, over the 40 KB a static lab ships"
+      "reason": "its recording is 80 KB, over the 40 KB limit for the lab"
     },
     {
       "id": "f10-steady",
       "family": "F10",
       "title": "A fast, healthy stream for a slow consumer",
-      "reason": "under the default thresholds it did not meet its own expectations: consumer.slow was expected but not found (found: nothing)"
+      "reason": "it needs the page's own measurements of a consumer that cannot keep up, which a recording of the stream does not contain"
     },
     {
       "id": "f07-flood",
       "family": "F07",
       "title": "Flood of tiny events",
-      "reason": "the capture is 382 KB, over the 40 KB a static lab ships"
+      "reason": "its recording is 382 KB, over the 40 KB limit for the lab"
     },
     {
       "id": "f08-echo",
       "family": "F08",
       "title": "Echoes the credentials it was sent",
-      "reason": "it exists to test redaction: it echoes whatever credentials the request carries, so a capture of it would be a capture of the request."
+      "reason": "it exists to test redaction: it echoes whatever credentials the request carries, so a capture of it would be a capture of the request"
     },
     {
       "id": "f05-ignores",
       "family": "F05",
       "title": "The server ignores Last-Event-ID after a drop",
-      "reason": "added after the lab was made; the lab is regenerated with npm run lab:build, which also changes every shipped capture"
+      "reason": "this test stream is newer than the recordings in this version of the lab, so it is not in the lab yet"
     },
     {
       "id": "h05-declared-idle",
       "family": "H05",
       "title": "Healthy: idle for 40 s between events, and said to be",
-      "reason": "added after the lab was made; the lab is regenerated with npm run lab:build, which also changes every shipped capture"
+      "reason": "this test stream is newer than the recordings in this version of the lab, so it is not in the lab yet"
     },
     {
       "id": "h06-comments-only",
       "family": "H06",
       "title": "Healthy: comments only, then the end",
-      "reason": "added after the lab was made; the lab is regenerated with npm run lab:build, which also changes every shipped capture"
+      "reason": "this test stream is newer than the recordings in this version of the lab, so it is not in the lab yet"
     },
     {
       "id": "f04-late-heartbeat",
       "family": "F04",
       "title": "A heartbeat arrives late",
-      "reason": "added after the lab was made; the lab is regenerated with npm run lab:build, which also changes every shipped capture"
+      "reason": "this test stream is newer than the recordings in this version of the lab, so it is not in the lab yet"
     },
     {
       "id": "f11-slow-start",
       "family": "F11",
       "title": "Slow first byte and slow first event",
-      "reason": "added after the lab was made; the lab is regenerated with npm run lab:build, which also changes every shipped capture"
+      "reason": "this test stream is newer than the recordings in this version of the lab, so it is not in the lab yet"
     },
     {
       "id": "f12-gzip-sync",
       "family": "F12",
       "title": "Compressed event stream",
-      "reason": "added after the lab was made; the lab is regenerated with npm run lab:build, which also changes every shipped capture"
+      "reason": "this test stream is newer than the recordings in this version of the lab, so it is not in the lab yet"
     },
     {
       "id": "f15-malformed",
       "family": "F15",
       "title": "Malformed framing, then good events",
-      "reason": "added after the lab was made; the lab is regenerated with npm run lab:build, which also changes every shipped capture"
+      "reason": "this test stream is newer than the recordings in this version of the lab, so it is not in the lab yet"
     },
     {
       "id": "f16-rate",
       "family": "F16",
       "title": "Healthy: a constant rate",
-      "reason": "added after the lab was made; the lab is regenerated with npm run lab:build, which also changes every shipped capture"
+      "reason": "this test stream is newer than the recordings in this version of the lab, so it is not in the lab yet"
     }
   ]
 }

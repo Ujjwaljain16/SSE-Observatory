@@ -18,7 +18,7 @@ npm run doctor -- analyze stream.sse-capture
 | `compare <a> <b>` | Compares two captures: status, headers, timing, heartbeat rhythm, chunk sizes, events. |
 | `validate <capture> <url>` | Did the fix work? Reads the fixed stream the way the capture was read and says whether the capture's finding is gone ([details](#checking-a-fix)). |
 | `env-diff <urlA> <urlB>` | Reads the same stream through two paths at the same time and says where its behaviour differs ([details](#comparing-two-environments)). |
-| `curl <capture\|url>` | Prints a curl command that reproduces the request. Header and query values become environment variables. `--shell posix\|powershell` picks the quoting. |
+| `curl <capture\|url>` | Prints a curl command that reproduces the request. Header and query values become environment variables. `--shell posix\|powershell` picks the quoting. For a capture exported from the app that went through its server proxy the address was not recorded, so the command reads `"$STREAM_URL"` and a comment says to set it. |
 | `repro <capture>` | Shrinks a capture to the smallest one that still reports a finding (`--finding <key>`, default the most severe), writes it redacted to `--output`, and can also write a matching scenario (`--scenario`, made from the whole capture you gave, not from the shrunken one: the scenario keeps all its events, its response and, for a stall, its silence limit) and a test template (`--test`). Stops after 3000 analyses and says if the result may not be minimal. |
 | `redact <capture>` | Writes a copy that is safe to share: `--output <file>`. |
 | `test <scenario.json>...` | Runs [scenario files](/guide/cli-ci). |
