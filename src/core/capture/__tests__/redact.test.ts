@@ -4,6 +4,7 @@ import { bytesToBase64 } from '../base64'
 import { newHeader, serializeCapture, type Capture } from '../format'
 import { importV1 } from '../importV1'
 import { redactCapture, scanResidual } from '../redact'
+import { looksLikeRandomToken } from '../secrets'
 import type { RedactedCapture } from '../redacted'
 import { connectionTexts, framesOf } from '../streamText'
 
@@ -168,6 +169,75 @@ describe('scanResidual', () => {
         const bytes = new TextEncoder().encode('data: {"id":"3f2b8c1e-9d4a-4e7b-8a21-5c6d7e8f9a0b","token":"[REDACTED_1]"}\n\n')
         input.records = [{ seq: 0, t: 0, conn: 0, kind: 'chunk', bytes: bytes.length, b64: bytesToBase64(bytes) }]
         expect(scanResidual(input)).toEqual([])
+    })
+})
+
+// Issue 78: a stream whose ids are structured (the public Wikimedia stream sends a JSON array of topics, partitions and offsets) printed one warning per
+// event, 462 for 468 events. A structured id is not a token, and what is still a token is reported once, with a count.
+describe('redactCapture: event id warnings', () => {
+    const captureOfIds = (ids: string[]): Capture => {
+        const bytes = new TextEncoder().encode(ids.map((id, i) => `id: ${id}\nevent: message\ndata: {"n":${i}}\n\n`).join(''))
+        return { header: newHeader({ kind: 'local-full', source: { kind: 'fixture' } }), records: [{ seq: 0, t: 0, conn: 0, kind: 'chunk', bytes: bytes.length, b64: bytesToBase64(bytes) }] }
+    }
+    const wikimediaId = (i: number): string => JSON.stringify([
+        { topic: 'eqiad.mediawiki.recentchange', partition: 0, offset: -1 },
+        { topic: 'codfw.mediawiki.recentchange', partition: 0, timestamp: 1794769472912 + i },
+    ])
+    const TOKENS = Array.from({ length: 50 }, (_, i) => {
+        const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+        let s = 'k' + i // a different, random-looking 32 character token each
+        for (let j = 0; s.length < 32; j++) s += alphabet[(i * 7919 + j * 104729 + j * j * 31) % alphabet.length]
+        return s
+    })
+
+    it('does not warn about 468 structured (Wikimedia style) ids, and the redacted capture is the same as the input', () => {
+        const ids = Array.from({ length: 468 }, (_, i) => wikimediaId(i))
+        const input = captureOfIds(ids)
+        const { capture, report } = redactCapture(input)
+        expect(report.idWarnings).toEqual([])
+        expect(report.residual).toEqual([])
+        expect(report.placeholders).toBe(0)
+        expect(framesOf(capture).map((f) => f.id)).toEqual(ids)
+    })
+
+    it('reports 50 genuinely random ids as ONE summary line that counts them, names the first position, and never shows an id', () => {
+        const { capture, report } = redactCapture(captureOfIds(TOKENS))
+        expect(report.idWarnings).toHaveLength(1)
+        expect(report.idWarnings[0]).toBe('50 event ids look like random tokens but match no known secret format, so they were kept; check them before sharing (first: event id #1)')
+        for (const t of TOKENS) expect(report.idWarnings.join('\n')).not.toContain(t)
+        expect(framesOf(capture).map((f) => f.id)).toEqual(TOKENS) // kept, as before: the redaction policy for a real token is unchanged
+    })
+
+    it('names the position of the first token among structured ids, and uses the singular for one', () => {
+        const ids = [wikimediaId(0), wikimediaId(1), TOKENS[3]!, wikimediaId(2)]
+        const { report } = redactCapture(captureOfIds(ids))
+        expect(report.idWarnings).toEqual(['1 event id looks like a random token but matches no known secret format, so it was kept; check it before sharing (event id #3)'])
+    })
+
+    it('counts every event whose id is a token, not the distinct ones, and says once that credential ids were replaced', () => {
+        const same = captureOfIds([TOKENS[0]!, TOKENS[0]!, TOKENS[0]!, `${JWT}`, `${JWT}`])
+        const { report } = redactCapture(same)
+        expect(report.idWarnings).toHaveLength(2)
+        expect(report.idWarnings[0]).toMatch(/^3 event ids look like random tokens .*\(first: event id #1\)$/)
+        expect(report.idWarnings[1]).toBe('2 event ids were credentials and were replaced; sequence checks on this stream cannot use ids (first: event id #4)')
+        expect(report.idWarnings.join('\n')).not.toContain(JWT)
+    })
+})
+
+describe('looksLikeRandomToken', () => {
+    it('does not fire on a structured value: JSON, or text with whitespace, quotes, braces, brackets or separators', () => {
+        for (const v of [
+            '[{"topic":"eqiad.mediawiki.recentchange","partition":0,"offset":-1}]',
+            '{"a":"b","c":12345678901234567890}',
+            'topic=eqiad.mediawiki.recentchange partition=0 offset=1794769472912',
+            '"q8Zr3kT9vB2mXc7LpW4nYd6HsJ1fGa5e"',
+            '[q8Zr3kT9vB2mXc7LpW4nYd6HsJ1fGa5e]',
+            'q8Zr3kT9vB2mXc7L,pW4nYd6HsJ1fGa5e',
+        ]) expect(looksLikeRandomToken(v), v).toBe(false)
+    })
+
+    it('still fires on a long base64, url-safe, hex or mixed token with no structure', () => {
+        for (const v of ['q8Zr3kT9vB2mXc7LpW4nYd6HsJ1fGa5e', 'q8Zr3kT9vB2mXc7LpW4nYd6HsJ1fGa5e+/9=', 'q8Zr3kT9vB2mXc7LpW4n-d6HsJ1fGa_e', '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08']) expect(looksLikeRandomToken(v), v).toBe(true)
     })
 })
 
