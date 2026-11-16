@@ -4,6 +4,16 @@ All notable changes are written here. The format follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Added
+
+- The command line's secret scrub recognises more encodings of a registered secret: hexadecimal (either case); a space written as `+` and `! ' ( ) * ~` percent-encoded (`URLSearchParams`, Python, PHP, Go, Java dialects); percent-encoded twice; JSON with `\uXXXX` escapes for non-ASCII characters and surrogate pairs, PHP's `\/` and Go's escapes for `<`, `>` and `&`; HTML entities; and base64 of the secret inside a larger base64 value at any alignment (a Basic header built by hand, `user:secret`) for secrets of 7 bytes or more. Text that merely resembles an encoding (a hash, `a+b`, `&amp;`, a JWT) is not altered. What is still not recognised is listed in the [CLI guide](docs/guide/cli.md#what-the-scrub-covers-and-what-it-does-not).
+- A secret written in two or more pieces to standard output or standard error is now caught.
+
+### Changed
+
+- Two secrets that overlap without one containing the other (`secret-AAAA`, `AAAA-tail99` in `secret-AAAA-tail99`) are now replaced together as one mask; before, a fragment of the second stayed. A mask is no longer scanned again, so a secret that is a piece of the mask cannot cut into it.
+- The end of a write to standard output or standard error that could be the start of a secret is held back until the next write or the end of the command (it is delayed, never changed); every other write goes out at once, as before.
+
 ## [2.0.1] - 2026-11-16
 
 A fixes-only release found by a production acceptance test of 2.0.0 (the app, the live site and the published `sse-doctor`). Nine issues, #75 to #83, each fixed test first; the web app already ran these fixes on the hosted demo, 2.0.1 puts them in the npm package and the tag.
