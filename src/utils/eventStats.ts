@@ -30,6 +30,17 @@ export function formatRate(perSecond: number): string {
     return `${perSecond.toFixed(1)} events/s`
 }
 
+/**
+ * The count in the event list header. The list keeps only the newest events (the in-memory cap) while the Doctor counts every
+ * event, so when the buffer has pushed events out the header says so instead of stopping at the cap as if that were the total.
+ */
+export function countLabel(shown: number, buffered: number | undefined, total: number | undefined): string {
+    if (buffered === undefined || total === undefined || total <= buffered) return `${shown} events captured`
+    const n = (v: number) => v.toLocaleString('en-US')
+    if (shown === buffered) return `newest ${n(shown)} of ${n(total)} events`
+    return `${n(shown)} of the newest ${n(buffered)} events (${n(total)} received)`
+}
+
 export interface TypeShare {
     type: string
     count: number

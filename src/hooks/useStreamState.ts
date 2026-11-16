@@ -26,6 +26,7 @@ import { useMultiStream } from './useMultiStream'
 import { useMockServer } from './useMockServer'
 import { useCorrelationTracker } from './useCorrelationTracker'
 import { usePatternDetector } from './usePatternDetector'
+import { readLastUrl, rememberLastUrl } from '../utils/lastUrl'
 
 import type { PerfContextValue } from '../context/PerfContext'
 import type { EventMessage } from '../types'
@@ -115,6 +116,7 @@ export function useStreamState({ capturePreview = false }: { capturePreview?: bo
     )
 
     const connect = useCallback((url: string, token?: string) => {
+        rememberLastUrl(url) // the address only: never the token, and never an address that carries a credential
         connectBase(url, token, true, useProxy)
     }, [connectBase, useProxy])
 
@@ -197,7 +199,8 @@ export function useStreamState({ capturePreview = false }: { capturePreview?: bo
 
 
     const [profileName, setProfileName] = useState('')
-    const [url, setUrl] = useState('')
+    // Starts with the address connected to last time (filled in, not connected: the person decides when to connect).
+    const [url, setUrl] = useState(readLastUrl)
     const [bearerToken, setBearerToken] = useState('')
 
     // The token is only stored when the user ticks "remember token"; credentials stay out of localStorage by default.

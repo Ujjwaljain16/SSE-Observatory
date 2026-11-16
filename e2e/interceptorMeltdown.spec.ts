@@ -30,7 +30,7 @@ test.describe('Interceptor Meltdown', () => {
         await page.getByTestId('search-input').fill('')
 
         // Events keep arriving while the broken interceptor is active
-        const count = async () => Number((await page.getByTestId('event-count').innerText()).match(/\d+/)![0])
+        const count = async () => Number((await page.getByTestId('event-count').innerText()).match(/\d[\d,]*/)![0].replace(/,/g, ''))
         const before = await count()
         await page.waitForTimeout(2500)
         expect(await count()).toBeGreaterThan(before)
