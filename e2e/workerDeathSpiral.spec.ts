@@ -10,7 +10,7 @@ test.describe('Worker Death Spiral', () => {
         await page.getByTestId('connect-button').click()
         await expect(page.getByTestId('event-row').first()).toBeVisible({ timeout: 10000 })
 
-        const count = async () => Number((await page.getByTestId('event-count').innerText()).match(/\d+/)![0])
+        const count = async () => Number((await page.getByTestId('event-count').innerText()).match(/\d[\d,]*/)![0].replace(/,/g, ''))
         await page.waitForTimeout(1500)
 
         // Kill the SharedWorker from outside, the way a crash or an extension would.

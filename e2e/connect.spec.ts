@@ -56,7 +56,7 @@ test.describe('SSE Observatory E2E', () => {
 
         // Poll instead of sleeping: on a cold dev server the filter worker takes a few seconds to compile, and the
         // count only reflects events once it is up, so a fixed 5 s sleep read 0 on slow runners.
-        const count = async () => Number((await page.getByTestId('event-count').innerText()).match(/(\d+)/)?.[1] ?? 0);
+        const count = async () => Number((await page.getByTestId('event-count').innerText()).match(/\d[\d,]*/)?.[0].replace(/,/g, '') ?? 0);
         await expect.poll(count, { timeout: 20000, intervals: [500] }).toBeGreaterThan(100);
     });
 
