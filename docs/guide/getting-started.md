@@ -23,6 +23,8 @@ Open `http://localhost:3001`. `npm run dev` starts the Vite UI and the local API
 
 If the address is not an event stream at all (a web page or a JSON endpoint answers instead), the connection stops after the first attempt and says so, for example "The address answers with text/html, not text/event-stream, so there is nothing to retry." The same message appears with the proxy on or off. A server that is down, or answers 5xx, is retried with a countdown.
 
+For assistive technology, a connection that **fails for good** (a refused address, HTTP 401/403/404, the retries used up) is announced at once as an alert. A **retry** ("Connection lost … Retrying in 5s (attempt 2)") is announced politely, once for each attempt: the seconds are shown but are not part of what a screen reader reads, so a countdown never makes it repeat itself. The same applies to each lane in Multi-Stream. This was checked by automated tests and by reading the accessibility tree; it has not been tried with a real screen reader.
+
 Leave **Use Server Proxy** on for endpoints that do not send CORS headers. Turn it off to connect straight from the browser (the endpoint must allow your origin).
 
 ## Try it with the test servers

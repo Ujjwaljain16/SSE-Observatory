@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Check, FlaskConical, X } from 'lucide-react'
 import type { Theme } from '../../types'
 import type { Observation } from '../../core/observe/observation'
@@ -14,6 +14,8 @@ interface Props {
     theme: Theme
     /** The library changed (a lab capture was saved), so the list should be read again. */
     onSaved: () => void
+    /** Start expanded, and load the lab at once (the empty Doctor opens it this way). */
+    defaultOpen?: boolean
 }
 
 interface Entry { id: string; family: string; title: string; description: string; expected: string[]; forbidden: string[]; healthyTwin: string | null; file: string; events: number; seconds: number; scale: number }
@@ -28,7 +30,7 @@ const FAMILY_NAMES: Record<string, string> = {
 const familyOf = (e: { family: string }) => FAMILY_NAMES[e.family] ?? e.family
 
 /** The built-in faulty streams, each with its healthy twin: what the Doctor says about a known fault, one click away, with no server. */
-export default function FailureLab({ theme, onSaved }: Props) {
+export default function FailureLab({ theme, onSaved, defaultOpen = false }: Props) {
     const dark = theme === 'dark'
     const muted = dark ? 'text-slate-300' : 'text-slate-700'
     const strong = dark ? 'text-white' : 'text-slate-900'
@@ -39,16 +41,20 @@ export default function FailureLab({ theme, onSaved }: Props) {
     const [loading, setLoading] = useState(false)
     const [shown, setShown] = useState<Shown | null>(null)
     const [notice, setNotice] = useState('')
+    const starting = useRef(false)
 
     const open = useCallback(async () => {
-        if (index || loading) return
+        if (index || loading || starting.current) return
+        starting.current = true
         setLoading(true)
         try {
             const res = await fetch(`${base()}lab/index.json`)
             if (!res.ok) throw new Error(`The lab could not be loaded (HTTP ${res.status}).`)
             setIndex((await res.json()) as Index)
-        } catch (err) { setError(err instanceof Error ? err.message : String(err)) } finally { setLoading(false) }
+        } catch (err) { setError(err instanceof Error ? err.message : String(err)) } finally { setLoading(false); starting.current = false }
     }, [index, loading])
+    // Opened from the start: the browser's own toggle event for an initially open <details> is not relied on to fire.
+    useEffect(() => { if (defaultOpen) void open() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
     const run = async (entry: Entry) => {
         setError(''); setNotice('')
@@ -81,7 +87,7 @@ export default function FailureLab({ theme, onSaved }: Props) {
     }, [index])
 
     return (
-        <details onToggle={(e) => { if ((e.target as HTMLDetailsElement).open) void open() }} data-testid="failure-lab" className={`rounded-lg border px-3 py-2 ${dark ? 'border-slate-700' : 'border-slate-200'}`}>
+        <details open={defaultOpen || undefined} onToggle={(e) => { if ((e.target as HTMLDetailsElement).open) void open() }} data-testid="failure-lab" className={`rounded-lg border px-3 py-2 ${dark ? 'border-slate-700' : 'border-slate-200'}`}>
             <summary className={`cursor-pointer text-sm font-semibold flex items-center gap-2 ${strong}`}><FlaskConical className="w-4 h-4" aria-hidden="true" /> Failure lab</summary>
             <div className="mt-3 space-y-4">
                 <p className={`text-sm ${muted}`}>

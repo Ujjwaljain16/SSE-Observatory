@@ -22,7 +22,10 @@ const FailureLab = lazy(() => import('./FailureLab'))
 interface Props {
     theme: Theme
     streamId: string
-    view: DoctorView
+    /** Absent when nothing is connected (the empty Doctor opens this tab for the Failure lab): there is no recording to save then. */
+    view?: DoctorView
+    /** Open the Failure lab straight away. */
+    labOpen?: boolean
 }
 
 /** A capture in the list: saved in the library, or opened from a file and not kept. */
@@ -37,7 +40,7 @@ interface Item {
     load: () => Promise<Capture | string>
 }
 
-export default function CapturesTab({ theme, streamId, view }: Props) {
+export default function CapturesTab({ theme, streamId, view, labOpen = false }: Props) {
     const dark = theme === 'dark'
     const muted = dark ? 'text-slate-300' : 'text-slate-700'
     const strong = dark ? 'text-white' : 'text-slate-900'
@@ -80,6 +83,7 @@ export default function CapturesTab({ theme, streamId, view }: Props) {
 
     const saveCurrent = async () => {
         setError(''); setNotice('')
+        if (!view) { setError('There is nothing recorded yet.'); return }
         const snapshot = captureOf(streamId, view.nowT, getProfile())
         if (!snapshot) { setError('There is nothing recorded yet.'); return }
         try {
@@ -139,11 +143,15 @@ export default function CapturesTab({ theme, streamId, view }: Props) {
             </p>
 
             <div className="flex flex-wrap items-end gap-3">
-                <label className={`text-sm ${strong}`}>
-                    <span className="block mb-1">Name for this recording</span>
-                    <input value={name} onChange={(e) => setName(e.target.value)} placeholder="optional" className={`${field} w-64`} data-testid="capture-name" />
-                </label>
-                <button type="button" onClick={() => void saveCurrent()} className={button} data-testid="capture-save"><Save className="w-4 h-4" aria-hidden="true" /> Save this recording</button>
+                {view && (
+                    <>
+                        <label className={`text-sm ${strong}`}>
+                            <span className="block mb-1">Name for this recording</span>
+                            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="optional" className={`${field} w-64`} data-testid="capture-name" />
+                        </label>
+                        <button type="button" onClick={() => void saveCurrent()} className={button} data-testid="capture-save"><Save className="w-4 h-4" aria-hidden="true" /> Save this recording</button>
+                    </>
+                )}
                 <button type="button" onClick={() => input.current?.click()} className={button} data-testid="capture-open"><FolderOpen className="w-4 h-4" aria-hidden="true" /> Open a file…</button>
                 <input ref={input} type="file" accept=".sse-capture,.sse-record,.json,.ndjson" className="sr-only" tabIndex={-1} aria-label="Capture file" data-testid="capture-file" onChange={(e) => { const f = e.target.files?.[0]; if (f) void openFile(f); e.target.value = '' }} />
             </div>
@@ -201,7 +209,7 @@ export default function CapturesTab({ theme, streamId, view }: Props) {
                 </section>
             )}
 
-            <Suspense fallback={null}><FailureLab theme={theme} onSaved={() => void refresh()} /></Suspense>
+            <Suspense fallback={null}><FailureLab theme={theme} defaultOpen={labOpen} onSaved={() => void refresh()} /></Suspense>
 
             <PrivacySettings theme={theme} count={saved.length} onChanged={() => void refresh()} />
         </section>

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Theme } from '../types'
 import type { StreamInstance } from '../hooks/useMultiStream'
+import { RetryMessage } from './RetryMessage'
 import { Plus, Trash2, Play, Square, Wifi, WifiOff, Circle } from 'lucide-react'
 
 interface StreamLaneManagerProps {
@@ -144,8 +145,13 @@ export const StreamLaneManager = ({
                                 <div className={`text-xs truncate ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                                     {stream.url}
                                 </div>
-                                {stream.error && (
-                                    <div className="text-xs text-red-400 truncate mt-0.5">{stream.error}</div>
+                                {/* A failure is an alert. A retry is a polite status in a region that is always there (so a change in it is
+                                    announced), with the countdown hidden from assistive technology: announced once per attempt. */}
+                                <div data-testid="lane-status" role="status" aria-live="polite" className="text-xs text-red-400 truncate mt-0.5 empty:hidden">
+                                    {stream.error && stream.retrying ? <RetryMessage message={stream.error} /> : null}
+                                </div>
+                                {stream.error && !stream.retrying && (
+                                    <div role="alert" className="text-xs text-red-400 truncate mt-0.5">{stream.error}</div>
                                 )}
                             </div>
 

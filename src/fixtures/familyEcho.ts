@@ -33,7 +33,7 @@ const routes: FixtureRoute[] = [
         id: 'f08-echo', family: 'F08', path: '/f08/echo', title: 'Echoes the credentials it was sent',
         description: 'Gives back the Authorization header, the cookie, the API key and the ?token= value in its payloads and comment, ?idtoken= as an event id, and a Set-Cookie header.',
         expectedFindings: ['security.credentials-in-metadata:url'], forbiddenFindings: ['stall.silent'], healthyTwin: 'h01', defaultN: 3,
-        testOnly: 'it exists to test redaction: it echoes whatever credentials the request carries, so a capture of it would be a capture of the request.',
+        testOnly: 'it exists to test redaction: it echoes whatever credentials the request carries, so a capture of it would be a capture of the request',
     },
 ]
 

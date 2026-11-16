@@ -8,6 +8,8 @@ All notable changes are written here. The format follows [Keep a Changelog](http
 
 - `report`, `redact` and `probe --out` printed one stderr warning per event whose id "looks like a random token" (462 lines for a 468-event capture of the public Wikimedia stream, whose ids are JSON arrays). An id with structure (JSON, or whitespace, quotes, braces, brackets, commas) is no longer taken for a token, and the ids that still are reported once, with a count and the first event.
 
+- A stream connected through the app's server proxy exported a curl command of `POST '/api/sse'`, a report and issue body with the same, and a scenario note that said the URL could not be parsed. These now say that the stream went through the app's proxy, that its address was not recorded because it may carry a secret, and to set `STREAM_URL` to the address given to the app; the curl command is `curl -N -H 'Accept: text/event-stream' "$STREAM_URL"`. Captures with a real URL (the command line's own) are unchanged.
+
 - A target that answers 200 with something that is not an event stream (a web page) is no longer retried for ever through the proxy. The proxy answers HTTP 415 with the target's content type instead of a retryable 502, and the client stops after one attempt with "The address answers with text/html, not text/event-stream, so there is nothing to retry." (#77)
 
 ## [2.0.0] - 2026-11-15

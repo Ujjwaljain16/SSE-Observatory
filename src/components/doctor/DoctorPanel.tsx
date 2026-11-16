@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
-import { Share2, Stethoscope } from 'lucide-react'
+import { FlaskConical, Share2, Stethoscope } from 'lucide-react'
 import type { Theme } from '../../types'
 import { useDoctorView } from '../../doctor/useDoctor'
 import { useUIContext } from '../../context/UIContext'
@@ -48,6 +48,8 @@ export default function DoctorPanel({ theme, streamId, title = 'Stream Doctor', 
     const view = useDoctorView(streamId)
     const [exporting, setExporting] = useState(false)
     const [tab, setTab] = useState('findings')
+    // The Failure lab, opened from the empty state: it needs no stream, so it is reachable before one is connected.
+    const [labShown, setLabShown] = useState(false)
     const { requestEventJump, jumpResult, url, setUrl, setUseProxy, setAppMode } = useUIContext()
     const { connect, disconnect } = useStreamContext()
     const showEvent = (seq: number) => requestEventJump(streamId, seq)
@@ -121,6 +123,25 @@ export default function DoctorPanel({ theme, streamId, title = 'Stream Doctor', 
                             ? 'Connect to a stream and its diagnosis appears here: how it connected, how bytes and events arrive, and what looks wrong.'
                             : 'Recording is switched off in this browser (localStorage "sse.recording" is "off"), so there is nothing to diagnose. Remove that setting and connect again.'}
                     </p>
+                    {ownsProfile && (
+                        <div className="space-y-3">
+                            <button
+                                type="button"
+                                onClick={() => setLabShown((s) => !s)}
+                                aria-expanded={labShown}
+                                data-testid="doctor-try-lab"
+                                className={`px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-2 ${dark ? 'bg-slate-700 text-slate-100 hover:bg-slate-600' : 'bg-slate-200 text-slate-900 hover:bg-slate-300'}`}
+                            >
+                                <FlaskConical className="w-4 h-4" aria-hidden="true" />
+                                {labShown ? 'Put the Failure lab away' : 'Try the Failure lab: known faulty streams and their healthy twins, no backend needed'}
+                            </button>
+                            {labShown && (
+                                <Suspense fallback={<p role="status" className={`text-sm ${muted}`}>Loading…</p>}>
+                                    <CapturesTab theme={theme} streamId={streamId} labOpen />
+                                </Suspense>
+                            )}
+                        </div>
+                    )}
                     {ownsProfile && (
                         <details>
                             <summary className={`cursor-pointer text-sm font-medium ${dark ? 'text-slate-100' : 'text-slate-900'}`}>Set up a profile before connecting</summary>

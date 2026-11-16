@@ -10,6 +10,7 @@ import type { Analysis } from '../../diagnostics/engine'
 import type { Evidence, Finding } from '../../diagnostics/finding'
 import { fmtMs } from '../../diagnostics/rules/util'
 import type { RedactedCapture } from '../redacted'
+import { PROXIED_CAPTURE_NOTE } from './proxied'
 import { buildReportModel, likely, type ReportModel } from './reportModel'
 import { sanitizeText } from '../../sanitize'
 
@@ -109,7 +110,7 @@ function renderMarkdown(m: ReportModel): string {
     }
 
     out.push('## Reproduce', '')
-    out.push('The command repeats the request. Header and query values are not in it: set these environment variables first.', '')
+    out.push(m.reproduce.viaProxy ? `${PROXIED_CAPTURE_NOTE} The command then reads the stream directly.` : 'The command repeats the request. Header and query values are not in it: set these environment variables first.', '')
     if (m.reproduce.variables.length > 0) out.push(m.reproduce.variables.map((v) => `- \`${v}\``).join('\n'), '')
     out.push('POSIX shell:', '', fenced(m.reproduce.posix, 'sh'), '', 'PowerShell:', '', fenced(m.reproduce.powershell, 'powershell'), '')
     return out.join('\n')
@@ -157,7 +158,7 @@ function renderIssue(m: ReportModel): string {
 
     out.push('### How to reproduce', '')
     out.push('Attach the redacted capture to this issue, then:', '', fenced('sse-doctor analyze <the attached .sse-capture>', 'sh'), '')
-    out.push('To repeat the request itself (header and query values are not in it; set these environment variables first):', '')
+    out.push(m.reproduce.viaProxy ? `${PROXIED_CAPTURE_NOTE} The command then reads the stream directly:` : 'To repeat the request itself (header and query values are not in it; set these environment variables first):', '')
     if (m.reproduce.variables.length > 0) out.push(m.reproduce.variables.map((v) => `- \`${v}\``).join('\n'), '')
     out.push(fenced(m.reproduce.posix, 'sh'), '')
 
@@ -264,7 +265,7 @@ function renderHtml(m: ReportModel): string {
         out.push('</ol>')
     }
 
-    out.push('<h2>Reproduce</h2>', '<p>The command repeats the request. Header and query values are not in it: set these environment variables first.</p>')
+    out.push('<h2>Reproduce</h2>', `<p>${m.reproduce.viaProxy ? `${esc(PROXIED_CAPTURE_NOTE)} The command then reads the stream directly.` : 'The command repeats the request. Header and query values are not in it: set these environment variables first.'}</p>`)
     if (m.reproduce.variables.length > 0) out.push('<ul>', ...m.reproduce.variables.map((v) => `<li><code>${esc(v)}</code></li>`), '</ul>')
     out.push('<h4>POSIX shell</h4>', `<pre>${esc(m.reproduce.posix)}</pre>`, '<h4>PowerShell</h4>', `<pre>${esc(m.reproduce.powershell)}</pre>`)
     out.push('</main>', '</body>', '</html>')

@@ -142,11 +142,11 @@ At the bottom of the Captures tab: what is kept where (the live recording in thi
 
 ### Failure lab
 
-At the bottom of the Captures tab, **Failure lab** holds the built-in test streams: each a known fault (a wrong content type, a stream that goes silent, one that buffers, a reconnect that skips events, a payload that changes format) with its healthy twin. **Run the Doctor** reads the stream's recording with the app's own thresholds and shows what it found next to what the stream's author said it must: each expected finding with a tick or a cross, and each "must not appear" the same way. **Show its healthy twin** does the same for the stream that behaves, and **Save to my captures** puts the recording in your library so you can compare it with another.
+With nothing connected, the Doctor panel shows **Try the Failure lab: known faulty streams and their healthy twins, no backend needed**: it opens the Captures tab with the lab already open, so a first visit can see the Doctor work before any stream exists (there is no recording to save then, so "Save this recording" is not shown). Once a stream is connected, the lab is at the bottom of the Captures tab. **Failure lab** holds the built-in test streams: each a known fault (a wrong content type, a stream that goes silent, one that buffers, a reconnect that skips events, a payload that changes format) with its healthy twin. **Run the Doctor** reads the stream's recording with the app's own thresholds and shows what it found next to what the stream's author said it must: each expected finding with a tick or a cross, and each "must not appear" the same way. **Show its healthy twin** does the same for the stream that behaves, and **Save to my captures** puts the recording in your library so you can compare it with another.
 
 It needs no server: the recordings are static files that ship with the app (`public/lab`), fetched when you open the lab. A test (`labCaptures.test.ts`) re-reads every one with the current rules and fails if any no longer shows what it should, so the lab cannot drift from what the Doctor does; if a rule changes, rebuild it with `npm run lab:build` (about two minutes: it records each fixture, mostly at a quarter of real speed and the detectors that need real-time gaps at full speed, and keeps a capture only when the Doctor meets the fixture's expectations under the default thresholds).
 
-Some fixtures are **not** in the lab, and the lab lists them with the reason: the ones that need something a plain recording does not have (the slow page consumer needs the page's own samples, one fault needs a token in the request, one needs a stall to be judged without a rhythm to compare with) and the ones too large to ship (the flood of 2,000 events, the cap test). Nothing is shown as working that does not.
+Some fixtures are **not** in the lab, and the lab lists them under **Not in the lab** with the reason, in words for the person using it: the ones that need something a plain recording does not have (the slow page consumer needs the page's own measurements, one fault needs a request that carries a token in its URL, one has no completed event so there is no rhythm to judge its silence against), the ones whose recording is over the 40 KB limit (the flood of 2,000 events, the cap test), and the test streams that are newer than the recordings in this version of the lab ("not in the lab yet": the lab was recorded before they were added, and rebuilding it re-records every capture, so they are added together with a rebuild). Nothing is shown as working that does not.
 
 ### Saved filters
 
@@ -194,7 +194,7 @@ file is made in your browser and saved to your computer; nothing is uploaded.
 | Report (Markdown, HTML or JSON) | the findings, the evidence and what could not be determined, ready for a ticket |
 | For an issue or pull request | a short body to paste: the verdict, the findings in a table, what was observed for the worst few, how to reproduce, and the full report folded away. Nothing is posted; you paste it. [Details](/guide/cli#team-reports) |
 | Capture to share | the recording as an `.sse-capture` file with secrets replaced, which the [command line](/guide/cli) can analyse and replay (a synthetic replay: ids, names, order, timing and body sizes are the recording's, the bodies are placeholders, see [Replaying a capture from the app](/guide/cli#replaying-a-capture-from-the-app-a-synthetic-replay)) |
-| curl command | repeats the request; header and query values are not in it, only the names of the environment variables to set |
+| curl command | repeats the request; header and query values are not in it, only the names of the environment variables to set. For a stream that went through the app's server proxy (**Use Server Proxy** on) the address was never recorded, because it may carry a secret: the command is `curl -N -H 'Accept: text/event-stream' "$STREAM_URL"` with a comment that says so, and you set `STREAM_URL` to the address you gave the app. The report's Reproduce section, the issue body and the scenario's note say the same |
 | Test scenario | a [scenario](/guide/cli-ci) made from this capture, so what you saw becomes a check that runs in CI |
 | Smallest capture | removes records until nothing more can go and a finding you pick still shows: the minimal case to attach to a bug |
 | Full local capture | the recording exactly as held in this tab. **It may contain secrets; keep it on your machine** |
@@ -227,7 +227,8 @@ capture is analysed again or reduced to its smallest form.
 The panel is built from native lists, headings and buttons. Each finding is a disclosure button that says whether it is
 open (`aria-expanded`), the parts inside it are headings in order, evidence chips are buttons, severity is written out as
 well as coloured, and a polite live region announces only changes of state (connection state and the counts of open
-errors and warnings), not the once-a-second figures. Automated checks (axe, WCAG A and AA), a keyboard-only run and a check
+errors and warnings), not the once-a-second figures. Buttons, links, inputs and tabs are at least 24 by 24 CSS pixels (WCAG 2.2, 2.5.8),
+checked at a 360 px width. Automated checks (axe, WCAG A and AA), a keyboard-only run and a check
 of the accessibility tree run on every change. A run with a real screen reader has not been done, so treat it as untested
 with one: reports are welcome.
 

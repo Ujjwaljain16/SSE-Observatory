@@ -34,7 +34,7 @@ export const ARTIFACTS: ArtifactChoice[] = [
     { kind: 'report-html', label: 'Report (HTML)', description: 'The same report as one self-contained page that makes no outside requests.', shareable: true },
     { kind: 'report-json', label: 'Report (JSON)', description: 'The same report as data, for other tools.', shareable: true },
     { kind: 'capture-shared', label: 'Capture to share (.sse-capture)', description: 'The recording with secrets replaced by numbered placeholders. Opens in the CLI and can be replayed.', shareable: true },
-    { kind: 'curl', label: 'curl command', description: 'Repeats the request. Header and query values are not in it; it names the environment variables to set.', shareable: true },
+    { kind: 'curl', label: 'curl command', description: 'Repeats the request. Header and query values are not in it; it names the environment variables to set. For a stream that went through the server proxy, the address is not recorded: set STREAM_URL to it.', shareable: true },
     { kind: 'scenario', label: 'Test scenario (JSON)', description: 'Turns what this capture showed into a test that sse-doctor can run in CI. Secrets come from environment variables.', shareable: true },
     { kind: 'repro', label: 'Smallest capture that still shows a finding', description: 'Removes records until nothing more can go and the chosen finding still appears. Redacted.', shareable: true },
     { kind: 'capture-local', label: 'Full local capture (.sse-capture)', description: 'The recording exactly as held in this tab. It may contain secrets. Keep it on this machine.', shareable: false },
