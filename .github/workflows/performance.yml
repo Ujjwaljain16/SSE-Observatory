@@ -1,0 +1,108 @@
+name: Performance
+
+# Two measurements that are too long, or too sensitive to the machine, for a pull request, run on a hosted Linux runner:
+#
+#   cpu   what the viewer costs at 500 events/s, in the whole browser (every Chromium process, the SharedWorker included) and on the main
+#         thread, with the Stream Doctor off, closed and open. This is the "under 2% CPU at 500 events/s" target, measured end to end.
+#   soak  a continuous stream for 30 minutes with the page's garbage collected every 30 s: the held heap, the DOM and the listener count
+#         must stay flat after a warm-up (e2e/soak.spec.ts).
+#
+# A hosted runner is a shared, noisy machine, and these figures are what it measured, not a promise about another one. The results are in
+# the run's summary and in the uploaded files. The soak is a gate (it fails on a leak); the CPU numbers are reported, not gated.
+on:
+  schedule:
+    - cron: '41 4 * * 0'
+  workflow_dispatch:
+    inputs:
+      soak_minutes:
+        description: 'Length of the soak, in minutes'
+        default: '30'
+      cpu_runs:
+        description: 'Runs of each CPU case (medians are reported)'
+        default: '5'
+  # Only to try the workflow itself on a branch: a short soak and few runs.
+  pull_request:
+    paths:
+      - '.github/workflows/performance.yml'
+      - 'scripts/bench.mjs'
+      - 'e2e/soak.spec.ts'
+
+permissions:
+  contents: read
+
+jobs:
+  cpu:
+    name: CPU at 500 events/s (whole browser and main thread)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Start the app and the stream server
+        run: |
+          nohup npm run dev > dev.log 2>&1 &
+          nohup npm run chaos > chaos.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:3001 > /dev/null && curl -s -o /dev/null http://localhost:4000/chaos-stream && break
+            sleep 2
+          done
+      - name: Measure
+        run: node scripts/bench.mjs --doctor all --runs "${{ github.event_name == 'pull_request' && '2' || github.event.inputs.cpu_runs || '5' }}" --out bench.json | tee bench.txt
+      - name: Summary
+        if: always()
+        run: |
+          echo '### CPU at 500 events/s (sustained scenario), hosted runner' >> "$GITHUB_STEP_SUMMARY"
+          echo '' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Whole-browser CPU is every Chromium process, as a percentage of one core. Main-thread busy is the page'"'"'s main thread only.' >> "$GITHUB_STEP_SUMMARY"
+          echo '' >> "$GITHUB_STEP_SUMMARY"
+          sed -n '/Doctor variants/,/^$/p' bench.txt | grep '^|' >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cpu-bench
+          path: |
+            bench.json
+            bench.txt
+            dev.log
+            chaos.log
+          if-no-files-found: ignore
+
+  soak:
+    name: Soak (held heap, DOM and listeners stay flat)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Soak
+        run: npm run test:soak
+        env:
+          SOAK_MINUTES: ${{ github.event_name == 'pull_request' && '3' || github.event.inputs.soak_minutes || '30' }}
+          SOAK_FREQ: '200'
+          SOAK_OUT: soak-result.json
+      - name: Summary
+        if: always()
+        run: |
+          echo '### Soak' >> "$GITHUB_STEP_SUMMARY"
+          echo '' >> "$GITHUB_STEP_SUMMARY"
+          if [ -f soak-result.json ]; then
+            node -e "const r=require('./soak-result.json').verdict; console.log('\`\`\`json\n'+JSON.stringify(r,null,2)+'\n\`\`\`')" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'No result file: the run did not reach the verdict.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: soak
+          path: soak-result.json
+          if-no-files-found: ignore
