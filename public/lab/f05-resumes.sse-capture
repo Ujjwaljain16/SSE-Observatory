@@ -1,25 +1,25 @@
-{"format":"sse-capture","version":"2.0","createdAt":"2026-11-14T18:44:35.818Z","tool":{"name":"sse-observatory","version":"dev"},"clock":{"origin":"monotonic"},"capabilities":["connect","response","chunks","comments","violations","events","phases","reconnects","payload"],"kind":"sanitized","source":{"kind":"fixture","client":"node-undici"},"request":{"url":"https://lab.example/f05-resumes","method":"GET","headers":{}},"redaction":{"policy":"default","version":1,"applied":[],"placeholders":0}}
-{"seq":0,"t":0.04090000000724103,"conn":0,"domain":"transport","kind":"phase","phase":"connecting","info":{"attempt":0}}
-{"seq":1,"t":0.1290000000008149,"conn":0,"domain":"transport","kind":"connect","attempt":0,"url":"http://127.0.0.1:59246/f05/resumes?scale=[redacted]","method":"GET","headerNames":["accept","cache-control"],"sentLastEventId":""}
-{"seq":2,"t":1.268000000010943,"conn":0,"domain":"transport","kind":"response","status":200,"contentType":"text/event-stream; charset=utf-8","redirected":false,"headers":{"content-type":"text/event-stream; charset=utf-8","cache-control":"no-cache","transfer-encoding":"chunked","x-accel-buffering":"no"},"ttfbMs":1}
-{"seq":3,"t":1.2836000000097556,"conn":0,"domain":"transport","kind":"phase","phase":"open","info":{"attempt":0}}
-{"seq":4,"t":154.6090000000113,"conn":0,"domain":"transport","kind":"chunk","bytes":33}
-{"seq":5,"t":154.72350000000733,"conn":0,"domain":"transport","kind":"event","event":"tick","sseId":"1","dataBytes":7,"dataHash":"e9a911f086420","extracted":{"shape":"$:o|n:n"}}
-{"seq":6,"t":315.0835000000079,"conn":0,"domain":"transport","kind":"chunk","bytes":33}
-{"seq":7,"t":315.18440000001283,"conn":0,"domain":"transport","kind":"event","event":"tick","sseId":"2","dataBytes":7,"dataHash":"d9acac101140","extracted":{"shape":"$:o|n:n"}}
-{"seq":8,"t":467.9460000000108,"conn":0,"domain":"transport","kind":"chunk","bytes":33}
-{"seq":9,"t":468.0478000000003,"conn":0,"domain":"transport","kind":"event","event":"tick","sseId":"3","dataBytes":7,"dataHash":"52abf8aa0e5eb","extracted":{"shape":"$:o|n:n"}}
-{"seq":10,"t":468.1658000000025,"conn":0,"domain":"transport","kind":"reconnect","attempt":1,"delayMs":20,"reason":"Stream closed by server","lastEventIdSent":"3"}
-{"seq":11,"t":468.1732000000047,"conn":0,"domain":"transport","kind":"phase","phase":"reconnecting","info":{"attempt":1,"delayMs":20,"reason":"Stream closed by server"}}
-{"seq":12,"t":489.09910000000673,"conn":1,"domain":"transport","kind":"connect","attempt":1,"url":"http://127.0.0.1:59246/f05/resumes?scale=[redacted]","method":"GET","headerNames":["accept","cache-control","last-event-id"],"sentLastEventId":"3"}
-{"seq":13,"t":492.0210000000079,"conn":1,"domain":"transport","kind":"response","status":200,"contentType":"text/event-stream; charset=utf-8","redirected":false,"headers":{"content-type":"text/event-stream; charset=utf-8","cache-control":"no-cache","transfer-encoding":"chunked","x-accel-buffering":"no"},"ttfbMs":3}
-{"seq":14,"t":492.0416000000114,"conn":1,"domain":"transport","kind":"phase","phase":"open","info":{"attempt":0}}
-{"seq":15,"t":696.5659000000014,"conn":1,"domain":"transport","kind":"chunk","bytes":33}
-{"seq":16,"t":696.6609000000026,"conn":1,"domain":"transport","kind":"event","event":"tick","sseId":"4","dataBytes":7,"dataHash":"cfd6832d406f7","extracted":{"shape":"$:o|n:n"}}
-{"seq":17,"t":898.2668000000122,"conn":1,"domain":"transport","kind":"chunk","bytes":33}
-{"seq":18,"t":898.3649000000005,"conn":1,"domain":"transport","kind":"event","event":"tick","sseId":"5","dataBytes":7,"dataHash":"aee5fc47b534e","extracted":{"shape":"$:o|n:n"}}
-{"seq":19,"t":1107.3600000000006,"conn":1,"domain":"transport","kind":"chunk","bytes":56}
-{"seq":20,"t":1107.5261000000028,"conn":1,"domain":"transport","kind":"event","event":"tick","sseId":"6","dataBytes":7,"dataHash":"17601cc37384c3","extracted":{"shape":"$:o|n:n"}}
-{"seq":21,"t":1107.5562000000064,"conn":1,"domain":"transport","kind":"event","event":"end","sseId":"6","dataBytes":4,"dataHash":"2ca1c2da7e9a8"}
-{"seq":22,"t":1107.6684999999998,"conn":1,"domain":"transport","kind":"phase","phase":"ended","info":{"attempt":0,"reason":"The server ended the stream"}}
-{"footer":{"endReason":"stopped","counts":{"phase":5,"connect":2,"response":2,"chunk":6,"event":7,"reconnect":1},"endT":1107.6684999999998,"integrity":{"algorithm":"sha256","value":"0ce0c6f48747765591b32cfbb2911358969953258de55b8d3a22ed28696c9fc9"}}}
+{"format":"sse-capture","version":"2.0","createdAt":"2026-11-15T20:10:21.138Z","tool":{"name":"sse-observatory","version":"dev"},"clock":{"origin":"monotonic"},"capabilities":["connect","response","chunks","comments","violations","events","phases","reconnects","payload"],"kind":"sanitized","source":{"kind":"fixture","client":"node-undici"},"request":{"url":"https://lab.example/f05-resumes","method":"GET","headers":{}},"redaction":{"policy":"default","version":1,"applied":[],"placeholders":0}}
+{"seq":0,"t":0.03140000000712462,"conn":0,"domain":"transport","kind":"phase","phase":"connecting","info":{"attempt":0}}
+{"seq":1,"t":0.09140000000479631,"conn":0,"domain":"transport","kind":"connect","attempt":0,"url":"http://127.0.0.1:59480/f05/resumes?scale=[redacted]","method":"GET","headerNames":["accept","cache-control"],"sentLastEventId":""}
+{"seq":2,"t":1.9439000000129454,"conn":0,"domain":"transport","kind":"response","status":200,"contentType":"text/event-stream; charset=utf-8","redirected":false,"headers":{"content-type":"text/event-stream; charset=utf-8","cache-control":"no-cache","transfer-encoding":"chunked","x-accel-buffering":"no"},"ttfbMs":2}
+{"seq":3,"t":1.95240000000922,"conn":0,"domain":"transport","kind":"phase","phase":"open","info":{"attempt":0}}
+{"seq":4,"t":152.7488000000012,"conn":0,"domain":"transport","kind":"chunk","bytes":33}
+{"seq":5,"t":152.81470000000263,"conn":0,"domain":"transport","kind":"event","event":"tick","sseId":"1","dataBytes":7,"dataHash":"5d8ca1df20536","extracted":{"shape":"$:o|n:n"}}
+{"seq":6,"t":304.58330000001297,"conn":0,"domain":"transport","kind":"chunk","bytes":33}
+{"seq":7,"t":304.65580000000773,"conn":0,"domain":"transport","kind":"event","event":"tick","sseId":"2","dataBytes":7,"dataHash":"15c1f2eb337982","extracted":{"shape":"$:o|n:n"}}
+{"seq":8,"t":468.27870000000985,"conn":0,"domain":"transport","kind":"chunk","bytes":33}
+{"seq":9,"t":468.3613000000041,"conn":0,"domain":"transport","kind":"event","event":"tick","sseId":"3","dataBytes":7,"dataHash":"c8431f5226cbe","extracted":{"shape":"$:o|n:n"}}
+{"seq":10,"t":468.4496000000072,"conn":0,"domain":"transport","kind":"reconnect","attempt":1,"delayMs":20,"reason":"Stream closed by server","lastEventIdSent":"3"}
+{"seq":11,"t":468.45640000001004,"conn":0,"domain":"transport","kind":"phase","phase":"reconnecting","info":{"attempt":1,"delayMs":20,"reason":"Stream closed by server"}}
+{"seq":12,"t":498.82910000000265,"conn":1,"domain":"transport","kind":"connect","attempt":1,"url":"http://127.0.0.1:59480/f05/resumes?scale=[redacted]","method":"GET","headerNames":["accept","cache-control","last-event-id"],"sentLastEventId":"3"}
+{"seq":13,"t":499.7130000000034,"conn":1,"domain":"transport","kind":"response","status":200,"contentType":"text/event-stream; charset=utf-8","redirected":false,"headers":{"content-type":"text/event-stream; charset=utf-8","cache-control":"no-cache","transfer-encoding":"chunked","x-accel-buffering":"no"},"ttfbMs":1}
+{"seq":14,"t":499.72410000000673,"conn":1,"domain":"transport","kind":"phase","phase":"open","info":{"attempt":0}}
+{"seq":15,"t":701.7953000000125,"conn":1,"domain":"transport","kind":"chunk","bytes":33}
+{"seq":16,"t":701.8695000000007,"conn":1,"domain":"transport","kind":"event","event":"tick","sseId":"4","dataBytes":7,"dataHash":"5937764595420","extracted":{"shape":"$:o|n:n"}}
+{"seq":17,"t":902.9162000000069,"conn":1,"domain":"transport","kind":"chunk","bytes":33}
+{"seq":18,"t":902.9965000000084,"conn":1,"domain":"transport","kind":"event","event":"tick","sseId":"5","dataBytes":7,"dataHash":"12c273f51056d","extracted":{"shape":"$:o|n:n"}}
+{"seq":19,"t":1105.2783000000054,"conn":1,"domain":"transport","kind":"chunk","bytes":56}
+{"seq":20,"t":1105.3821000000025,"conn":1,"domain":"transport","kind":"event","event":"tick","sseId":"6","dataBytes":7,"dataHash":"1345d8a4f97bdd","extracted":{"shape":"$:o|n:n"}}
+{"seq":21,"t":1105.397800000006,"conn":1,"domain":"transport","kind":"event","event":"end","sseId":"6","dataBytes":4,"dataHash":"1c617e6dd1d0f1"}
+{"seq":22,"t":1105.462400000004,"conn":1,"domain":"transport","kind":"phase","phase":"ended","info":{"attempt":0,"reason":"The server ended the stream"}}
+{"footer":{"endReason":"stopped","counts":{"phase":5,"connect":2,"response":2,"chunk":6,"event":7,"reconnect":1},"endT":1105.462400000004,"integrity":{"algorithm":"sha256","value":"e609cac0a43d145380ba258e37bd224d334bdb7ad471487281b9ccc3bcae433d"}}}

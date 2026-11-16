@@ -32,6 +32,10 @@ const NOTE_KINDS: Array<[RegExp, string[]]> = [
     [/^burst (start|end)$/, ['event']],
     [/^previous heartbeat$/, ['comment', 'heartbeatSeries']],
     [/^heartbeat$/, ['comment', 'heartbeatSeries']],
+    [/^late heartbeat$/, ['comment', 'heartbeatSeries']],
+    // a number delivered twice under a declared sequence (seq.integrity:replay) points at the two events; a framing violation says which chunk it was in
+    [/^(first delivery|delivered again)$/, ['event']],
+    [/^chunk \d+$/, ['violation']],
     [/^BAD_CONTENT_TYPE$|^HTTP_STATUS_NOT_\d+$/, ['violation']],
     [/^response( headers)?$/, ['response']],
     [/^up_idle=\d+ ms$/, ['comment']],

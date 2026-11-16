@@ -118,7 +118,7 @@
       "healthyTwin": "h02",
       "file": "f04-silent.sse-capture",
       "events": 12,
-      "seconds": 12.1,
+      "seconds": 12,
       "scale": 0.25
     },
     {
@@ -183,7 +183,7 @@
       "healthyTwin": null,
       "file": "h02.sse-capture",
       "events": 1,
-      "seconds": 3,
+      "seconds": 3.1,
       "scale": 0.25
     },
     {
@@ -245,7 +245,7 @@
       "healthyTwin": null,
       "file": "f03-steady.sse-capture",
       "events": 61,
-      "seconds": 3.9,
+      "seconds": 4,
       "scale": 0.25
     },
     {
@@ -263,7 +263,7 @@
       "healthyTwin": "f05-resumes",
       "file": "f05-drops.sse-capture",
       "events": 13,
-      "seconds": 2.8,
+      "seconds": 2.9,
       "scale": 0.25
     },
     {
@@ -326,7 +326,7 @@
       "healthyTwin": null,
       "file": "f09-buffered.sse-capture",
       "events": 13,
-      "seconds": 0.9,
+      "seconds": 1,
       "scale": 0.25
     },
     {
@@ -341,7 +341,7 @@
       "healthyTwin": null,
       "file": "f09-healthy.sse-capture",
       "events": 13,
-      "seconds": 1,
+      "seconds": 0.9,
       "scale": 0.25
     },
     {
@@ -359,7 +359,7 @@
       "healthyTwin": "f11-steady",
       "file": "f11-drift.sse-capture",
       "events": 35,
-      "seconds": 0.6,
+      "seconds": 0.5,
       "scale": 0.25
     },
     {
@@ -374,7 +374,135 @@
       "healthyTwin": null,
       "file": "f11-steady.sse-capture",
       "events": 35,
-      "seconds": 0.6,
+      "seconds": 0.5,
+      "scale": 0.25
+    },
+    {
+      "id": "f05-ignores",
+      "family": "F05",
+      "title": "The server ignores Last-Event-ID after a drop",
+      "description": "One drop after half of the events; the next connection sends Last-Event-ID, is answered from the first event again and runs to the end.",
+      "expected": [
+        "resume.last-event-id:ignored",
+        "seq.integrity:replay"
+      ],
+      "forbidden": [
+        "stall.silent",
+        "reconnect.loop",
+        "seq.integrity:gap"
+      ],
+      "healthyTwin": "f05-resumes",
+      "file": "f05-ignores.sse-capture",
+      "events": 10,
+      "seconds": 1.1,
+      "scale": 0.25
+    },
+    {
+      "id": "h05-declared-idle",
+      "family": "H05",
+      "title": "Healthy: idle for 40 s between events, and said to be",
+      "description": "An event every 40 s with no heartbeats, on a stream whose profile says silences of up to 60 s are normal.",
+      "expected": [],
+      "forbidden": [
+        "*"
+      ],
+      "healthyTwin": null,
+      "file": "h05-declared-idle.sse-capture",
+      "events": 1,
+      "seconds": 3.1,
+      "scale": 0.25
+    },
+    {
+      "id": "h06-comments-only",
+      "family": "H06",
+      "title": "Healthy: comments only, then the end",
+      "description": "A comment line a second from the first byte, for N seconds, and then the end event. Nothing is dispatched as an event before it. With ?bare=1 the end event is left out and the server closes: the client treats that as a drop and reconnects every time, which reconnect.loop reports as an error (the contract here is for the default stream, not for ?bare=1).",
+      "expected": [],
+      "forbidden": [
+        "*"
+      ],
+      "healthyTwin": null,
+      "file": "h06-comments-only.sse-capture",
+      "events": 1,
+      "seconds": 1,
+      "scale": 0.25
+    },
+    {
+      "id": "f04-late-heartbeat",
+      "family": "F04",
+      "title": "A heartbeat arrives late",
+      "description": "An event, then heartbeat comments a second apart, then one four seconds after the one before it, then the rhythm returns.",
+      "expected": [
+        "heartbeat.late:origin"
+      ],
+      "forbidden": [
+        "stall.silent"
+      ],
+      "healthyTwin": "h06-comments-only",
+      "file": "f04-late-heartbeat.sse-capture",
+      "events": 2,
+      "seconds": 8.3,
+      "scale": 0.25
+    },
+    {
+      "id": "f11-slow-start",
+      "family": "F11",
+      "title": "Slow first byte and slow first event",
+      "description": "The headers come at once; the first byte 4 s later and the first event 7 s after that (?byteMs= and ?eventMs= change them).",
+      "expected": [
+        "timing.first-event:first-byte",
+        "timing.first-event:first-event"
+      ],
+      "forbidden": [
+        "stall.silent",
+        "proto"
+      ],
+      "healthyTwin": "h01",
+      "file": "f11-slow-start.sse-capture",
+      "events": 4,
+      "seconds": 14,
+      "scale": 1
+    },
+    {
+      "id": "f12-gzip-sync",
+      "family": "F12",
+      "title": "Compressed event stream",
+      "description": "A stream of ticks gzip-compressed with a sync flush after every event, with Content-Encoding: gzip.",
+      "expected": [
+        "proto.headers-hints:content-encoding"
+      ],
+      "forbidden": [
+        "stall.silent",
+        "proto.content-type",
+        "proto.framing"
+      ],
+      "healthyTwin": "h01",
+      "file": "f12-gzip-sync.sse-capture",
+      "events": 6,
+      "seconds": 1.3,
+      "scale": 0.25
+    },
+    {
+      "id": "f15-malformed",
+      "family": "F15",
+      "title": "Malformed framing, then good events",
+      "description": "A byte order mark, an unknown field, \"Data:\" in the wrong case, a NUL in an id, \"retry: x\" and a change of line endings, and then well-formed events.",
+      "expected": [
+        "proto.framing:BOM_STRIPPED",
+        "proto.framing:UNKNOWN_FIELD",
+        "proto.framing:WRONG_CASE_FIELD",
+        "proto.framing:NUL_IN_ID",
+        "proto.framing:INVALID_RETRY",
+        "proto.framing:MIXED_LINE_ENDINGS"
+      ],
+      "forbidden": [
+        "stall.silent",
+        "proto.content-type"
+      ],
+      "healthyTwin": "h03",
+      "file": "f15-malformed.sse-capture",
+      "events": 7,
+      "seconds": 0.4,
       "scale": 0.25
     }
   ],
@@ -383,7 +511,7 @@
       "id": "f02-closed",
       "family": "F02",
       "title": "Event never terminated, connection closed",
-      "reason": "its recording is 87 KB, over the 40 KB limit for the lab"
+      "reason": "its recording is 92 KB, over the 40 KB limit for the lab"
     },
     {
       "id": "f02-open",
@@ -422,52 +550,10 @@
       "reason": "it exists to test redaction: it echoes whatever credentials the request carries, so a capture of it would be a capture of the request"
     },
     {
-      "id": "f05-ignores",
-      "family": "F05",
-      "title": "The server ignores Last-Event-ID after a drop",
-      "reason": "this test stream is newer than the recordings in this version of the lab, so it is not in the lab yet"
-    },
-    {
-      "id": "h05-declared-idle",
-      "family": "H05",
-      "title": "Healthy: idle for 40 s between events, and said to be",
-      "reason": "this test stream is newer than the recordings in this version of the lab, so it is not in the lab yet"
-    },
-    {
-      "id": "h06-comments-only",
-      "family": "H06",
-      "title": "Healthy: comments only, then the end",
-      "reason": "this test stream is newer than the recordings in this version of the lab, so it is not in the lab yet"
-    },
-    {
-      "id": "f04-late-heartbeat",
-      "family": "F04",
-      "title": "A heartbeat arrives late",
-      "reason": "this test stream is newer than the recordings in this version of the lab, so it is not in the lab yet"
-    },
-    {
-      "id": "f11-slow-start",
-      "family": "F11",
-      "title": "Slow first byte and slow first event",
-      "reason": "this test stream is newer than the recordings in this version of the lab, so it is not in the lab yet"
-    },
-    {
-      "id": "f12-gzip-sync",
-      "family": "F12",
-      "title": "Compressed event stream",
-      "reason": "this test stream is newer than the recordings in this version of the lab, so it is not in the lab yet"
-    },
-    {
-      "id": "f15-malformed",
-      "family": "F15",
-      "title": "Malformed framing, then good events",
-      "reason": "this test stream is newer than the recordings in this version of the lab, so it is not in the lab yet"
-    },
-    {
       "id": "f16-rate",
       "family": "F16",
       "title": "Healthy: a constant rate",
-      "reason": "this test stream is newer than the recordings in this version of the lab, so it is not in the lab yet"
+      "reason": "its recording is 194 KB, over the 40 KB limit for the lab"
     }
   ]
 }
