@@ -250,6 +250,20 @@ Both figures above were measured on the October development build. For the relea
 
 The October table is **not reproduced exactly**: the burst stalls are about the same or milder, but with the panel open at 500 events/s the main thread was busier (91% against 74% with the Doctor off) and the p95 timer lateness doubled; the machine and the Chrome version differ, and the runs vary by about ten points, so this is a difference to look at, not a measured regression. A Node micro-benchmark of the per-record cost (`npm run perf:record-cost`, 200,000 records, median of 15 runs) gives **0.49 µs** to record an observation, **0.52 µs** for `engine.feed` with the 15 shipped rules, 0.41 µs per record for the worker-to-page `structuredClone` of a batch of 10, and **3.96 µs** per record for the Doctor's sync of 100 new records while 50,000 are held: **about 4.9 µs per record added by the Doctor, against the 13.3 µs that 2% of one core at 1,500 records a second allows**. The "about 13 microseconds" in the paragraph above was a first-run figure, not this warm one; this benchmark is Node, not the browser, its stream is steady and rule-light, and the sync figure is mostly the copy of the held records, so it grows with what is held. The "under 2% CPU at 500 events/s" target is still **not demonstrated end to end**.
 
+#### Measured in CI, end to end (2026-11-17)
+
+The `Performance` workflow ([run](https://github.com/Ujjwaljain16/SSE-Observatory/actions/runs/43900598839)) measures the production build in headless Chromium on a hosted Linux runner, medians of five runs, a sustained stream of about 500 events/s. "Whole browser" is the CPU time of every Chromium process, the SharedWorker included, as a percentage of one core (from the operating system's accounting); "main thread" is the page's main thread only.
+
+| Doctor | whole browser | main thread | timer late p95 |
+|---|---|---|---|
+| off (the viewer alone) | 176% (174 to 178) | 42% | 7 ms |
+| closed (the normal state) | 179% (178 to 180) | 43% | 6 ms |
+| open | 188% (185 to 188) | 49% | 7 ms |
+
+So the target is **not met**: the whole viewer uses about 1.8 cores at 500 events/s in this setup, which has no GPU (the rows are painted in software) and is not a user's machine, and the figure has not been split by process, so how much of it is painting is not known. What the Doctor itself adds is small but measurable: about 2.6 points of one core with the panel closed and about 11 points with it open, and 0.8 and 7 points of main thread. Closed, that is close to, and a little above, the 2% the target asked for. These are figures from one runner type, not a promise about another machine.
+
+Memory: a 90-minute soak at 200 events/s (the page's garbage collected before each sample) kept the DOM (about 1,620 nodes) and the listener count (about 270) flat, but the **held heap kept rising**, from 10.5 MB to 53.9 MB, about 0.43 MB a minute after the first five. It has not been shown to level off; it is tracked in [#100](https://github.com/Ujjwaljain16/SSE-Observatory/issues/100).
+
 Reproduce with `npm run bench` (add `-- --throttle 4` for the slow-CPU run, `-- --app http://localhost:3100` to target a production build). Numbers vary by machine and from run to run; the budget the pipeline is built around is: no main-thread stall longer than a few frames, flat memory, and the first row on screen almost immediately.
 
 ## 11. Key Engineering Decisions

@@ -39,7 +39,7 @@ Measured in the production build in Chrome with a forced garbage collection, for
 | recording on (default) | +90 to +97 MB | +22 to +30 MB | 0 to 128 ms in 9 s |
 | recording off | +47 to +48 MB | +12 to +20 MB | 0 ms |
 
-So recording keeps about 10 MB (the store's design cap) and adds about 45 MB of short-lived garbage at the peak of an extreme burst, which the browser reclaims. A 10-minute soak on a continuous stream stayed flat at 14 to 15 MB of page heap. The store evicts per-read detail first and says so (`truncated` records); it never grows past its cap.
+So recording keeps about 10 MB (the store's design cap) and adds about 45 MB of short-lived garbage at the peak of an extreme burst, which the browser reclaims. The store evicts per-read detail first and says so (`truncated` records), and its own size is capped. **A long soak is not flat, though:** over 90 minutes at 200 events/s, with the page's garbage collected before each sample, the DOM and the listener count stayed flat but the held page heap rose from 10.5 MB to 53.9 MB, about 0.43 MB a minute, and had not levelled off ([#100](https://github.com/Ujjwaljain16/SSE-Observatory/issues/100); the earlier "flat at 14 to 15 MB for 10 minutes" was measured without forcing a collection and is not comparable). Which structure grows is not known yet; a viewer left open for many hours should be expected to hold more memory over time.
 
 To turn recording off (the viewer is unaffected; the diagnostics then have nothing to read), run `localStorage.setItem('sse.recording', 'off')` in the page's console and reconnect. When several tabs share one connection, the tab that opens it decides for all of them.
 
@@ -78,4 +78,4 @@ Replaying an exported capture reproduces its timing, ids, event names, reconnect
 
 ## 13. Not tested yet
 
-The Doctor has automated accessibility checks (axe, WCAG A and AA), keyboard-only runs and checks of the accessibility tree, but **has not been used with a real screen reader**, on Mac Safari or on mobile Chrome. It has been run through Chromium locally and in CI on Chromium, Firefox and WebKit; the soak run on a long continuous stream is ten minutes, not an hour.
+The Doctor has automated accessibility checks (axe, WCAG A and AA), keyboard-only runs and checks of the accessibility tree, but **has not been used with a real screen reader**, on Mac Safari or on mobile Chrome. It has been run through Chromium locally and in CI on Chromium, Firefox and WebKit; the longest soak on a continuous stream is 90 minutes (see above for what it showed), not hours or days.

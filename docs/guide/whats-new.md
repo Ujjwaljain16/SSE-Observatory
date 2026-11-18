@@ -29,5 +29,6 @@ After the release, the deployed site is checked end to end with `npm run smoke:l
 ## Known limits
 
 - The command-line scrub does not detect every encoding of a secret. The [CLI guide](/guide/cli) lists what it covers and what it does not. Detection is not complete.
-- The "under 2% CPU at 500 events/s" target is not demonstrated; see the [measurements](https://github.com/Ujjwaljain16/SSE-Observatory#10-performance).
-- Not covered: a real screen reader, Safari and mobile, a real CDN or reverse proxy that buffers, the Vercel runtime beyond a smoke test, long soak runs and real network faults. See [Known limitations](/technical/limitations).
+- The "under 2% CPU at 500 events/s" target is **not met**: measured in CI the whole viewer uses about 1.8 cores at 500 events/s, of which the Doctor adds about 2.6 points with its panel closed; see the [measurements](https://github.com/Ujjwaljain16/SSE-Observatory#10-performance).
+- Over a 90-minute soak the page's held heap rose steadily (10.5 MB to 53.9 MB, about 0.43 MB a minute) while the DOM and listeners stayed flat; it has not been shown to level off ([#100](https://github.com/Ujjwaljain16/SSE-Observatory/issues/100)).
+- Not covered: a real screen reader, Safari and mobile, a real CDN or reverse proxy that buffers, the Vercel runtime beyond a smoke test, soaks longer than 90 minutes and real network faults. See [Known limitations](/technical/limitations).
