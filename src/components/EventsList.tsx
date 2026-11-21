@@ -12,6 +12,7 @@ import { prettyPayload, diffPayload } from '../utils/displayData'
 import { getParsedData } from '../utils/eventUtils'
 import { countLabel, formatRate, toRows, type EventRow } from '../utils/eventStats'
 import { shapeOf } from '../utils/jsonView'
+import { pruneSizeCache } from '../utils/pruneSizeCache'
 import { shownFor } from '../doctor/displayMapping'
 import { getProfile, subscribeProfile } from '../doctor/profileStore'
 
@@ -124,6 +125,11 @@ export const EventsList = memo(function EventsList({
         // event id, otherwise each row gets some other row's height (overlapping rows and gaps).
         getItemKey: (index) => (rows[index] ? rowKey(rows[index]!) : index),
     })
+
+    // The virtualizer never forgets a measured row; drop the ones that have left the list (see pruneSizeCache).
+    useEffect(() => {
+        pruneSizeCache(rowVirtualizer.itemSizeCache, rows.length, () => rows.map(rowKey))
+    }, [rows, rowVirtualizer])
 
     // The Doctor asked to see an event. It may be gone (the list keeps the latest 1000) or hidden by a filter.
     // A collapsed run counts: the event is one of the identical events the row stands for.
