@@ -102,10 +102,11 @@ jobs:
     name: Playwright (Firefox, WebKit)
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # Informational for now, like the Chromium job: the whole suite passes locally in both, this keeps it that way.
+    # Informational for now: Firefox and WebKit run the whole behavioural suite, and two phone-emulation projects (iPhone 14 on WebKit, Pixel 7 on
+    # Chromium) run e2e/mobile.spec.ts. Playwright's WebKit is not Safari, and emulation is not a phone.
     continue-on-error: true
     env:
-      E2E_BROWSERS: firefox,webkit
+      E2E_BROWSERS: firefox,webkit,mobile
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -113,9 +114,9 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps firefox webkit
+      - run: npx playwright install --with-deps firefox webkit chromium
       - run: npm run build:cli
-      - run: npx playwright test --project=firefox --project=webkit
+      - run: npx playwright test --project=firefox --project=webkit --project=mobile-iphone --project=mobile-pixel
       - uses: actions/upload-artifact@v4
         if: always()
         with:

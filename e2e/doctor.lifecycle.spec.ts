@@ -218,7 +218,8 @@ test.describe('G4: the Doctor leaves nothing behind', () => {
 })
 
 test.describe('G4: the browser agrees (Chrome\'s own counters)', () => {
-    test('event listeners and DOM nodes after twenty rounds are within 5% (+ a small constant) of before', async ({ page }) => {
+    test('event listeners and DOM nodes after twenty rounds are within 5% (+ a small constant) of before', async ({ page, browserName }) => {
+        test.skip(browserName !== 'chromium', 'the counters come from the Chrome DevTools protocol (Performance.getMetrics: JSEventListeners, Nodes); Firefox and WebKit have no equivalent')
         test.setTimeout(180_000)
         const before = fx.groundTruth.connections.length
         await page.goto('/')

@@ -109,7 +109,8 @@ test.describe('G1: a stream that behaves in a known way is diagnosed the way the
         expect(strip['Origin heartbeat']?.value).toMatch(/^every ~\d+ ms$/)
     })
 
-    test('headers and then nothing: stall.silent:no-bytes (with the silence the profile allows), and the strip has no byte to show', async ({ page }) => {
+    test('headers and then nothing: stall.silent:no-bytes (with the silence the profile allows), and the strip has no byte to show', async ({ page, browserName }) => {
+        test.skip(browserName !== 'chromium', 'Firefox and WebKit do not resolve fetch() on headers alone; the test below holds what they show instead')
         test.setTimeout(60_000)
         // With no byte there is no rhythm to compare with; the default allowance is 30 s, so the profile says 1.5 s.
         await page.addInitScript(() => localStorage.setItem('sse.doctor.profile', JSON.stringify({ expected: { maxSilenceMs: 1500 } })))
@@ -126,6 +127,29 @@ test.describe('G1: a stream that behaves in a known way is diagnosed the way the
         const strip = await healthStrip(page)
         expect(strip['Last byte']?.value).toBe('–')
         expect(strip['Last event']?.value).toBe('–')
+        expect(eventCountOf(strip)).toBe(0)
+    })
+
+    // A browser difference, not a product choice: Firefox and WebKit do not resolve fetch() until the first body byte (measured with a bare fetch against a
+    // server that sends headers and nothing else: it resolved at once in Chromium and in neither of the others). The page cannot know the headers arrived,
+    // so it stays on "Connecting..." and the Doctor reports what it can see: no response headers (rule timing.first-event, stage headers), which is
+    // true of what the page was told and not of the server.
+    test('headers and then nothing, in Firefox and WebKit: the page stays connecting, and the Doctor reports a slow response, not a silent stream', async ({ page, browserName }) => {
+        test.skip(browserName === 'chromium', 'Chromium resolves fetch() on the headers: the test above holds that case')
+        test.setTimeout(60_000)
+        const before = plain.connections.length
+        await page.goto('/')
+        await connectDirect(page, `${plain.url}/nothing`, { waitConnected: false })
+        await openDoctor(page)
+        await expect(page.locator('[data-finding-key="timing.first-event:headers"]')).toBeVisible({ timeout: 30_000 })
+        const mine = plain.connections.slice(before)
+        expect(mine).toHaveLength(1)
+        expect(mine[0]!.writes, 'the server wrote nothing after the headers').toBe(0)
+        expect(mine[0]!.closed).toBe(false)
+        expect(await findingKeys(page)).toEqual(['timing.first-event:headers'])
+        await expect(page.getByTestId('connection-status')).toContainText('Connecting')
+        const strip = await healthStrip(page)
+        expect(strip['Last byte']?.value).toBe('–')
         expect(eventCountOf(strip)).toBe(0)
     })
 })

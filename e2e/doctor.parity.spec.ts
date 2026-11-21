@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import { startFixtureServer, type FixtureServer } from '../src/fixtures/server'
 import { maskMeasured } from '../src/core/testing/normalise'
-import { connectDirect, download, findingKeys, framesOf, healthStrip, msSinceLastWrite, openDoctor } from './support/doctorKit'
+import { connectDirect, download, findingKeys, framesOf, healthStrip, isChromium, msSinceLastWrite, openDoctor } from './support/doctorKit'
 
 // G3: the same stream, once with the SharedWorker that owns connections by default and once with the same client running inside the page
 // (the fallback for browsers without SharedWorker, which an init script forces by making it undefined). The shared report (JSON) is taken
@@ -55,8 +55,9 @@ async function run(page: Page, mode: Mode, s: Scenario): Promise<Summary> {
     expect(await page.evaluate(() => typeof SharedWorker), `the page's SharedWorker in ${mode} mode`).toBe(mode === 'worker' ? 'function' : 'undefined')
     await connectDirect(page, fx.urlFor(s.route, s.query), { waitConnected: false })
     await openDoctor(page)
-    // The mode is real: a shared worker exists in the browser exactly when the worker is in use.
-    await expect.poll(() => sharedWorkerCount(page), { timeout: 10_000 }).toBe(mode === 'worker' ? 1 : 0)
+    // The mode is real: a shared worker exists in the browser exactly when the worker is in use. Only Chromium can list its workers (the DevTools
+    // protocol); in Firefox and WebKit the check above, that the page's SharedWorker is a function or undefined, is the whole of it.
+    if (isChromium(page)) await expect.poll(() => sharedWorkerCount(page), { timeout: 10_000 }).toBe(mode === 'worker' ? 1 : 0)
     await expect(page.locator(`[data-finding-key="${s.finding}"]`)).toBeVisible({ timeout: 60_000 })
 
     const conns = () => fx.groundTruth.connections.slice(before).filter((c) => c.route === s.route)

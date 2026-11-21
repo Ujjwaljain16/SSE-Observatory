@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 import { startFixtureServer, type FixtureServer } from '../src/fixtures/server'
-import { connectDirect, findingKeys, openDoctor, startPlainServer, STREAM_HEAD, type PlainServer } from './support/doctorKit'
+import { connectDirect, findingKeys, openDoctor, readClipboard, startPlainServer, STREAM_HEAD, writeClipboard, type PlainServer } from './support/doctorKit'
 
 // Q19 (decided): the live views show what was recorded, as received. They say so in one plain sentence, and a raw value is not copied to the
 // clipboard before a warning is confirmed. The stream below sends a token as an event id and another in the data, so a real secret-shaped
@@ -42,7 +42,7 @@ test.beforeAll(async () => {
 })
 test.afterAll(async () => { await plain.close(); await busy.close(); await fx.close() })
 
-const clipboard = (page: Page): Promise<string> => page.evaluate(() => navigator.clipboard.readText())
+const clipboard = (page: Page): Promise<string> => readClipboard(page)
 
 test.describe('Q19: raw values are labelled, and a copy of one asks first', () => {
     test('the label is on every live view that shows recorded values, and on the events list', async ({ page }) => {
@@ -78,14 +78,13 @@ test.describe('Q19: raw values are labelled, and a copy of one asks first', () =
         await expect(finding.getByLabel(/^Raw record /)).toBeVisible()
     })
 
-    test('Copy asks first: cancel and Escape copy nothing, Copy anyway puts exactly the value the server sent on the clipboard', async ({ page, context }) => {
+    test('Copy asks first: cancel and Escape copy nothing, Copy anyway puts exactly the value the server sent on the clipboard', async ({ page }) => {
         test.setTimeout(60_000)
-        await context.grantPermissions(['clipboard-read', 'clipboard-write'])
         await page.goto('/')
         await connectDirect(page, `${plain.url}/stream`)
         const row = page.getByTestId('event-row').first()
         await expect(row).toBeVisible({ timeout: 15_000 })
-        await page.evaluate((s) => navigator.clipboard.writeText(s), SENTINEL)
+        await writeClipboard(page, SENTINEL)
         expect(await clipboard(page)).toBe(SENTINEL)
 
         // The click only opens the warning.
@@ -124,15 +123,14 @@ test.describe('Q19: raw values are labelled, and a copy of one asks first', () =
 })
 
 test.describe('Q19: the warning survives a fast stream (found on the deployed site)', () => {
-    test('the warning stays open while events keep arriving, and Copy anyway copies the value that was clicked', async ({ page, context }) => {
+    test('the warning stays open while events keep arriving, and Copy anyway copies the value that was clicked', async ({ page }) => {
         test.setTimeout(60_000)
-        await context.grantPermissions(['clipboard-read', 'clipboard-write'])
         await page.goto('/')
         busyDelayMs = 400
         await connectDirect(page, `${busy.url}/stream`)
         const row = page.getByTestId('event-row').first()
         await expect(row).toBeVisible({ timeout: 15_000 })
-        await page.evaluate((s) => navigator.clipboard.writeText(s), SENTINEL)
+        await writeClipboard(page, SENTINEL)
         await row.getByRole('button', { name: 'Copy', exact: true }).click({ timeout: 20_000 })
         const dialog = page.getByRole('alertdialog', { name: 'Copy a raw value?' })
         await expect(dialog).toBeVisible()
