@@ -89,6 +89,9 @@ for (const combo of COMBOS) {
             await page.getByRole('button', { name: 'Save profile' }).click()
             await expect(page.getByRole('dialog', { name: 'Save profile' })).toBeVisible()
             await audit.state('save-profile form open', { walk: true })
+            // tabbing out of the form closes it (it floats over the proxy switch, which would be focused out of sight): the walk went on past it
+            await expect(page.getByRole('dialog', { name: 'Save profile' })).toHaveCount(0)
+            await page.getByRole('button', { name: 'Save profile' }).click()
             await page.getByLabel('Profile name').fill('local')
             await page.getByRole('dialog', { name: 'Save profile' }).getByRole('button', { name: 'Save' }).click()
             await expect(page.getByRole('button', { name: 'local', exact: true })).toBeVisible()
