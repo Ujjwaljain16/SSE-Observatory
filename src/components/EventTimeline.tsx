@@ -146,6 +146,16 @@ export const EventTimeline = ({ theme, events, currentEventIndex, onSeek, onDraw
         if (hoverIndex !== null) onSeek(hoverIndex)
     }, [hoverIndex, onSeek])
 
+    // The left of the strip is the oldest event and the right the newest, so Left goes to an older one (a higher index) and Right to a newer one.
+    const onKeyDown = useCallback((e: React.KeyboardEvent) => {
+        if (events.length === 0) return
+        const last = events.length - 1
+        const to = e.key === 'ArrowLeft' ? currentEventIndex + 1 : e.key === 'ArrowRight' ? currentEventIndex - 1 : e.key === 'Home' ? last : e.key === 'End' ? 0 : null
+        if (to === null) return
+        e.preventDefault()
+        onSeek(Math.max(0, Math.min(last, to)))
+    }, [events.length, currentEventIndex, onSeek])
+
     return (
         <div className={`
             fixed bottom-0 left-0 right-0 h-16
@@ -169,6 +179,9 @@ export const EventTimeline = ({ theme, events, currentEventIndex, onSeek, onDraw
                 aria-valuemin={0}
                 aria-valuemax={Math.max(0, events.length - 1)}
                 aria-valuenow={currentEventIndex}
+                aria-valuetext={events.length === 0 ? 'No events' : `Event ${currentEventIndex + 1} of ${events.length}, newest first`}
+                tabIndex={0}
+                onKeyDown={onKeyDown}
                 className="w-full h-full cursor-crosshair relative"
                 onMouseMove={handleMouseMove}
                 onMouseLeave={() => setIsHovering(false)}

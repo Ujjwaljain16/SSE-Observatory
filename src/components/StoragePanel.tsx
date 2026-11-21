@@ -38,7 +38,7 @@ export const StoragePanel = ({
 
     const btn = (tone: 'indigo' | 'neutral' | 'danger') => `flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
         tone === 'danger'
-            ? 'bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20'
+            ? isDark ? 'bg-red-500/10 text-red-300 hover:bg-red-500/20 border border-red-500/20' : 'bg-red-50 text-red-800 hover:bg-red-100 border border-red-300'
             : tone === 'indigo'
                 ? isDark ? 'bg-indigo-600/30 text-indigo-300 hover:bg-indigo-600/50 border border-indigo-600/30' : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200'
                 : isDark ? 'bg-slate-700 text-slate-300 hover:bg-slate-600 border border-slate-600' : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-300'
@@ -50,7 +50,7 @@ export const StoragePanel = ({
                 <Database className={`w-4 h-4 ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`} />
                 <span className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>Cold Storage</span>
                 {!idbAvailable && (
-                    <span className="flex items-center gap-1 text-xs text-amber-400 ml-auto">
+                    <span className={`flex items-center gap-1 text-xs ml-auto ${isDark ? 'text-amber-300' : 'text-amber-900'}`}>
                         <AlertTriangle className="w-3 h-3" />
                         RAM-only mode (IndexedDB unavailable)
                     </span>
@@ -90,14 +90,14 @@ export const StoragePanel = ({
                         onClick={() => run('load', async () => setLastLoaded(await onLoadHistory()))}
                         disabled={busy !== null || totalStoredCount === 0}
                         className={btn('indigo')}
-                        aria-label="Show the stored events in the viewer (newest first). Works offline." title="Show the stored events in the viewer (newest first). Works offline."
+                        title="Show the stored events in the viewer (newest first). Works offline."
                     >
                         <History className="w-3 h-3" />
                         {busy === 'load' ? 'Loading…' : lastLoaded !== null ? `Loaded ${lastLoaded.toLocaleString()} — reload` : 'Load history'}
                     </button>
 
                     <button onClick={() => run('export', onExportAll)} disabled={busy !== null || totalStoredCount === 0} className={btn('neutral')}
-                        aria-label="Download everything stored as a replayable .sse-record file" title="Download everything stored as a replayable .sse-record file">
+                        title="Download everything stored as a replayable .sse-record file">
                         <Download className="w-3 h-3" />
                         {busy === 'export' ? 'Exporting…' : 'Export all'}
                     </button>

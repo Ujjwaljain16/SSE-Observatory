@@ -33,7 +33,7 @@ export const Header = ({ theme, onToggleTheme }: HeaderProps) => {
                         `}>
                             SSE Observatory
                         </h1>
-                        <p className={`text-sm sm:text-base mt-1 flex items-center gap-2 ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
+                        <p className={`text-sm sm:text-base mt-1 flex items-center gap-2 ${theme === 'dark' ? 'text-slate-300' : 'text-slate-600'
                             }`}>
                             <span className="live-dot" />
                             Real-time event monitoring & debugging

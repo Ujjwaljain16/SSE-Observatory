@@ -13,6 +13,7 @@ import { loadCaptureText, MAX_OPEN_BYTES } from '../../doctor/loadCapture'
 import { getProfile } from '../../doctor/profileStore'
 import type { DoctorView } from '../../doctor/doctorSession'
 import { fmtBytes, fmtDuration } from './format'
+import { ScrollRegion } from './ScrollRegion'
 import { FindingCard } from './FindingCard'
 import PrivacySettings from './PrivacySettings'
 
@@ -163,7 +164,8 @@ export default function CapturesTab({ theme, streamId, view, labOpen = false }: 
                 <p className={`text-sm ${muted}`}>Nothing saved or opened yet.</p>
             ) : (
                 <div>
-                    <table className="w-full text-sm" data-testid="capture-list">
+                    <ScrollRegion label="Saved captures, a table that scrolls sideways">
+                        <table className="w-full text-sm" data-testid="capture-list">
                         <caption className={`text-left font-semibold mb-1 ${strong}`}>Captures</caption>
                         <thead>
                             <tr className={`text-left ${muted}`}>
@@ -186,6 +188,7 @@ export default function CapturesTab({ theme, streamId, view, labOpen = false }: 
                             ))}
                         </tbody>
                     </table>
+                    </ScrollRegion>
                     <div className="mt-2 flex items-center gap-3">
                         <button type="button" className={button} disabled={pair.length !== 2} onClick={() => void compare()} data-testid="capture-compare">Compare the two selected</button>
                         <span className={`text-sm ${muted}`}>{pair.length === 2 ? '' : 'Tick two captures to compare them.'}</span>

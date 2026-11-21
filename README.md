@@ -72,6 +72,7 @@ Export a report, a shareable capture, a curl command or a test scenario. Redacti
 - **Resilient transport:** one connection per URL shared across tabs through a SharedWorker; if the worker is missing or dies, the tab notices and carries on in the page.
 - **Stream Doctor:** fifteen rules over what the client observed (status and content type, framing, first-event timing, silences, bursts, reconnect loops, resume with `Last-Event-ID`, sequence gaps and duplicates, heartbeats, slow consumers, credentials in the request, proxy masking, clock jumps, payload format changes), each shown as facts, deductions and limits, with the records behind them.
 - **Capture, redact, replay, test:** `.sse-capture` files with redaction by numbered placeholders, a `sse-doctor` command line, and scenarios that turn a captured failure into a CI check.
+- **Accessibility:** every screen and state is checked by axe (WCAG 2.2 A and AA), the browser's accessibility tree and keyboard-only runs, in both themes at desktop and phone width; **no screen reader has been used in testing**, and [the accessibility page](https://sse-observatory.vercel.app/docs/guide/accessibility) has what is covered, the keyboard map and a manual screen reader checklist.
 
 ### The Stream Doctor
 

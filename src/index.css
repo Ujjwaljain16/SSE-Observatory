@@ -37,6 +37,15 @@
   --transition-bounce: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
 }
 
+/* What shows behind the page where the app's own background does not reach (the edges of a scrolling table, the overscroll): the colour of the theme,
+   not the browser's white. */
+html { background-color: #f8fafc; }
+/* Keyboard focus scrolls an element into view above the fixed strip along the bottom of the monitor (the timeline, the playback bar and the
+   performance badge), not under it: WCAG 2.2, focus not obscured. */
+html { scroll-padding-bottom: 8rem; }
+:focus { scroll-margin-bottom: 8rem; }
+html.dark { background-color: #020617; }
+
 body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -248,8 +257,14 @@ body {
   to { transform: translateY(0) scale(1); }
 }
 
+/* The reduced-motion preference: nothing moves or fades by itself (the page background drifts, the status dot pulses, panels slide in,
+   the connecting spinner turns) and the colour and size transitions are cut to an instant. */
 @media (prefers-reduced-motion: reduce) {
-  .animate-row-in, .animate-scale-in { animation: none; }
+  *, *::before, *::after {
+    animation: none !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 @keyframes scaleIn {

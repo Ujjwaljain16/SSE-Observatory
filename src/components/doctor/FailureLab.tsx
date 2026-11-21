@@ -95,6 +95,10 @@ export default function FailureLab({ theme, onSaved, defaultOpen = false }: Prop
                     what the Doctor says about a fault it was built to find, and whether it found what the stream's author said it should. Nothing here connects to a server.
                     Some were recorded at a quarter of real speed, so their timings are not real-time.
                 </p>
+                {/* The result appears below the list and focus stays on the button that asked for it: this says so in words. It is always in the page, so a change in it is announced. */}
+                <p role="status" aria-live="polite" className="sr-only" data-testid="lab-announce">
+                    {shown ? `The Doctor ran on ${shown.entry.id}: ${shown.check.ok ? 'it found what this stream was built to show' : 'it did not match what was expected'}, with ${shown.findings.length === 0 ? 'no findings' : `${shown.findings.length} finding${shown.findings.length === 1 ? '' : 's'}`}. The result is below the list.` : ''}
+                </p>
                 {loading && <p role="status" className={`text-sm ${muted}`}>Loading the lab…</p>}
                 {error && <p role="alert" className={`text-sm ${dark ? 'text-red-300' : 'text-red-800'}`} data-testid="lab-error">{error}</p>}
 

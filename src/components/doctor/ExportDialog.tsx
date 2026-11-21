@@ -143,7 +143,7 @@ export default function ExportDialog({ theme, streamId, findings, endT, onReplay
                                     {findings.map((f) => <option key={f.key} value={f.key}>{f.title}</option>)}
                                 </select>
                             </label>
-                            <button type="button" disabled={!findingKey} onClick={() => setReproFor(findingKey)} className="px-3 py-1.5 rounded-lg text-sm font-medium bg-teal-700 text-white hover:bg-teal-600 disabled:bg-slate-600">
+                            <button type="button" disabled={!findingKey} onClick={() => setReproFor(findingKey)} className="px-3 py-1.5 rounded-lg text-sm font-medium bg-teal-700 text-white hover:bg-teal-800 disabled:bg-slate-600">
                                 Find the smallest capture
                             </button>
                         </div>
@@ -183,7 +183,7 @@ export default function ExportDialog({ theme, streamId, findings, endT, onReplay
                                 <ul className={`list-disc pl-5 text-sm ${muted}`}>{prepared.notes.map((n, i) => <li key={i}>{n}</li>)}</ul>
                             )}
 
-                            <pre tabIndex={0} aria-label={`Preview of ${prepared.filename}`} className={`p-3 rounded-lg text-xs overflow-auto max-h-56 whitespace-pre-wrap break-all ${dark ? 'bg-slate-950 text-slate-200' : 'bg-slate-50 text-slate-800 border border-slate-200'}`}>
+                            <pre tabIndex={0} role="region" aria-label={`Preview of ${prepared.filename}`} className={`p-3 rounded-lg text-xs overflow-auto max-h-56 whitespace-pre-wrap break-all ${dark ? 'bg-slate-950 text-slate-200' : 'bg-slate-50 text-slate-800 border border-slate-200'}`}>
                                 {prepared.text.slice(0, PREVIEW_CHARS)}{prepared.text.length > PREVIEW_CHARS ? `\n… ${(prepared.text.length - PREVIEW_CHARS).toLocaleString()} more characters in the file` : ''}
                             </pre>
 
@@ -210,7 +210,7 @@ export default function ExportDialog({ theme, streamId, findings, endT, onReplay
                         disabled={!canDownload}
                         onClick={() => { if (prepared) downloadText(prepared.filename, prepared.text, prepared.mime) }}
                         data-testid="export-download"
-                        className="px-3 py-1.5 rounded-lg text-sm font-medium bg-teal-700 text-white hover:bg-teal-600 disabled:bg-slate-600 disabled:cursor-not-allowed flex items-center gap-2"
+                        className="px-3 py-1.5 rounded-lg text-sm font-medium bg-teal-700 text-white hover:bg-teal-800 disabled:bg-slate-600 disabled:cursor-not-allowed flex items-center gap-2"
                     >
                         <Download className="w-4 h-4" aria-hidden="true" /> Download
                     </button>

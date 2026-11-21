@@ -55,7 +55,7 @@ export const StreamLaneManager = ({
                     </p>
                 </div>
                 {streams.length > 0 && (
-                    <span className="ml-auto px-2 py-1 rounded-full text-xs font-bold bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                    <span className={`ml-auto px-2 py-1 rounded-full text-xs font-bold border ${isDark ? 'bg-blue-500/20 text-blue-300 border-blue-500/30' : 'bg-blue-100 text-blue-900 border-blue-300'}`}>
                         {streams.filter(s => s.connected).length}/{streams.length} live
                     </span>
                 )}
@@ -70,8 +70,8 @@ export const StreamLaneManager = ({
                     placeholder="Stream name (e.g. auth-service)"
                     aria-label="Stream name"
                     className={`flex-[1] px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 ${isDark
-                        ? 'bg-slate-700 border-slate-600 text-white placeholder-slate-500'
-                        : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400'
+                        ? 'bg-slate-700 border-slate-600 text-white placeholder-slate-400'
+                        : 'bg-white border-slate-300 text-slate-900 placeholder-slate-500'
                         }`}
                 />
                 <input
@@ -82,8 +82,8 @@ export const StreamLaneManager = ({
                     placeholder="https://api.example.com/stream"
                     aria-label="Stream URL"
                     className={`flex-[2] px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 ${isDark
-                        ? 'bg-slate-700 border-slate-600 text-white placeholder-slate-500'
-                        : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400'
+                        ? 'bg-slate-700 border-slate-600 text-white placeholder-slate-400'
+                        : 'bg-white border-slate-300 text-slate-900 placeholder-slate-500'
                         }`}
                 />
                 <input
@@ -95,8 +95,8 @@ export const StreamLaneManager = ({
                     placeholder="Bearer token (optional)"
                     aria-label="Bearer token (optional)"
                     className={`flex-[1] px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 ${isDark
-                        ? 'bg-slate-700 border-slate-600 text-white placeholder-slate-500'
-                        : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400'
+                        ? 'bg-slate-700 border-slate-600 text-white placeholder-slate-400'
+                        : 'bg-white border-slate-300 text-slate-900 placeholder-slate-500'
                         }`}
                 />
                 <button
@@ -147,11 +147,11 @@ export const StreamLaneManager = ({
                                 </div>
                                 {/* A failure is an alert. A retry is a polite status in a region that is always there (so a change in it is
                                     announced), with the countdown hidden from assistive technology: announced once per attempt. */}
-                                <div data-testid="lane-status" role="status" aria-live="polite" className="text-xs text-red-400 truncate mt-0.5 empty:hidden">
+                                <div data-testid="lane-status" role="status" aria-live="polite" className={`text-xs truncate mt-0.5 empty:hidden ${isDark ? 'text-red-300' : 'text-red-700'}`}>
                                     {stream.error && stream.retrying ? <RetryMessage message={stream.error} /> : null}
                                 </div>
                                 {stream.error && !stream.retrying && (
-                                    <div role="alert" className="text-xs text-red-400 truncate mt-0.5">{stream.error}</div>
+                                    <div role="alert" className={`text-xs truncate mt-0.5 ${isDark ? 'text-red-300' : 'text-red-700'}`}>{stream.error}</div>
                                 )}
                             </div>
 
@@ -165,7 +165,7 @@ export const StreamLaneManager = ({
                                 {stream.connected ? (
                                     <button
                                         onClick={() => onDisconnectStream(stream.id)}
-                                        className="p-1.5 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-all"
+                                        className={`p-1.5 rounded-lg bg-red-500/20 hover:bg-red-500/30 transition-all ${isDark ? 'text-red-300' : 'text-red-700'}`}
                                         aria-label="Disconnect" title="Disconnect"
                                     >
                                         <span key="disc-icon"><Square className="w-3.5 h-3.5" /></span>
@@ -194,7 +194,7 @@ export const StreamLaneManager = ({
                                 </button>
                                 <button
                                     onClick={() => onRemoveStream(stream.id)}
-                                    className="p-1.5 rounded-lg text-red-400/60 hover:text-red-400 hover:bg-red-500/10 transition-all"
+                                    className={`p-1.5 rounded-lg hover:bg-red-500/10 transition-all ${isDark ? 'text-red-400/60 hover:text-red-400' : 'text-red-700/70 hover:text-red-700'}`}
                                     aria-label="Remove stream" title="Remove stream"
                                 >
                                     <Trash2 className="w-3.5 h-3.5" />

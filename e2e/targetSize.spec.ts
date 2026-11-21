@@ -51,7 +51,7 @@ test.describe('Target size at 360 px', () => {
         await page.getByRole('button', { name: 'Save profile' }).click()
         await page.getByLabel('Profile name').fill('local')
         await page.getByRole('dialog', { name: 'Save profile' }).getByRole('button', { name: 'Save' }).click()
-        await expect(page.getByRole('tab', { name: 'local' })).toBeVisible()
+        await expect(page.getByRole('button', { name: 'local', exact: true })).toBeVisible()
         await connectDirect(page, `${base}/s`)
         await expect(page.getByTestId('event-row').first()).toBeVisible()
 

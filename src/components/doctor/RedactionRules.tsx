@@ -75,7 +75,7 @@ export default function RedactionRules({ theme, policy, onChange }: Props) {
                 )}
                 {saved && <p role="status" className={`text-sm ${dark ? 'text-emerald-300' : 'text-emerald-800'}`} data-testid="redaction-rules-saved">Saved. Exports use these rules from now on.</p>}
                 <div className="flex flex-wrap gap-2">
-                    <button type="button" onClick={apply} data-testid="redaction-rules-apply" className="px-3 py-1.5 rounded-lg text-sm font-medium bg-teal-700 text-white hover:bg-teal-600">Save rules</button>
+                    <button type="button" onClick={apply} data-testid="redaction-rules-apply" className="px-3 py-1.5 rounded-lg text-sm font-medium bg-teal-700 text-white hover:bg-teal-800">Save rules</button>
                     <button type="button" onClick={() => { setText(EXAMPLE); setErrors([]); setSaved(false) }} className={`px-3 py-1.5 rounded-lg text-sm ${dark ? 'bg-slate-700 text-slate-100 hover:bg-slate-600' : 'bg-slate-200 text-slate-900 hover:bg-slate-300'}`}>Insert an example</button>
                     <button type="button" onClick={clear} data-testid="redaction-rules-clear" className={`px-3 py-1.5 rounded-lg text-sm ${dark ? 'bg-slate-700 text-slate-100 hover:bg-slate-600' : 'bg-slate-200 text-slate-900 hover:bg-slate-300'}`}>Remove my rules</button>
                 </div>

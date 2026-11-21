@@ -29,7 +29,7 @@ describe('ProfileTabs', () => {
 
     it('loads a profile on tab click and disconnects first when connected', async () => {
         const p = setup({ connected: true })
-        await userEvent.click(screen.getByRole('tab', { name: 'B' }))
+        await userEvent.click(screen.getByRole('button', { name: 'B' }))
         expect(p.onLoadProfile).toHaveBeenCalledWith(profiles[1])
         expect(p.onDisconnect).toHaveBeenCalled()
     })

@@ -41,11 +41,11 @@ function EvidenceChip({ theme, streamId, seq, t, note, lookup, onShowEvent }: { 
                 {label} · {fmtDuration(t)}{note ? ` · ${note}` : ''}
             </button>
             {shown && record?.kind === 'event' && onShowEvent && (
-                <button type="button" onClick={() => onShowEvent(seq)} data-testid="show-event" className={`mr-1.5 mb-1 px-2 py-0.5 rounded text-xs ${dark ? 'bg-teal-800 text-white hover:bg-teal-700' : 'bg-teal-700 text-white hover:bg-teal-600'}`}>Show this event in the list</button>
+                <button type="button" onClick={() => onShowEvent(seq)} data-testid="show-event" className={`mr-1.5 mb-1 px-2 py-0.5 rounded text-xs ${dark ? 'bg-teal-800 text-white hover:bg-teal-700' : 'bg-teal-700 text-white hover:bg-teal-800'}`}>Show this event in the list</button>
             )}
             {shown && <RawValuesLabel theme={theme} className="mt-1" />}
             {shown && (
-                <pre id={id} tabIndex={0} aria-label={`Raw record ${seq}`} className={`block my-1 p-2 rounded text-xs overflow-auto max-h-48 ${dark ? 'bg-slate-900 text-slate-200' : 'bg-slate-50 text-slate-800 border border-slate-200'}`}>
+                <pre id={id} tabIndex={0} role="region" aria-label={`Raw record ${seq}`} className={`block my-1 p-2 rounded text-xs overflow-auto max-h-48 ${dark ? 'bg-slate-900 text-slate-200' : 'bg-slate-50 text-slate-800 border border-slate-200'}`}>
                     {record ? JSON.stringify(record, null, 2) : 'This record is no longer held: the recording keeps a bounded amount, and older detail is folded away first.'}
                 </pre>
             )}
@@ -137,6 +137,7 @@ export function FindingCard({ theme, streamId, finding, defaultOpen = false, sec
                                     <button type="button" onClick={() => void copy(finding.nextCheck!.command!)} className={`px-2 py-1 rounded text-xs flex items-center gap-1 ${dark ? 'bg-slate-700 text-slate-100 hover:bg-slate-600' : 'bg-slate-200 text-slate-900 hover:bg-slate-300'}`}>
                                         {copied ? <Check className="w-3 h-3" aria-hidden="true" /> : <Copy className="w-3 h-3" aria-hidden="true" />}{copied ? 'Copied' : 'Copy'}
                                     </button>
+                                    <span role="status" aria-live="polite" className="sr-only">{copied ? 'Copied the command to the clipboard.' : ''}</span>
                                 </div>
                             )}
                         </section>

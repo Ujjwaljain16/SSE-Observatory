@@ -8,6 +8,7 @@ import { addBookmark, deleteBookmark, listBookmarks, type Bookmark } from '../..
 import { keepOnMark } from '../../doctor/flightRecorder'
 import { RawValuesLabel } from '../RawValuesLabel'
 import { fmtDuration } from './format'
+import { ScrollRegion } from './ScrollRegion'
 
 interface Props {
     theme: Theme
@@ -82,7 +83,7 @@ export default function TimelineView({ theme, streamId, view }: Props) {
                 <p className={`text-sm ${muted}`}>Showing the latest {shown.length} of {timeline.connections.length} attempts.</p>
             )}
 
-            <div className="overflow-x-auto">
+            <div role="region" aria-label="Timeline chart, scrolls sideways" tabIndex={0} className="overflow-x-auto">
                 <svg role="img" aria-label={`Timeline of ${timeline.connections.length} connection attempt${timeline.connections.length === 1 ? '' : 's'} over ${fmtDuration(timeline.endT)}`} viewBox={`0 0 ${WIDTH} ${height}`} className="w-full min-w-[640px]" style={{ maxHeight: 560 }}>
                     {[0, 0.25, 0.5, 0.75, 1].map((f) => (
                         <g key={f}>
@@ -142,7 +143,8 @@ export default function TimelineView({ theme, streamId, view }: Props) {
                 <p className={`text-xs ${muted}`}>Bookmarks stay in this browser with this recording, appear on the timeline, and are copied when you save the recording to the library.</p>
             </section>
 
-            <table className="w-full text-sm" data-testid="timeline-table">
+            <ScrollRegion label="Connection attempts, a table that scrolls sideways">
+                <table className="w-full text-sm" data-testid="timeline-table">
                 <caption className="sr-only">Every connection attempt and what happened to it</caption>
                 <thead>
                     <tr className={`text-left ${muted}`}>
@@ -168,6 +170,7 @@ export default function TimelineView({ theme, streamId, view }: Props) {
                     ))}
                 </tbody>
             </table>
+            </ScrollRegion>
         </section>
     )
 }
