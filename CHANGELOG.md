@@ -19,8 +19,8 @@ All notable changes are written here. The format follows [Keep a Changelog](http
 
 ### Fixed
 
+- The event list no longer grows the page's memory on a long stream. Its virtualizer kept a measured row height for every event that was ever drawn and never dropped one, so the held heap rose about 0.43 MB a minute at 200 events/s (issue 100). It is now pruned of rows that left the list; a 30-minute soak with the fix is flat at about 18 MB (slope -0.001 MB/min). `scripts/perf/heap-diff.mjs` diffs two heap snapshots and says who holds what was added.
 - A byte order mark split across the first reads of a stream (cut anywhere by the network) is now reported as `BOM_STRIPPED` like one that arrives whole; it used to be dropped silently, so the note depended on where the stream was cut.
-
 - `reconnect.loop` said "N connections were opened" when some of the attempts were refused and never reached the server. It now says "N connection attempts were made (M answered)" when any got no response; the wording for answered connections is unchanged.
 
 ## [2.0.1] - 2026-11-16
