@@ -68,6 +68,77 @@ export async function download(page: Page): Promise<{ name: string; text: string
     return { name: file.suggestedFilename(), text: fs.readFileSync((await file.path())!, 'utf8') }
 }
 
+/** Chromium has the DevTools protocol and permissions the other engines do not; a test that needs them asks. */
+export const isChromium = (page: Page): boolean => page.context().browser()?.browserType().name() === 'chromium'
+
+/**
+ * The system clipboard, read from outside the page's own state. Chromium lets a test grant `clipboard-read` and read it back; Firefox and WebKit have
+ * no such permission (Playwright says "Unknown permission: clipboard-read"), so there the text is pasted with the keyboard into a scratch field and
+ * read from that: still the real clipboard, still not the page's own record of what it copied. The field is put inside an open dialog when there is
+ * one (a modal dialog keeps focus inside itself), and focus goes back to where it was.
+ */
+export const isWebkit = (page: Page): boolean => page.context().browser()?.browserType().name() === 'webkit'
+
+/**
+ * Call before the first navigation. In Playwright's WebKit the system clipboard cannot be read back (a paste into a field yields nothing, and the
+ * permission API does not exist), so there the page's navigator.clipboard.writeText is replaced by a recorder and the tests read what the page
+ * handed to the clipboard API: the only way the app writes the clipboard. Chromium and Firefox read the real clipboard and need no call.
+ */
+export async function trackClipboard(page: Page): Promise<void> {
+    if (!isWebkit(page)) return
+    await page.addInitScript(() => {
+        const spy = { text: '', calls: 0 }
+        ;(window as unknown as { __clipboardSpy: typeof spy }).__clipboardSpy = spy
+        const replacement = (t: string): Promise<void> => { spy.text = String(t); spy.calls++; return Promise.resolve() }
+        Object.defineProperty(Object.getPrototypeOf(navigator.clipboard), 'writeText', { value: replacement, configurable: true })
+    })
+}
+
+export async function readClipboard(page: Page): Promise<string> {
+    if (isWebkit(page)) return page.evaluate(() => (window as unknown as { __clipboardSpy: { text: string } }).__clipboardSpy.text)
+    if (isChromium(page)) return page.evaluate(() => navigator.clipboard.readText())
+    await page.evaluate(() => {
+        const field = document.createElement('textarea')
+        field.id = '__clipboard-probe'
+        field.setAttribute('aria-hidden', 'true')
+        field.style.cssText = 'position:fixed;left:0;top:0;width:8px;height:8px;opacity:0'
+        ;(document.querySelector('[role="alertdialog"], [role="dialog"]') ?? document.body).appendChild(field)
+        ;(window as unknown as { __clipboardFocus: Element | null }).__clipboardFocus = document.activeElement
+        field.focus()
+    })
+    await page.keyboard.press('ControlOrMeta+V')
+    const text = await page.locator('#__clipboard-probe').inputValue()
+    await page.evaluate(() => {
+        document.getElementById('__clipboard-probe')?.remove()
+        const was = (window as unknown as { __clipboardFocus: Element | null }).__clipboardFocus
+        if (was instanceof HTMLElement) was.focus()
+    })
+    return text
+}
+
+/** Puts text on the system clipboard the way a person does (select it, copy it), which works in every browser; Chromium also needs the permission granted. */
+export async function writeClipboard(page: Page, text: string): Promise<void> {
+    if (isWebkit(page)) { await page.evaluate((t) => { (window as unknown as { __clipboardSpy: { text: string } }).__clipboardSpy.text = t }, text); return }
+    if (isChromium(page)) await page.context().grantPermissions(['clipboard-read', 'clipboard-write']) // the others have no such permission
+    await page.evaluate((t) => {
+        const field = document.createElement('textarea')
+        field.id = '__clipboard-source'
+        field.setAttribute('aria-hidden', 'true')
+        field.style.cssText = 'position:fixed;left:0;top:0;width:8px;height:8px;opacity:0'
+        field.value = t
+        ;(window as unknown as { __clipboardFocus: Element | null }).__clipboardFocus = document.activeElement
+        ;(document.querySelector('[role="alertdialog"], [role="dialog"]') ?? document.body).appendChild(field)
+        field.focus()
+        field.select()
+    }, text)
+    await page.keyboard.press('ControlOrMeta+C')
+    await page.evaluate(() => {
+        document.getElementById('__clipboard-source')?.remove()
+        const was = (window as unknown as { __clipboardFocus: Element | null }).__clipboardFocus
+        if (was instanceof HTMLElement) was.focus()
+    })
+}
+
 /** A hand-rolled stream server for what the fixture routes do not do (a connection that sends nothing at all), with a log of its own. */
 export interface PlainServer { url: string; connections: Array<{ path: string; writes: number; closed: boolean }>; close(): Promise<void> }
 export async function startPlainServer(handler: (req: http.IncomingMessage, res: http.ServerResponse, log: { writes: number }) => void): Promise<PlainServer> {
