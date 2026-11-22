@@ -8,6 +8,7 @@ import { defineConfig, devices } from '@playwright/test';
 const HEAVY = /simultaneous network reconnects|stress test|high-speed event burst|30 second heavy stream|massive event bursts|burst stream of 20k|1MB\+ massive payloads|rapid event insertion/
 
 const MOBILE = '**/mobile.spec.ts'
+const SOAK = '**/soak.spec.ts'
 const browsers = (process.env['E2E_BROWSERS'] ?? '').split(',')
 
 export default defineConfig({
@@ -28,13 +29,13 @@ export default defineConfig({
     projects: [
         {
             name: 'chromium',
-            testIgnore: MOBILE,
+            testIgnore: [MOBILE, SOAK],
             use: { ...devices['Desktop Chrome'] },
         },
         // Opt in with E2E_BROWSERS=firefox,webkit,mobile (and `npx playwright install firefox webkit`); the default run is Chromium only.
         ...(['firefox', 'webkit'] as const)
             .filter((name) => browsers.includes(name))
-            .map((name) => ({ name, testIgnore: MOBILE, grepInvert: HEAVY, use: { ...devices[name === 'firefox' ? 'Desktop Firefox' : 'Desktop Safari'] } })),
+            .map((name) => ({ name, testIgnore: [MOBILE, SOAK], grepInvert: HEAVY, use: { ...devices[name === 'firefox' ? 'Desktop Firefox' : 'Desktop Safari'] } })),
         // Phone emulation (a phone-sized screen, a mobile user agent, touch): the iPhone 14 profile on Playwright's WebKit and the Pixel 7
         // profile on Chromium. They run the short mobile spec and nothing else; the desktop projects above never run that spec.
         ...(browsers.includes('mobile')

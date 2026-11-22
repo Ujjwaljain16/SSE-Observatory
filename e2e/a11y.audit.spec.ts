@@ -16,6 +16,9 @@ import { Audit, COMBOS, comboName, contrastOf, motionProblems, prepare, resizePr
 //
 // AXE EXCLUSIONS: none. No rule is disabled and no element is excluded from a scan.
 
+// Chromium only, as the accessibility guide says: the accessibility tree is read through the Chrome DevTools protocol, which Firefox and WebKit do not have.
+test.skip(({ browserName }) => browserName !== 'chromium', 'The audit reads the accessibility tree through the Chrome DevTools protocol')
+
 test.use({ actionTimeout: 20_000 }) // a step that cannot be done fails in seconds with what it was waiting for, not at the end of the test
 
 const RECORDING = JSON.stringify({ version: '1.0', events: Array.from({ length: 12 }, (_, i) => ({ id: String(i + 1), type: i % 4 === 0 ? 'alert' : 'message', data: JSON.stringify({ n: i + 1 }), deltaMs: 20 })) })
