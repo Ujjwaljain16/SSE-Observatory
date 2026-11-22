@@ -42,7 +42,7 @@ Run it with `npx playwright test e2e/a11y.audit.spec.ts` (Chromium). It writes w
 | Move between the Doctor's tabs | Left and Right arrow (the last wraps to the first), Home and End. The tab list is one tab stop: Tab leaves it for the panel |
 | Turn the proxy switch on or off | Space |
 | Step through the recorded events on the timeline strip at the bottom of the monitor | Tab to it; Left goes to an older event, Right to a newer one, Home to the oldest, End to the newest. The Previous Event and Next Event buttons do the same |
-| Close a dialog (export, copy warning), or the save-profile form | Escape. Focus goes back to the button that opened it |
+| Close a dialog (export, copy warning), or the save-profile form | Escape. Focus goes back to the button that opened it. The save-profile form also closes when Tab leaves it, because it floats over the controls after it |
 | Delete a saved profile | Press its delete button twice (the first press asks, "Delete?"; the question lapses after four seconds) |
 
 In a dialog, Tab and Shift+Tab stay inside it. The copy warning opens with focus on **Cancel**, the safe choice.
