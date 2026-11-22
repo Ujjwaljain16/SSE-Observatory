@@ -2,7 +2,7 @@ import { test, expect, type Page } from '@playwright/test'
 import { startFixtureServer, type FixtureServer } from '../src/fixtures/server'
 import { ARTIFACTS, type ArtifactKind } from '../src/doctor/artifacts'
 import { canaries, survivors, type Canary } from '../src/core/testing/canaries'
-import { connectDirect, download, findingKeys, framesOf, healthStrip, isChromium, openDoctor, readClipboard, startPlainServer, STREAM_HEAD, type PlainServer } from './support/doctorKit'
+import { connectDirect, download, findingKeys, framesOf, healthStrip, isChromium, openDoctor, readClipboard, startPlainServer, STREAM_HEAD, trackClipboard, type PlainServer } from './support/doctorKit'
 
 // G6 / E1 (the browser half): planted secrets (src/core/testing/canaries.ts) go in through the app's real inputs (the URL box, the bearer token box)
 // and through what a server sends (comments, ids, a Set-Cookie header), the Doctor is opened, every artifact is exported, and the file, the dialog's
@@ -211,7 +211,8 @@ for (const s of SCENARIOS) {
 test.describe('G6: what Copy puts on the clipboard', () => {
     test('is the command that is shown, and holds no secret', async ({ page, context }) => {
         test.setTimeout(90_000)
-        if (isChromium(page)) await context.grantPermissions(['clipboard-read', 'clipboard-write']) // Firefox and WebKit have no such permission: readClipboard pastes there
+        if (isChromium(page)) await context.grantPermissions(['clipboard-read', 'clipboard-write']) // Firefox and WebKit have no such permission: readClipboard pastes (Firefox) or reads the page's recorder (WebKit)
+        await trackClipboard(page)
         const before = fx.groundTruth.connections.length
         await page.goto('/')
         await connectDirect(page, fx.urlFor('f04-silent', { scale: 0.25, token: C['urlToken']!.value, api_key: C['urlApiKey']!.value }), { token: bearer() })

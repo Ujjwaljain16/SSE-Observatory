@@ -251,7 +251,7 @@ export const ConnectionPanel = ({
                     aria-label="Use server proxy"
                     onClick={() => onProxyToggle(!useProxy)}
                     className={`
-                        relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 focus:outline-none
+                        relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors duration-200 focus:outline-none
                         ${useProxy ? 'bg-sky-600' : (isDark ? 'bg-slate-700' : 'bg-slate-300')}
                     `}
                 >

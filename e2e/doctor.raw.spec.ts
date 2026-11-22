@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 import { startFixtureServer, type FixtureServer } from '../src/fixtures/server'
-import { connectDirect, findingKeys, openDoctor, readClipboard, startPlainServer, STREAM_HEAD, writeClipboard, type PlainServer } from './support/doctorKit'
+import { connectDirect, findingKeys, openDoctor, readClipboard, startPlainServer, STREAM_HEAD, trackClipboard, writeClipboard, type PlainServer } from './support/doctorKit'
 
 // Q19 (decided): the live views show what was recorded, as received. They say so in one plain sentence, and a raw value is not copied to the
 // clipboard before a warning is confirmed. The stream below sends a token as an event id and another in the data, so a real secret-shaped
@@ -80,6 +80,7 @@ test.describe('Q19: raw values are labelled, and a copy of one asks first', () =
 
     test('Copy asks first: cancel and Escape copy nothing, Copy anyway puts exactly the value the server sent on the clipboard', async ({ page }) => {
         test.setTimeout(60_000)
+        await trackClipboard(page)
         await page.goto('/')
         await connectDirect(page, `${plain.url}/stream`)
         const row = page.getByTestId('event-row').first()
@@ -125,8 +126,9 @@ test.describe('Q19: raw values are labelled, and a copy of one asks first', () =
 test.describe('Q19: the warning survives a fast stream (found on the deployed site)', () => {
     test('the warning stays open while events keep arriving, and Copy anyway copies the value that was clicked', async ({ page }) => {
         test.setTimeout(60_000)
+        await trackClipboard(page)
         await page.goto('/')
-        busyDelayMs = 400
+        busyDelayMs = 1000
         await connectDirect(page, `${busy.url}/stream`)
         const row = page.getByTestId('event-row').first()
         await expect(row).toBeVisible({ timeout: 15_000 })
