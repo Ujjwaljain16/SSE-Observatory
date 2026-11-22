@@ -5,7 +5,7 @@
   "license": "MIT",
   "author": "Ujjwaljain16",
   "keywords": ["sse", "server-sent-events", "debugging", "observability", "developer-tools", "streaming"],
-  "version": "2.0.1",
+  "version": "2.1.0",
   "type": "module",
   "repository": {
     "type": "git",

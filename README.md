@@ -11,7 +11,7 @@
   </p>
 </div>
 
-> **Version 2.0.1 (2026-11-16, fixes to the 2.0.0 Stream Doctor release of 2026-11-15).** Besides the live viewer, the app now says *why* a stream is stuck, late or losing events, with the evidence, and the `sse-doctor` command line turns a captured failure into a CI test. What changed, and what you may notice: [What's new in 2.0](https://sse-observatory.vercel.app/docs/guide/whats-new). How it was tested, and what was not: [the testing campaign](https://sse-observatory.vercel.app/docs/technical/testing-campaign).
+> **Version 2.1.0 (2026-11-23; the Stream Doctor arrived in 2.0.0 on 2026-11-15).** Besides the live viewer, the app now says *why* a stream is stuck, late or losing events, with the evidence, and the `sse-doctor` command line turns a captured failure into a CI test. What changed, and what you may notice: [What's new in 2.0](https://sse-observatory.vercel.app/docs/guide/whats-new). How it was tested, and what was not: [the testing campaign](https://sse-observatory.vercel.app/docs/technical/testing-campaign).
 
 ## 1. Overview of the Problem Solved
 
