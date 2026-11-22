@@ -245,7 +245,8 @@ export async function resizeProblems(page: Page, scope: string): Promise<string[
         if (!root) return [`${sel} is not on the page`]
         if (document.documentElement.scrollWidth > document.documentElement.clientWidth + 1) out.push(`the page scrolls sideways (${document.documentElement.scrollWidth} px in ${document.documentElement.clientWidth} px)`)
         const describe = (e: Element): string => `${e.tagName.toLowerCase()}${e.getAttribute('data-testid') ? `[${e.getAttribute('data-testid')}]` : ''} "${(e.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 40)}"`
-        const visible = (e: Element): boolean => { const r = e.getBoundingClientRect(); const cs = getComputedStyle(e); return r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none' }
+        // checkVisibility() also sees content-visibility: Chromium hides a closed <details>' content that way, and that content keeps a box on top of what follows.
+        const visible = (e: Element): boolean => { const r = e.getBoundingClientRect(); const cs = getComputedStyle(e); return r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none' && e.checkVisibility({ contentVisibilityAuto: true }) }
         const texty: Element[] = []
         for (const e of Array.from(root.querySelectorAll('*'))) {
             if (!visible(e)) continue

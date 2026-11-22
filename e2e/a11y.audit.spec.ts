@@ -446,6 +446,20 @@ test.describe('Reduced motion', () => {
 })
 
 test.describe('Text at 200%', () => {
+    // Chromium hides the content of a closed <details> with content-visibility, not display: none, so that content still has a box where it
+    // would be, on top of what follows. Only checkVisibility() says it is not shown. The check reported the closed Failure lab's text as
+    // overlapping the next heading (in CI's Chromium).
+    test('the resize check ignores the content of a closed disclosure, and still sees a real overlap', async ({ page }) => {
+        await page.setContent(`<main id="scope">
+            <details><summary>Lab</summary><p>The built-in test streams, each a known fault</p></details>
+            <h3>Privacy and retention</h3>
+            <div style="position: relative; height: 40px"><span>one piece of text</span><span style="position: absolute; left: 0; top: 0">another on top</span></div>
+        </main>`)
+        const found = await resizeProblems(page, '#scope')
+        expect(found.filter((f) => f.includes('built-in test streams')), found.join('\n')).toEqual([])
+        expect(found.some((f) => f.startsWith('overlap: span "one piece of text"')), found.join('\n')).toBe(true)
+    })
+
     for (const theme of ['light', 'dark'] as const) {
         test(`the Doctor and the export dialog are not cut off or overlapping at a 680 px viewport (200% of 1360), ${theme}`, async ({ page }) => {
             test.setTimeout(150_000)
