@@ -117,16 +117,16 @@ describe('probe through a fault proxy: a stream that stops without closing', () 
 })
 
 describe('probe through a fault proxy: refused after the first success', () => {
-    it('the port refuses after the first connection ends: the probe gives up after its retries (stopped: failed) and reports reconnect.loop as a WARNING, and exits 0 (pinned, see the comment)', async () => {
+    it('the port refuses after the first connection ends: the probe gives up after its retries (stopped: failed) and reports reconnect.loop as a WARNING, and exits 3: the stream was lost', async () => {
         const { url, proxy } = await through((i) => (i === 0 ? { thenRefuse: true } : {}), '/f05/drops?scale=0.02&per=3&n=12')
         const r = await probe(url, ['--duration', '10'])
         expect(r.notes[0]).toMatch(/Observed 3 events .*\(stopped: failed\)/)
         expect(r.keys).toEqual(['reconnect.loop'])
         expect(r.findings[0]!.severity).toBe('warning')
-        // PINNED, and questionable: the probe's client has given up on a refusing port, and the run still passes the gate, because the only finding is a warning (the 3 events
-        // of the first connection count as progress for R07, and 3 reconnects in a row is under the 5 that make it an error). The rule that turns 'failed with no finding' into exit 3
-        // does not apply (there is a finding). Whether a probe that ends 'failed' should ever exit 0 is a decision for the owner; this test fails the day it changes.
-        expect(r.code).toBe(EXIT.ok)
+        // The probe's client gave up on a refusing port. The only finding is a warning (the 3 events of the first connection count as progress for R07, and 3 reconnects in a
+        // row is under the 5 that make it an error), so the gate alone would pass it, and a CI job would pass on a stream that went away (issue 97). A probe that ends 'failed'
+        // exits 3 (could not run) unless a finding already failed the gate.
+        expect(r.code).toBe(EXIT.couldNotRun)
         expect(proxy.connections, 'only the first attempt ever reached the proxy').toBe(1)
         const loop = (JSON.parse(r.out) as { findings: Array<{ facts: Array<{ text: string }> }> }).findings[0]!
         expect(loop.facts[0]!.text).toMatch(/connection attempts were made .* 1 was answered/)

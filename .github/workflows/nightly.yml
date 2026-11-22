@@ -124,6 +124,8 @@ jobs:
     if: failure() && github.event_name == 'schedule'
     runs-on: ubuntu-latest
     steps:
-      - run: gh issue create --repo "$GITHUB_REPOSITORY" --title "Nightly failed ($(date -u +%F))" --body "A nightly job failed: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+      # A block scalar: a plain value with ": " in it is not valid YAML, and the whole workflow failed to load.
+      - run: |
+          gh issue create --repo "$GITHUB_REPOSITORY" --title "Nightly failed ($(date -u +%F))" --body "A nightly job failed: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

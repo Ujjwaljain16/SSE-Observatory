@@ -1,8 +1,15 @@
 # What's new in 2.0
 
-SSE Observatory 2.0 (2.0.0 released 2026-11-15; 2.0.1, a fixes-only release, 2026-11-16: see the [changelog](https://github.com/Ujjwaljain16/SSE-Observatory/blob/main/CHANGELOG.md)) keeps everything v1 did (the live viewer, the query language, multi-stream, interceptors, patterns, the mock server) and adds the part that answers the harder question: **why is this stream stuck, late or losing events?** The loop it is built around is **Inspect, Diagnose, Reproduce, Test, Monitor**, in the app and on the command line.
+SSE Observatory 2.0 (2.0.0 released 2026-11-15; 2.0.1, a fixes-only release, 2026-11-16; 2.1.0, 2026-11-23: see the [changelog](https://github.com/Ujjwaljain16/SSE-Observatory/blob/main/CHANGELOG.md)) keeps everything v1 did (the live viewer, the query language, multi-stream, interceptors, patterns, the mock server) and adds the part that answers the harder question: **why is this stream stuck, late or losing events?** The loop it is built around is **Inspect, Diagnose, Reproduce, Test, Monitor**, in the app and on the command line.
 
-## New
+## In 2.1
+
+- The command line's secret scrub recognises many more encodings of a secret (hex, the percent-encoding dialects, JSON and HTML escapes, base64 inside base64), and secrets written in pieces.
+- The event list no longer grows the page's memory on a long stream ([#100](https://github.com/Ujjwaljain16/SSE-Observatory/issues/100)).
+- An [accessibility audit](/guide/accessibility) of every screen and state, and the fixes it found. No screen reader was used in testing.
+- CPU and memory are measured in CI and written down as measured: the "under 2% CPU at 500 events/s" target is not met.
+
+## New in 2.0
 
 - **[Stream Doctor](/guide/stream-doctor)** in the app: a live health strip and findings that keep what was *observed* apart from what is only *inferred* ("Likely: ...", with the other explanations and a command to check next). Fifteen rules cover status and content type, framing, first-event timing, silences, bursts, reconnect loops, resume with `Last-Event-ID`, sequence gaps and duplicates, heartbeats, slow consumers, credentials in the request, proxy masking, clock jumps and payload format changes. "No findings" is never presented as proof of health, and a check that could not be judged says so.
 - **[The `sse-doctor` command line](/guide/cli)** (Node 20 or newer): `probe`, `analyze`, `report`, `compare`, `curl`, `redact`, `repro`, `test`, `replay`, `fixtures`, `validate`, `selftest` and `env-diff`, with exit codes for CI, JSON output that has [published schemas](https://sse-observatory.vercel.app/docs/schemas/sse-cli-output-1.json), and JUnit and Markdown output.
@@ -18,7 +25,7 @@ SSE Observatory 2.0 (2.0.0 released 2026-11-15; 2.0.1, a fixes-only release, 202
 - The command line **refuses** a redirect to another origin while credentials are attached (`--follow-redirects` opts in, and the credentials still never go to the other origin), refuses `--no-redact` together with secret options, and refuses a capture whose `seq` repeats or goes down or whose `t` goes backwards. [Why](/guide/cli).
 - `sse-doctor replay` replays a capture exported from the app as a labelled **synthetic** replay (placeholder bodies of the recorded size), never as byte-exact. A v1 recording replays with its original SSE id and event name, never its internal storage id.
 - The Timeline numbers rows by connection and shows the retry counter in its own column. The live views are labelled "Raw values — as received, not redacted." and copying a raw event value asks first.
-- The command line is **published to npm** as [`sse-doctor`](https://www.npmjs.com/package/sse-doctor) (2.0.1): `npx sse-doctor --help` (Node 20 or newer, no dependencies, 79 files, about 250 KB). From a checkout, `npm run build:cli` builds the same code. [How it is published](/technical/publishing).
+- The command line is **published to npm** as [`sse-doctor`](https://www.npmjs.com/package/sse-doctor) (2.1.0): `npx sse-doctor --help` (Node 20 or newer, no dependencies, 81 files, about 260 KB). From a checkout, `npm run build:cli` builds the same code. [How it is published](/technical/publishing).
 
 ## How it was tested
 
@@ -30,5 +37,5 @@ After the release, the deployed site is checked end to end with `npm run smoke:l
 
 - The command-line scrub does not detect every encoding of a secret. The [CLI guide](/guide/cli) lists what it covers and what it does not. Detection is not complete.
 - The "under 2% CPU at 500 events/s" target is **not met**: measured in CI the whole viewer uses about 1.8 cores at 500 events/s, of which the Doctor adds about 2.6 points with its panel closed; see the [measurements](https://github.com/Ujjwaljain16/SSE-Observatory#10-performance).
-- In 2.0.x the page's held heap rose steadily over a long stream (10.5 MB to 53.9 MB in 90 minutes at 200 events/s) because the event list kept a row-height cache entry for every event ever drawn ([#100](https://github.com/Ujjwaljain16/SSE-Observatory/issues/100)). That is fixed after 2.0.1; a 30-minute soak with the fix is flat at about 18 MB. A 90-minute run with the fix has not been done.
+- In 2.0.x the page's held heap rose steadily over a long stream (10.5 MB to 53.9 MB in 90 minutes at 200 events/s) because the event list kept a row-height cache entry for every event ever drawn ([#100](https://github.com/Ujjwaljain16/SSE-Observatory/issues/100)). That is fixed in 2.1.0; a 30-minute soak with the fix is flat at about 18 MB. A 90-minute run with the fix has not been done.
 - Not covered: a real screen reader, Safari and mobile, a real CDN or reverse proxy that buffers, the Vercel runtime beyond a smoke test, soaks longer than 90 minutes and real network faults. See [Known limitations](/technical/limitations).
