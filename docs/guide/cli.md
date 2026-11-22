@@ -48,7 +48,7 @@ A capture with no events, no recorded event sizes, or sizes too large to build b
 | 0 | passed |
 | 1 | an open finding at or above `--fail-on` |
 | 2 | wrong usage, or an input that is not a capture, or a capture whose records are invalid (see below); also `--no-redact` together with a secret option ([why](#no-redact-and-secrets)) |
-| 3 | could not run (file unreadable, or the server never answered: a probe that got no response exits 3 whatever `--fail-on` says; or a redirect to another origin was refused because credentials are attached, [see](#redirects-to-another-origin)) |
+| 3 | could not run (file unreadable, or the server never answered: a probe that got no response exits 3 whatever `--fail-on` says, and so does a probe whose client gave up (`stopped: failed`, for example a port that started refusing) unless a finding already failed it with 1; or a redirect to another origin was refused because credentials are attached, [see](#redirects-to-another-origin)) |
 | 4 | inconclusive: no check failed, but a scenario check could not be decided |
 | 130 | interrupted |
 

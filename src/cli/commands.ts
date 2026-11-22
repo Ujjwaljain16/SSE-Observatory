@@ -409,7 +409,8 @@ export async function probeCommand(io: CliIo, args: ParsedArgs, secrets: SecretR
     if (reason === 'interrupted') return EXIT.interrupted
     // A server that never answered is "could not run", whatever the findings and the gate say: a dead endpoint must not pass a gate set above its findings.
     if (!answered) return EXIT.couldNotRun
-    if (reason === 'failed' && code === EXIT.ok && a.findings.length === 0) return EXIT.couldNotRun
+    // The client gave up (refused, or out of retries): the stream was lost, so the probe must not pass, even when its only findings are under the gate.
+    if (reason === 'failed' && code === EXIT.ok) return EXIT.couldNotRun
     return code
 }
 

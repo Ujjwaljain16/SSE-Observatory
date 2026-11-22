@@ -18,6 +18,7 @@ All notable changes are written here. The format follows [Keep a Changelog](http
 
 ### Changed
 
+- `sse-doctor probe` exits 3 (could not run) when its client gave up (`stopped: failed`, for example a port that started refusing after the first connection), unless a finding already failed it with exit 1. Before, a probe whose only finding was a warning exited 0, so a CI job passed on a stream that went away (issue 97).
 - Two secrets that overlap without one containing the other (`secret-AAAA`, `AAAA-tail99` in `secret-AAAA-tail99`) are now replaced together as one mask; before, a fragment of the second stayed. A mask is no longer scanned again, so a secret that is a piece of the mask cannot cut into it.
 - The end of a write to standard output or standard error that could be the start of a secret is held back until the next write or the end of the command (it is delayed, never changed); every other write goes out at once, as before.
 
