@@ -126,14 +126,15 @@ export const QueryInput = ({ theme, query, onQueryChange, error }: QueryInputPro
                     value={query}
                     onChange={(e) => onQueryChange(e.target.value)}
                     placeholder='type == "message" AND data.value > 50'
+                    aria-label="Filter query"
                     className={`
                         w-full pl-12 pr-4 py-4 rounded-xl border-2 font-mono text-sm
                         focus:outline-none transition-all duration-300
                         ${error
                             ? 'border-red-500 focus:border-red-500 focus:ring-2 focus:ring-red-500/20 bg-red-500/5'
                             : isDark
-                                ? 'bg-slate-800/80 border-slate-600/50 text-white placeholder-slate-500 focus:border-sky-500 focus:bg-slate-800'
-                                : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:bg-white'
+                                ? 'bg-slate-800/80 border-slate-600/50 text-white placeholder-slate-400 focus:border-sky-500 focus:bg-slate-800'
+                                : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-500 focus:border-sky-500 focus:bg-white'
                         }
                     `}
                 />

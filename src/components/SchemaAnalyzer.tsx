@@ -38,14 +38,14 @@ export const SchemaAnalyzer = memo(function SchemaAnalyzer({ theme, schema, isAn
                     </div>
                 </div>
                 {isAnalyzing && (
-                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-500">
+                    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border ${isDark ? 'bg-blue-500/10 border-blue-500/20 text-blue-300' : 'bg-blue-50 border-blue-200 text-blue-800'}`}>
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
                         <span className="text-xs font-semibold">Analyzing...</span>
                     </div>
                 )}
             </div>
 
-            <div className="p-0 overflow-x-auto max-h-[400px] overflow-y-auto">
+            <div role="region" aria-label="Inferred schema fields, scrolls" tabIndex={0} className="p-0 overflow-x-auto max-h-[400px] overflow-y-auto">
                 {fields.length === 0 ? (
                     <div className="px-6 py-12 text-center">
                         <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
@@ -69,11 +69,11 @@ export const SchemaAnalyzer = memo(function SchemaAnalyzer({ theme, schema, isAn
                                 return (
                                     <tr key={path} className={`hover:bg-opacity-50 transition-colors ${isDark ? 'hover:bg-slate-700/30' : 'hover:bg-slate-50'}`}>
                                         <td className="px-5 py-3 font-mono text-xs">
-                                            <span className={`${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>
+                                            <span className={`${isDark ? 'text-emerald-400' : 'text-emerald-700'}`}>
                                                 {path}
                                             </span>
                                             {!isAlwaysPresent && (
-                                                <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded text-amber-500 bg-amber-500/10 border border-amber-500/20" title="This field is not present in all payloads">
+                                                <span className={`ml-2 text-[10px] px-1.5 py-0.5 rounded border ${isDark ? 'text-amber-300 bg-amber-500/10 border-amber-500/20' : 'text-amber-900 bg-amber-50 border-amber-300'}`} title="This field is not present in all payloads">
                                                     Optional
                                                 </span>
                                             )}
@@ -91,7 +91,7 @@ export const SchemaAnalyzer = memo(function SchemaAnalyzer({ theme, schema, isAn
                                                     </span>
                                                 ))}
                                                 {types.length > 1 && (
-                                                    <span className={`px-2 py-1 rounded-md text-[10px] border font-bold uppercase ${isDark ? 'bg-red-500/10 text-red-500 border-red-500/30' : 'bg-red-50 text-red-600 border-red-200'}`} title="Multiple types detected (potentially unstable schema)">
+                                                    <span className={`px-2 py-1 rounded-md text-[10px] border font-bold uppercase ${isDark ? 'bg-red-500/10 text-red-300 border-red-500/30' : 'bg-red-50 text-red-700 border-red-200'}`} title="Multiple types detected (potentially unstable schema)">
                                                         Mixed
                                                     </span>
                                                 )}

@@ -228,9 +228,11 @@ The panel is built from native lists, headings and buttons. Each finding is a di
 open (`aria-expanded`), the parts inside it are headings in order, evidence chips are buttons, severity is written out as
 well as coloured, and a polite live region announces only changes of state (connection state and the counts of open
 errors and warnings), not the once-a-second figures. Buttons, links, inputs and tabs are at least 24 by 24 CSS pixels (WCAG 2.2, 2.5.8),
-checked at a 360 px width. Automated checks (axe, WCAG A and AA), a keyboard-only run and a check
-of the accessibility tree run on every change. A run with a real screen reader has not been done, so treat it as untested
-with one: reports are welcome.
+checked at a 360 px width. Automated checks (axe, WCAG 2.2 A and AA, on every tab and state of the Doctor, in both themes at
+desktop and phone width), a keyboard-only run, modal focus, reduced motion, text at 200% and a check of the accessibility tree run
+on every change. A run with a real screen reader has not been done, so treat it as untested with one: reports are welcome.
+What is covered, the keyboard map, what is announced when, and a step-by-step checklist for NVDA, VoiceOver and TalkBack are on
+the [Accessibility page](/guide/accessibility).
 
 ## Good to know
 

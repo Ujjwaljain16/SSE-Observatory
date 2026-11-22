@@ -30,7 +30,7 @@ export function DoctorToggle({ theme, active, onToggle, streams }: Props) {
         >
             <Stethoscope className="w-4 h-4" aria-hidden="true" /> Doctor
             {count > 0 && (
-                <span data-testid="doctor-badge" data-kind={kind} className={`ml-0.5 px-1.5 py-0.5 rounded-full text-xs font-bold ${kind === 'error' ? 'bg-red-700 text-white' : 'bg-amber-600 text-white'}`}>
+                <span data-testid="doctor-badge" data-kind={kind} className={`ml-0.5 px-1.5 py-0.5 rounded-full text-xs font-bold ${kind === 'error' ? 'bg-red-700 text-white' : 'bg-amber-700 text-white'}`}>
                     {count}<span className="sr-only"> open {kind}{count === 1 ? '' : 's'}</span>
                 </span>
             )}

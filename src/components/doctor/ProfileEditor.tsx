@@ -190,7 +190,7 @@ export default function ProfileEditor({ theme }: Props) {
                 </fieldset>
 
                 <div className="flex flex-wrap gap-2">
-                    <button type="submit" data-testid="profile-save" className="px-3 py-1.5 rounded-lg text-sm font-medium bg-teal-700 text-white hover:bg-teal-600">Save profile</button>
+                    <button type="submit" data-testid="profile-save" className="px-3 py-1.5 rounded-lg text-sm font-medium bg-teal-700 text-white hover:bg-teal-800">Save profile</button>
                     <button type="button" onClick={() => save({})} className={`px-3 py-1.5 rounded-lg text-sm ${dark ? 'bg-slate-700 text-slate-100 hover:bg-slate-600' : 'bg-slate-200 text-slate-900 hover:bg-slate-300'}`}>Clear</button>
                 </div>
             </form>

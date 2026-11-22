@@ -91,7 +91,7 @@ export const CustomFilters = memo(function CustomFilters({
                         <>
                             <div className={`w-px h-8 ${isDark ? 'bg-slate-600' : 'bg-slate-300'}`} />
                             <div className="text-center">
-                                <div className="text-lg font-bold text-amber-400">
+                                <div className={`text-lg font-bold ${isDark ? 'text-amber-400' : 'text-amber-800'}`}>
                                     {filteredEventsLength}
                                 </div>
                                 <div className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>Filtered</div>
@@ -112,13 +112,14 @@ export const CustomFilters = memo(function CustomFilters({
                         value={newFilterField}
                         onChange={(e) => { setAddError(''); onNewFilterFieldChange(e.target.value) }}
                         placeholder="Field path (e.g. type, data.userId, data.status)"
+                        aria-label="Field path to filter by"
                         onKeyDown={(e) => e.key === 'Enter' && handleAddFilter()}
                         className={`
                             w-full pl-12 pr-4 py-3.5 rounded-xl border-2 text-sm font-medium
                             focus:outline-none transition-all duration-300
                             ${isDark
-                                ? 'bg-slate-800/80 border-slate-600/50 text-white placeholder-slate-500 focus:border-cyan-500 focus:bg-slate-800'
-                                : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400 focus:border-cyan-500 focus:bg-white'
+                                ? 'bg-slate-800/80 border-slate-600/50 text-white placeholder-slate-400 focus:border-cyan-500 focus:bg-slate-800'
+                                : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-500 focus:border-cyan-500 focus:bg-white'
                             }
                         `}
                     />
@@ -234,7 +235,7 @@ export const CustomFilters = memo(function CustomFilters({
                                                 text-xs px-3 py-1.5 rounded-lg font-semibold transition-all duration-300
                                                 hover:scale-105
                                                 ${isDark
-                                                    ? 'bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30'
+                                                    ? 'bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30'
                                                     : 'bg-red-50 hover:bg-red-100 text-red-600 border border-red-200'
                                                 }
                                             `}
@@ -256,12 +257,13 @@ export const CustomFilters = memo(function CustomFilters({
                                                 value={filter.regexPattern || ''}
                                                 onChange={(e) => setRegexPattern && setRegexPattern(filter.field, e.target.value)}
                                                 placeholder="^user-[0-9]+$"
+                                                aria-label={`Regular expression for ${filter.field}`}
                                                 className={`
                                                     w-full pl-9 pr-8 py-3 rounded-xl border-2 font-mono text-sm
                                                     focus:outline-none transition-all duration-300
                                                     ${isDark
-                                                        ? 'bg-slate-900/60 border-indigo-500/30 text-white placeholder-slate-500 focus:border-indigo-500 focus:bg-slate-900'
-                                                        : 'bg-white border-indigo-200 text-slate-900 placeholder-slate-400 focus:border-indigo-500'
+                                                        ? 'bg-slate-900/60 border-indigo-500/30 text-white placeholder-slate-400 focus:border-indigo-500 focus:bg-slate-900'
+                                                        : 'bg-white border-indigo-200 text-slate-900 placeholder-slate-500 focus:border-indigo-500'
                                                     }
                                                 `}
                                             />

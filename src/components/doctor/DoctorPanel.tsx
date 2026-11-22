@@ -98,7 +98,7 @@ export default function DoctorPanel({ theme, streamId, title = 'Stream Doctor', 
                     </button>
                 )}
             </div>
-            <div role="status" aria-live="polite" className="sr-only">{announcement}</div>
+            <div role="status" aria-live="polite" className="sr-only" data-testid="doctor-announce">{announcement}</div>
             {lastFlight && (
                 <p role="status" data-testid="flight-notice" className={`text-sm rounded-lg p-3 flex items-start gap-3 ${lastFlight.ok ? (dark ? 'bg-slate-800 text-slate-100' : 'bg-slate-100 text-slate-900') : (dark ? 'bg-amber-900/40 text-amber-100' : 'bg-amber-50 text-amber-900')}`}>
                     <span className="flex-1">{lastFlight.text}</span>

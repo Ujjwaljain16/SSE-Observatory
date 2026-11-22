@@ -95,7 +95,7 @@ export const MockServerPanel = ({
             </div>
 
             {uploadError && (
-                <div role="alert" className="mb-4 px-4 py-3 rounded-lg text-sm bg-red-500/10 border border-red-500/30 text-red-400">
+                <div role="alert" className={`mb-4 px-4 py-3 rounded-lg text-sm border ${isDark ? 'bg-red-500/10 border-red-500/30 text-red-300' : 'bg-red-50 border-red-300 text-red-800'}`}>
                     {uploadError}
                 </div>
             )}
@@ -112,7 +112,7 @@ export const MockServerPanel = ({
                                 ? 'bg-slate-800/50 text-slate-600 cursor-not-allowed'
                                 : isServerRunning
                                     ? 'bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-lg shadow-red-500/30 hover:scale-[1.02]'
-                                    : 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-lg shadow-emerald-500/30 hover:scale-[1.02]'
+                                    : 'bg-gradient-to-r from-emerald-700 to-emerald-800 text-white shadow-lg shadow-emerald-500/30 hover:scale-[1.02]'
                             }
                         `}
                     >
@@ -135,7 +135,7 @@ export const MockServerPanel = ({
                             onClick={onToggleLooping}
                             className={`flex-[1] py-2 rounded-lg border text-sm font-semibold flex items-center justify-center gap-2 transition-all
                                 ${isLooping
-                                    ? 'bg-indigo-500/20 border-indigo-500/50 text-indigo-400'
+                                    ? (isDark ? 'bg-indigo-500/20 border-indigo-500/50 text-indigo-300' : 'bg-indigo-100 border-indigo-400 text-indigo-900')
                                     : isDark ? 'bg-slate-800 border-slate-700 text-slate-400' : 'bg-white border-slate-300 text-slate-600'
                                 }
                             `}
@@ -192,7 +192,7 @@ export const MockServerPanel = ({
                     {isServerRunning && (
                         <div className="mt-4 flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
                             <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                            <span className="text-xs font-bold text-emerald-500">Replaying — session is private to this URL</span>
+                            <span className={`text-xs font-bold ${isDark ? 'text-emerald-400' : 'text-emerald-800'}`}>Replaying — session is private to this URL</span>
                         </div>
                     )}
                 </div>

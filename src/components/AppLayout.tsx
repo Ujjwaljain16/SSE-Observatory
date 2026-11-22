@@ -115,7 +115,7 @@ export function AppLayout() {
     return (
         <div className={`min-h-screen transition-colors duration-300 overflow-x-hidden pb-24 ${theme === 'dark' ? 'bg-animated' : 'bg-gradient-to-br from-slate-50 via-white to-slate-100'
             }`}>
-            <div className="container mx-auto px-4 py-8">
+            <main className="container mx-auto px-4 py-8">
                 <Header theme={theme} onToggleTheme={toggleTheme} />
 
                 {quotaError && (
@@ -276,10 +276,11 @@ export function AppLayout() {
                                             value={searchQuery}
                                             onChange={e => setSearchQuery(e.target.value)}
                                             placeholder="Search events... (text match)"
+                                            aria-label="Search events (text match)"
                                             data-testid="search-input"
                                             className={`w-full pl-10 pr-4 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 ${theme === 'dark'
-                                                ? 'bg-slate-700 border-slate-600 text-white placeholder-slate-500 focus:border-blue-500 focus:ring-blue-500/50'
-                                                : 'bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:ring-blue-500/50'
+                                                ? 'bg-slate-700 border-slate-600 text-white placeholder-slate-400 focus:border-blue-500 focus:ring-blue-500/50'
+                                                : 'bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-500 focus:border-blue-500 focus:ring-blue-500/50'
                                                 }`}
                                         />
                                     </div>
@@ -295,7 +296,7 @@ export function AppLayout() {
                                             Icon: AlertTriangle,
                                             active: showPatterns,
                                             onToggle: () => setShowPatterns(!showPatterns),
-                                            activeColor: activePatternAlerts.length > 0 ? 'bg-amber-500' : 'bg-amber-700',
+                                            activeColor: 'bg-amber-700',
                                         },
                                     ] as const).map(({ key, label, Icon, active, onToggle, activeColor }) => (
                                         <button
@@ -310,12 +311,12 @@ export function AppLayout() {
                                         >
                                             <Icon className="w-4 h-4" /> {label}
                                             {key === 'patterns' && activePatternAlerts.length > 0 && (
-                                                <span className="ml-0.5 px-1.5 py-0.5 rounded-full text-xs font-bold bg-white/20">
+                                                <span className="ml-0.5 px-1.5 py-0.5 rounded-full text-xs font-bold bg-black/25">
                                                     {activePatternAlerts.length}
                                                 </span>
                                             )}
                                             {key === 'stats' && traceCount > 0 && (
-                                                <span className="ml-0.5 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs font-bold bg-white/20">
+                                                <span className="ml-0.5 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs font-bold bg-black/25">
                                                     <GitBranch className="w-2.5 h-2.5" />{traceCount}
                                                 </span>
                                             )}
@@ -328,7 +329,7 @@ export function AppLayout() {
                                     <button
                                         onClick={() => setShowInterceptors(!showInterceptors)}
                                         className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${interceptors.some(i => i.enabled && i.compiledFn)
-                                            ? 'bg-amber-500 text-white'
+                                            ? 'bg-amber-700 text-white'
                                             : showInterceptors
                                                 ? 'bg-amber-700 text-white'
                                                 : theme === 'dark'
@@ -339,7 +340,7 @@ export function AppLayout() {
                                         <Zap className="w-4 h-4" />
                                         Interceptors
                                         {interceptors.length > 0 && (
-                                            <span className="ml-1 px-1.5 py-0.5 rounded-full text-xs font-bold bg-white/20">
+                                            <span className="ml-1 px-1.5 py-0.5 rounded-full text-xs font-bold bg-black/25">
                                                 {interceptors.length}
                                             </span>
                                         )}
@@ -393,7 +394,7 @@ export function AppLayout() {
                                             { label: 'Max Buffer', value: MAX_EVENTS },
                                         ].map(({ label, value }) => (
                                             <div key={label} className={`p-3 rounded-lg ${theme === 'dark' ? 'bg-slate-700' : 'bg-slate-100'}`}>
-                                                <div className={`text-sm ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>{label}</div>
+                                                <div className={`text-sm ${theme === 'dark' ? 'text-slate-300' : 'text-slate-600'}`}>{label}</div>
                                                 <div className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{value}</div>
                                             </div>
                                         ))}
@@ -502,7 +503,7 @@ export function AppLayout() {
                 )}
 
                 <Footer theme={theme} />
-            </div>
+            </main>
 
 
             {appMode === 'monitor' && (

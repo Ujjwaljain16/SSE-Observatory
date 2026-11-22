@@ -110,7 +110,7 @@ export const InterceptorEditor = ({
 
 
 
-                                <span className={`text-xs font-mono font-bold px-1.5 py-0.5 rounded ${isDark ? 'bg-slate-700 text-slate-400' : 'bg-slate-200 text-slate-600'}`}>
+                                <span className={`text-xs font-mono font-bold px-1.5 py-0.5 rounded ${isDark ? 'bg-slate-700 text-slate-300' : 'bg-slate-200 text-slate-700'}`}>
                                     #{index + 1}
                                 </span>
 
@@ -158,15 +158,15 @@ export const InterceptorEditor = ({
 
 
                                 {interceptor.compileError ? (
-                                    <span key={`compile-${interceptor.id}`} className="flex items-center gap-1 text-xs text-red-400">
+                                    <span key={`compile-${interceptor.id}`} className={`flex items-center gap-1 text-xs ${isDark ? 'text-red-300' : 'text-red-700'}`}>
                                         <AlertCircle className="w-3.5 h-3.5" /> Compile Error
                                     </span>
                                 ) : interceptor.lastError ? (
-                                    <span key={`runtime-${interceptor.id}`} className="flex items-center gap-1 text-xs text-amber-400">
+                                    <span key={`runtime-${interceptor.id}`} className={`flex items-center gap-1 text-xs ${isDark ? 'text-amber-300' : 'text-amber-900'}`}>
                                         <AlertCircle className="w-3.5 h-3.5" /> Runtime Error
                                     </span>
                                 ) : (
-                                    <span key={`ready-${interceptor.id}`} className="flex items-center gap-1 text-xs text-emerald-400">
+                                    <span key={`ready-${interceptor.id}`} className={`flex items-center gap-1 text-xs ${isDark ? 'text-emerald-400' : 'text-emerald-800'}`}>
                                         <CheckCircle2 className="w-3.5 h-3.5" /> Ready
                                     </span>
                                 )}
@@ -201,12 +201,12 @@ export const InterceptorEditor = ({
                             {expandedId === interceptor.id && (
                                 <div className="px-3 pb-3">
                                     {interceptor.compileError && (
-                                        <div className="mb-2 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-xs text-red-400 font-mono">
+                                        <div className={`mb-2 px-3 py-2 rounded-lg border text-xs font-mono ${isDark ? 'bg-red-500/10 border-red-500/30 text-red-300' : 'bg-red-50 border-red-300 text-red-800'}`}>
                                             {interceptor.compileError}
                                         </div>
                                     )}
                                     {interceptor.lastError && !interceptor.compileError && (
-                                        <div className="mb-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-xs text-amber-400 font-mono">
+                                        <div className={`mb-2 px-3 py-2 rounded-lg border text-xs font-mono ${isDark ? 'bg-amber-500/10 border-amber-500/30 text-amber-300' : 'bg-amber-50 border-amber-300 text-amber-900'}`}>
                                             Last error: {interceptor.lastError}
                                         </div>
                                     )}

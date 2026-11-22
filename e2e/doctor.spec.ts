@@ -196,8 +196,10 @@ test.describe('Stream Doctor', () => {
         // Severity is in words, not only colour.
         await expect(stall).toContainText(/Error|Warning/)
 
-        // The live region names the state and the counts, and does not change while the state does not.
-        const live = panel.getByRole('status')
+        // The panel's live region names the state and the counts, and does not change while the state does not. (A finding has its own
+        // status for a copy confirmation, empty until a copy, so the panel's region is found by its test id, not as the only status.)
+        const live = panel.getByTestId('doctor-announce')
+        await expect(live).toHaveAttribute('role', 'status')
         await expect(live).toHaveText(/Connection open. [0-9]+ errors?, [0-9]+ warnings? open./)
         // settled: the warning has grown into an error (the announcement says so), and nothing further is due
         await expect(live).toHaveText('Connection open. 1 error, 0 warnings open.')

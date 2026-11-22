@@ -53,7 +53,7 @@ export const ProfileTabs = ({
 
     return (
         <div className="mb-6 animate-slide-up">
-            <div role="tablist" aria-label="Saved connection profiles" className={`flex gap-2 flex-wrap border-b pb-4 ${dark ? 'border-slate-700' : 'border-slate-200'}`}>
+            <div role="group" aria-label="Saved connection profiles" className={`flex gap-2 flex-wrap border-b pb-4 ${dark ? 'border-slate-700' : 'border-slate-200'}`}>
                 {profiles.map(profile => {
                     const active = activeProfileTab === profile.name
                     const asking = confirming === profile.name
@@ -70,8 +70,7 @@ export const ProfileTabs = ({
                                 }`}
                         >
                             <button
-                                role="tab"
-                                aria-selected={active}
+                                aria-pressed={active}
                                 onClick={() => handleProfileClick(profile)}
                                 className="pl-4 pr-2 py-2 rounded-tl-lg"
                             >
@@ -93,8 +92,7 @@ export const ProfileTabs = ({
                     )
                 })}
                 <button
-                    role="tab"
-                    aria-selected={activeProfileTab === 'new'}
+                    aria-pressed={activeProfileTab === 'new'}
                     onClick={() => onSetActiveTab('new')}
                     className={`px-4 py-2 rounded-t-lg font-medium transition-all flex items-center gap-1.5 ${activeProfileTab === 'new'
                         ? dark

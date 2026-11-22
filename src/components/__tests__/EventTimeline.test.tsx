@@ -49,6 +49,35 @@ describe('EventTimeline', () => {
         expect(onSeek).toHaveBeenLastCalledWith(9) // far left = oldest
     })
 
+    it('can be reached and operated with the keyboard: Left is older, Right is newer, Home the oldest, End the newest', () => {
+        const onSeek = vi.fn()
+        render(<EventTimeline theme="dark" events={makeEvents(10)} currentEventIndex={4} onSeek={onSeek} />)
+        const slider = screen.getByRole('slider')
+        expect(slider).toHaveAttribute('tabindex', '0')
+        expect(slider).toHaveAttribute('aria-valuetext', 'Event 5 of 10, newest first')
+        fireEvent.keyDown(slider, { key: 'ArrowLeft' })
+        expect(onSeek).toHaveBeenLastCalledWith(5)
+        fireEvent.keyDown(slider, { key: 'ArrowRight' })
+        expect(onSeek).toHaveBeenLastCalledWith(3)
+        fireEvent.keyDown(slider, { key: 'Home' })
+        expect(onSeek).toHaveBeenLastCalledWith(9)
+        fireEvent.keyDown(slider, { key: 'End' })
+        expect(onSeek).toHaveBeenLastCalledWith(0)
+        const calls = onSeek.mock.calls.length
+        fireEvent.keyDown(slider, { key: 'a' })
+        expect(onSeek).toHaveBeenCalledTimes(calls) // other keys do nothing
+    })
+
+    it('does not go past either end', () => {
+        const onSeek = vi.fn()
+        const { rerender } = render(<EventTimeline theme="dark" events={makeEvents(3)} currentEventIndex={2} onSeek={onSeek} />)
+        fireEvent.keyDown(screen.getByRole('slider'), { key: 'ArrowLeft' })
+        expect(onSeek).toHaveBeenLastCalledWith(2) // already the oldest
+        rerender(<EventTimeline theme="dark" events={makeEvents(3)} currentEventIndex={0} onSeek={onSeek} />)
+        fireEvent.keyDown(screen.getByRole('slider'), { key: 'ArrowRight' })
+        expect(onSeek).toHaveBeenLastCalledWith(0) // already the newest
+    })
+
     it('shows a tooltip for the hovered event and hides it on leave', () => {
         vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, right: 100, bottom: 64, width: 100, height: 64, x: 0, y: 0, toJSON: () => ({}) })
         render(<EventTimeline theme="dark" events={makeEvents(10)} currentEventIndex={0} onSeek={vi.fn()} />)

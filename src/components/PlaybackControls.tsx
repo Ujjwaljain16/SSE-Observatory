@@ -87,7 +87,7 @@ export const PlaybackControls = ({
                 className={`
                     flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all
                     ${isLive
-                        ? 'bg-red-500/20 text-red-500 cursor-default'
+                        ? (isDark ? 'bg-red-500/20 text-red-300 cursor-default' : 'bg-red-100 text-red-800 cursor-default')
                         : isDark
                             ? 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
                             : 'bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900'

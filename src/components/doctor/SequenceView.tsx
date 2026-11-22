@@ -5,6 +5,7 @@ import { observationRegistry } from '../../doctor/observationRegistry'
 import { readSequence, trustOf, type CellState } from '../../doctor/sequenceView'
 import { RawValuesLabel } from '../RawValuesLabel'
 import { fmtDuration } from './format'
+import { ScrollRegion } from './ScrollRegion'
 
 interface Props {
     theme: Theme
@@ -80,7 +81,8 @@ export default function SequenceView({ theme, streamId, view, onDeclare }: Props
                     </p>
 
                     {anomalies.length > 0 ? (
-                        <table className="w-full text-sm" data-testid="sequence-anomalies">
+                        <ScrollRegion label="Where the numbers did not follow on, a table that scrolls sideways">
+                            <table className="w-full text-sm" data-testid="sequence-anomalies">
                             <caption className={`text-left font-semibold mb-1 ${strong}`}>Where the numbers did not follow on</caption>
                             <thead>
                                 <tr className={`text-left ${muted}`}>
@@ -99,6 +101,7 @@ export default function SequenceView({ theme, streamId, view, onDeclare }: Props
                                 ))}
                             </tbody>
                         </table>
+                        </ScrollRegion>
                     ) : reading.cells.length > 0 ? (
                         <p className={`text-sm ${strong}`}>Every number read so far followed on from the one before.</p>
                     ) : null}

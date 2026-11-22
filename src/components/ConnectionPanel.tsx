@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import type { Theme } from '../types'
 import { formatTime } from '../utils/eventUtils'
 import { RetryMessage } from './RetryMessage'
@@ -55,6 +55,9 @@ export const ConnectionPanel = ({
     // The stream is "in use" while connected, connecting, or waiting to retry: the form is locked and the button cancels.
     const busy = connected || reconnecting || isLoading
     const [saveOpen, setSaveOpen] = useState(false)
+    const saveButton = useRef<HTMLButtonElement>(null)
+    // The save form is a popover: closing it (Escape, or Save) puts focus back on the button that opened it, so a keyboard user is not left at the top of the page.
+    const closeSave = () => { setSaveOpen(false); saveButton.current?.focus() }
     const [rememberToken, setRememberToken] = useState(false)
 
     // Elapsed time ticks locally so the rest of the app does not re-render every second.
@@ -103,14 +106,15 @@ export const ConnectionPanel = ({
                         value={url}
                         onChange={(e) => onUrlChange(e.target.value)}
                         placeholder="https://api.example.com/sse"
+                        aria-label="Endpoint URL"
                         data-testid="url-input"
                         disabled={busy}
                         className={`
                             w-full pl-12 pr-4 py-3 rounded-xl border-2 font-medium text-sm
                             focus:outline-none transition-all duration-300
                             ${isDark
-                                ? 'bg-slate-800/80 border-slate-600/50 text-white placeholder-slate-500 focus:border-sky-500 focus:bg-slate-800'
-                                : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:bg-white'
+                                ? 'bg-slate-800/80 border-slate-600/50 text-white placeholder-slate-400 focus:border-sky-500 focus:bg-slate-800'
+                                : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-500 focus:border-sky-500 focus:bg-white'
                             }
                             ${busy ? 'opacity-60 cursor-not-allowed' : ''}
                         `}
@@ -131,14 +135,15 @@ export const ConnectionPanel = ({
                         value={bearerToken}
                         onChange={(e) => onTokenChange(e.target.value)}
                         placeholder="Bearer token (optional)"
+                        aria-label="Bearer token (optional)"
                         data-testid="token-input"
                         disabled={busy}
                         className={`
                             w-full pl-12 pr-4 py-3 rounded-xl border-2 font-medium text-sm
                             focus:outline-none transition-all duration-300
                             ${isDark
-                                ? 'bg-slate-800/80 border-slate-600/50 text-white placeholder-slate-500 focus:border-sky-500 focus:bg-slate-800'
-                                : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:bg-white'
+                                ? 'bg-slate-800/80 border-slate-600/50 text-white placeholder-slate-400 focus:border-sky-500 focus:bg-slate-800'
+                                : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-500 focus:border-sky-500 focus:bg-white'
                             }
                             ${busy ? 'opacity-60 cursor-not-allowed' : ''}
                         `}
@@ -156,8 +161,8 @@ export const ConnectionPanel = ({
                             ${(!busy && !url.trim())
                                 ? isDark ? 'bg-slate-700 text-slate-400 opacity-50 cursor-not-allowed' : 'bg-slate-200 text-slate-600 opacity-50 cursor-not-allowed'
                                 : busy
-                                    ? 'bg-gradient-to-r from-red-500 to-rose-500 text-white shadow-lg shadow-red-500/30'
-                                    : 'bg-gradient-to-r from-sky-600 via-blue-600 to-cyan-600 text-white shadow-lg shadow-blue-500/30'
+                                    ? 'bg-gradient-to-r from-red-700 to-rose-700 text-white shadow-lg shadow-red-500/30'
+                                    : 'bg-gradient-to-r from-sky-700 via-blue-700 to-cyan-700 text-white shadow-lg shadow-blue-500/30'
                             }
                         `}
                     >
@@ -177,6 +182,7 @@ export const ConnectionPanel = ({
                     {!busy && (
                         <div className="relative">
                             <button
+                                ref={saveButton}
                                 onClick={() => setSaveOpen((o) => !o)}
                                 disabled={!url.trim()}
                                 aria-label="Save profile"
@@ -201,9 +207,11 @@ export const ConnectionPanel = ({
                                         e.preventDefault()
                                         if (!profileName.trim()) return
                                         onSaveProfile(rememberToken)
-                                        setSaveOpen(false)
+                                        closeSave()
                                     }}
-                                    onKeyDown={(e) => { if (e.key === 'Escape') setSaveOpen(false) }}
+                                    onKeyDown={(e) => { if (e.key === 'Escape') closeSave() }}
+                                    // Tabbing out of the form closes it: it floats over what comes next (the proxy switch), which would be focused out of sight.
+                                    onBlur={(e) => { const to = e.relatedTarget as Node | null; if (to && !e.currentTarget.contains(to) && to !== saveButton.current) setSaveOpen(false) }}
                                     className="absolute right-0 top-14 flex flex-col gap-2 p-3 rounded-lg border shadow-xl bg-white dark:bg-slate-800 dark:border-slate-700 z-10 w-72"
                                 >
                                     <input
@@ -224,7 +232,7 @@ export const ConnectionPanel = ({
                                     <button
                                         type="submit"
                                         disabled={!profileName.trim()}
-                                        className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-50"
+                                        className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded bg-sky-700 text-white hover:bg-sky-800 disabled:opacity-50"
                                     >
                                         <Check className="w-4 h-4" /> Save
                                     </button>
@@ -257,7 +265,7 @@ export const ConnectionPanel = ({
                 <div className="flex flex-col">
                     <span className={`text-sm font-bold flex items-center gap-1.5 ${isDark ? 'text-slate-200' : 'text-slate-900'}`}>
                         Use Server Proxy
-                        {useProxy && <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-400 font-mono">ENCRYPTED</span>}
+                        {useProxy && <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${isDark ? 'bg-sky-500/20 text-sky-300' : 'bg-sky-100 text-sky-800'}`}>ENCRYPTED</span>}
                     </span>
                     <span className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                         {useProxy ? 'Routes through production proxy (bypasses CORS)' : 'Direct connection (requires CORS or localhost)'}
@@ -271,7 +279,7 @@ export const ConnectionPanel = ({
                     {/* Failures that end the attempt are announced at once (an alert). A retry is a polite status in the one live
                         region that exists for the whole life of the connection, announced once per attempt (see RetryMessage). */}
                     {finalError && (
-                        <div role="alert" data-testid="connection-error" className="text-red-500 text-sm flex items-center gap-1.5 font-medium">
+                        <div role="alert" data-testid="connection-error" className={`text-sm flex items-center gap-1.5 font-medium ${isDark ? 'text-red-300' : 'text-red-700'}`}>
                             <AlertTriangle className="w-4 h-4" aria-hidden="true" /> {error}
                         </div>
                     )}
@@ -282,8 +290,8 @@ export const ConnectionPanel = ({
                             data-testid="connection-status"
                             role="status" aria-live="polite"
                             className={retryMessage
-                                ? 'text-red-500 text-sm flex items-center gap-1.5 font-medium'
-                                : `text-sm font-semibold ${connected ? 'text-emerald-600 dark:text-emerald-400' : isDark ? 'text-slate-400' : 'text-slate-600'}`}
+                                ? `text-sm flex items-center gap-1.5 font-medium ${isDark ? 'text-red-300' : 'text-red-700'}`
+                                : `text-sm font-semibold ${connected ? 'text-emerald-700 dark:text-emerald-400' : isDark ? 'text-slate-400' : 'text-slate-600'}`}
                         >
                             {finalError ? null : retryMessage ? (
                                 <><AlertTriangle className="w-4 h-4" aria-hidden="true" /> <span><RetryMessage message={retryMessage} /></span></>

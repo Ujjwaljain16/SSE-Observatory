@@ -4,6 +4,7 @@ import type { DoctorView } from '../../doctor/doctorSession'
 import { observationRegistry } from '../../doctor/observationRegistry'
 import { SLOW_WAIT_MS, buildFlow, flowStatements } from '../../doctor/flow'
 import { fmtDuration } from './format'
+import { ScrollRegion } from './ScrollRegion'
 
 interface Props {
     theme: Theme
@@ -50,7 +51,7 @@ export default function FlowView({ theme, streamId, view }: Props) {
                 Each bar is the page processing some of them, from when the oldest of them arrived until it was handled; a bar that is not teal waited longer than {SLOW_WAIT_MS} ms.
             </p>
 
-            <div className="overflow-x-auto">
+            <div role="region" aria-label="Flow chart, scrolls sideways" tabIndex={0} className="overflow-x-auto">
                 <svg role="img" aria-label={`Flow of ${flow.events.length} events over ${fmtDuration(span)}: ${flow.batches.length} processing batches, ${flow.batches.filter((b) => b.lagMs > SLOW_WAIT_MS).length} slower than ${SLOW_WAIT_MS} milliseconds`} viewBox={`0 0 ${WIDTH} 128`} className="w-full min-w-[640px]" style={{ maxHeight: 240 }}>
                     {[0, 0.25, 0.5, 0.75, 1].map((f) => (
                         <g key={f}>
@@ -103,7 +104,8 @@ export default function FlowView({ theme, streamId, view }: Props) {
             </section>
 
             {slowest.length > 0 && (
-                <table className="w-full text-sm" data-testid="flow-slowest">
+                <ScrollRegion label="Slowest events, a table that scrolls sideways">
+                    <table className="w-full text-sm" data-testid="flow-slowest">
                     <caption className={`text-left font-semibold mb-1 ${strong}`}>The slowest batches</caption>
                     <thead>
                         <tr className={`text-left ${muted}`}>{['Handled at', 'Events in the batch', 'The oldest waited', 'Still queued'].map((h) => <th key={h} scope="col" className="py-1 pr-3">{h}</th>)}</tr>
@@ -119,6 +121,7 @@ export default function FlowView({ theme, streamId, view }: Props) {
                         ))}
                     </tbody>
                 </table>
+                </ScrollRegion>
             )}
         </section>
     )

@@ -79,6 +79,16 @@ const getTypeTheme = (type: string) => {
     return themes[type.toLowerCase()] || themes.default
 }
 
+/** A lane's colour used for text: lightened on the dark theme, darkened on the light one, where a mid colour on its own pale tint cannot be read (about 2:1). */
+const textColourOn = (hex: string, dark: boolean): string => {
+    const m = /^#([0-9a-f]{6})$/i.exec(hex)
+    if (!m) return hex
+    const n = parseInt(m[1]!, 16)
+    if (dark) { const lift = (c: number) => Math.round(c + (255 - c) * 0.45); return `rgb(${lift((n >> 16) & 255)}, ${lift((n >> 8) & 255)}, ${lift(n & 255)})` }
+    const half = (c: number) => Math.round(c * 0.5)
+    return `rgb(${half((n >> 16) & 255)}, ${half((n >> 8) & 255)}, ${half(n & 255)})`
+}
+
 export const EventsList = memo(function EventsList({
     theme,
     connected,
@@ -158,6 +168,8 @@ export const EventsList = memo(function EventsList({
                 : 'bg-white/80 border-slate-200/70 shadow-xl shadow-slate-300/20'
             }
         `}>
+            {/* The "Copied!" on a row's button is a change of its label: a screen reader is told in words here (WCAG 4.1.3). */}
+            <div role="status" aria-live="polite" className="sr-only" data-testid="copy-status">{copiedId ? 'Copied the raw value to the clipboard.' : ''}</div>
             <div className={`
                 px-6 py-4 border-b flex items-center justify-between
                 ${isDark
@@ -204,7 +216,7 @@ export const EventsList = memo(function EventsList({
                     {connected && (
                         <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/20 border border-emerald-500/30">
                             <div className="live-dot" />
-                            <span className="text-xs font-semibold text-emerald-400">LIVE</span>
+                            <span className={`text-xs font-semibold ${isDark ? 'text-emerald-400' : 'text-emerald-800'}`}>LIVE</span>
                         </div>
                     )}
                 </div>
@@ -305,7 +317,7 @@ export const EventsList = memo(function EventsList({
                                                             className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-md"
                                                             style={{
                                                                 backgroundColor: `${event.streamColor}22`,
-                                                                color: event.streamColor,
+                                                                color: textColourOn(event.streamColor, isDark),
                                                                 border: `1px solid ${event.streamColor}44`,
                                                             }}
                                                         >
@@ -324,7 +336,7 @@ export const EventsList = memo(function EventsList({
                                                             className="inline-flex items-center gap-1 text-xs font-mono px-2 py-0.5 rounded-md cursor-pointer transition-all hover:scale-105"
                                                             style={{
                                                                 backgroundColor: 'rgba(99,102,241,0.15)',
-                                                                color: '#a5b4fc',
+                                                                color: isDark ? '#a5b4fc' : '#3730a3',
                                                                 border: '1px solid rgba(99,102,241,0.3)',
                                                             }}
                                                         >
@@ -417,7 +429,7 @@ export const EventsList = memo(function EventsList({
                                                             px-3 py-1.5 text-xs rounded-lg font-semibold transition-all duration-300
                                                             flex items-center gap-1.5 hover:scale-105
                                                             ${copiedId === event.id
-                                                                ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg shadow-emerald-500/30'
+                                                                ? 'bg-gradient-to-r from-emerald-700 to-teal-700 text-white shadow-lg shadow-emerald-500/30'
                                                                 : isDark
                                                                     ? 'bg-slate-700/70 hover:bg-slate-600 text-slate-300 border border-slate-600/50'
                                                                     : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
@@ -452,7 +464,7 @@ export const EventsList = memo(function EventsList({
                                                             aria-pressed={view === id}
                                                             onClick={() => setViews((v) => ({ ...v, [key]: id }))}
                                                             className={`px-2 py-1 min-h-6 text-xs rounded-md font-semibold ${view === id
-                                                                ? (isDark ? 'bg-sky-600 text-white' : 'bg-sky-700 text-white')
+                                                                ? 'bg-sky-700 text-white'
                                                                 : (isDark ? 'bg-slate-700/70 text-slate-300 hover:bg-slate-600' : 'bg-slate-200 text-slate-800 hover:bg-slate-300')}`}
                                                         >
                                                             {label}

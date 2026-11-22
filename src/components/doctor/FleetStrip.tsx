@@ -6,6 +6,7 @@ import { downloadText } from '../../doctor/download'
 import { buildFleet, fleetJson } from '../../doctor/fleet'
 import { formatRate } from '../../utils/eventStats'
 import { fmtAge, fmtBytes, fmtDuration } from './format'
+import { ScrollRegion } from './ScrollRegion'
 
 interface Props {
     theme: Theme
@@ -61,7 +62,8 @@ export default function FleetStrip({ theme, lanes, views, ratePerSecond }: Props
             </dl>
             <details>
                 <summary className={`cursor-pointer text-sm font-medium ${strong}`}>Per lane</summary>
-                <table className="mt-2 w-full text-sm" data-testid="fleet-table">
+                <ScrollRegion label="Lanes, a table that scrolls sideways">
+                    <table className="mt-2 w-full text-sm" data-testid="fleet-table">
                     <caption className="sr-only">Each lane's state and counts</caption>
                     <thead>
                         <tr className={`text-left ${muted}`}>{['Lane', 'State', 'Events', 'Since last event', 'Reconnects', 'Page p95', 'Open findings'].map((h) => <th key={h} scope="col" className="py-1 pr-3">{h}</th>)}</tr>
@@ -80,6 +82,7 @@ export default function FleetStrip({ theme, lanes, views, ratePerSecond }: Props
                         ))}
                     </tbody>
                 </table>
+                </ScrollRegion>
             </details>
         </section>
     )

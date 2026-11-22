@@ -84,7 +84,7 @@ export function PatternPanel({
                         <h3 className={`font-bold flex items-center gap-2 ${text}`}>
                             <AlertTriangle className="w-4 h-4 text-amber-400" />
                             Detected Patterns
-                            <span className="px-1.5 py-0.5 rounded-full text-xs bg-amber-500 text-white font-bold">
+                            <span className="px-1.5 py-0.5 rounded-full text-xs bg-amber-700 text-white font-bold">
                                 {activeAlerts.length}
                             </span>
                         </h3>
@@ -188,13 +188,14 @@ export function PatternPanel({
                 {addKind && (
                     <div className={`mb-3 p-3 rounded-lg border space-y-2 ${isDark ? 'bg-slate-700 border-slate-600' : 'bg-slate-50 border-slate-200'
                         }`}>
-                        <div className={`text-xs font-bold uppercase tracking-wider mb-2 ${addKind === 'sequence' ? 'text-indigo-400' : 'text-amber-400'
+                        <div className={`text-xs font-bold uppercase tracking-wider mb-2 ${addKind === 'sequence' ? (isDark ? 'text-indigo-300' : 'text-indigo-800') : (isDark ? 'text-amber-300' : 'text-amber-900')
                             }`}>
                             New {addKind} rule
                         </div>
                         <input
                             className={inputCls}
                             placeholder="Rule name (e.g. Payment retry storm)"
+                            aria-label="Rule name"
                             value={draft.name}
                             onChange={e => setDraft({ ...draft, name: e.target.value })}
                         />
@@ -203,6 +204,7 @@ export function PatternPanel({
                             <input
                                 className={inputCls}
                                 placeholder="Event types, comma-separated (e.g. payment_failed,retry_payment,retry_payment)"
+                                aria-label="Event types, comma-separated"
                                 value={draft.pattern.join(',')}
                                 onChange={e => setDraft({ ...draft, pattern: e.target.value.split(',').map((s: string) => s.trim()) })}
                             />
@@ -213,6 +215,7 @@ export function PatternPanel({
                                 <input
                                     className={inputCls}
                                     placeholder="Event type (* = any)"
+                                    aria-label="Event type (* = any)"
                                     value={draft.eventType}
                                     onChange={e => setDraft({ ...draft, eventType: e.target.value })}
                                 />
@@ -220,6 +223,7 @@ export function PatternPanel({
                                     type="number"
                                     className={inputCls}
                                     placeholder="Count"
+                                    aria-label="Count of events"
                                     value={draft.count}
                                     onChange={e => setDraft({ ...draft, count: e.target.value })}
                                 />
@@ -227,6 +231,7 @@ export function PatternPanel({
                                     type="number"
                                     className={inputCls}
                                     placeholder="Window (ms)"
+                                    aria-label="Window in milliseconds"
                                     value={draft.windowMs}
                                     onChange={e => setDraft({ ...draft, windowMs: e.target.value })}
                                 />
@@ -269,8 +274,8 @@ export function PatternPanel({
                         >
 
                             <span className={`px-2 py-0.5 rounded-full text-xs font-bold shrink-0 ${rule.kind === 'sequence'
-                                ? 'bg-indigo-900/60 text-indigo-300'
-                                : 'bg-amber-900/60 text-amber-300'
+                                ? (isDark ? 'bg-indigo-900/60 text-indigo-300' : 'bg-indigo-100 text-indigo-900')
+                                : (isDark ? 'bg-amber-900/60 text-amber-300' : 'bg-amber-100 text-amber-900')
                                 }`}>
                                 {rule.kind === 'sequence' ? 'SEQ' : 'BURST'}
                             </span>
