@@ -290,7 +290,7 @@ export const EventsList = memo(function EventsList({
                                             data-highlighted={highlightId === key ? 'true' : undefined}
                                             className={`
                                                 group relative rounded-xl p-4 border transition-all duration-300
-                                                hover:scale-[1.01] cursor-default
+                                                cursor-default
                                                 ${isDark
                                                     ? `bg-gradient-to-br ${typeTheme.bg} ${typeTheme.border} hover:shadow-lg ${typeTheme.glow}`
                                                     : 'bg-white border-slate-200 hover:border-slate-300 hover:shadow-md'
@@ -333,7 +333,7 @@ export const EventsList = memo(function EventsList({
                                                         <button
                                                             onClick={(e) => { e.stopPropagation(); onViewTrace(trace.id) }}
                                                             title={`View trace: ${trace.id} (${trace.events.length} events)`}
-                                                            className="inline-flex items-center gap-1 text-xs font-mono px-2 py-0.5 rounded-md cursor-pointer transition-all hover:scale-105"
+                                                            className="inline-flex items-center gap-1 text-xs font-mono px-2 py-0.5 rounded-md cursor-pointer transition-all"
                                                             style={{
                                                                 backgroundColor: 'rgba(99,102,241,0.15)',
                                                                 color: isDark ? '#a5b4fc' : '#3730a3',
@@ -406,7 +406,7 @@ export const EventsList = memo(function EventsList({
                                                             onClick={() => setDiffEventId(isDiffActive ? null : key)}
                                                             className={`
                                                                 px-3 py-1.5 text-xs rounded-lg font-semibold transition-all duration-300
-                                                                flex items-center gap-1.5 hover:scale-105
+                                                                flex items-center gap-1.5
                                                                 ${isDiffActive
                                                                     ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30'
                                                                     : isDark
@@ -427,7 +427,7 @@ export const EventsList = memo(function EventsList({
                                                         onCopy={(text) => onCopyToClipboard(text, event.id)}
                                                         className={`
                                                             px-3 py-1.5 text-xs rounded-lg font-semibold transition-all duration-300
-                                                            flex items-center gap-1.5 hover:scale-105
+                                                            flex items-center gap-1.5
                                                             ${copiedId === event.id
                                                                 ? 'bg-gradient-to-r from-emerald-700 to-teal-700 text-white shadow-lg shadow-emerald-500/30'
                                                                 : isDark

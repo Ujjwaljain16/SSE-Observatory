@@ -157,7 +157,7 @@ export const ConnectionPanel = ({
                         disabled={!busy && !url.trim()}
                         className={`
                             flex-1 lg:flex-none lg:w-32 px-4 py-3 rounded-xl font-bold text-sm transition-all duration-300
-                            flex items-center justify-center gap-2 hover:scale-[1.02]
+                            flex items-center justify-center gap-2
                             ${(!busy && !url.trim())
                                 ? isDark ? 'bg-slate-700 text-slate-400 opacity-50 cursor-not-allowed' : 'bg-slate-200 text-slate-600 opacity-50 cursor-not-allowed'
                                 : busy
@@ -324,7 +324,7 @@ export const ConnectionPanel = ({
                             flex items-center justify-center gap-2
                             ${eventsLength === 0
                                 ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
-                                : 'bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 hover:scale-[1.02]'
+                                : 'bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300'
                             }
                         `}
                     >

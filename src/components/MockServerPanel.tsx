@@ -111,8 +111,8 @@ export const MockServerPanel = ({
                             ${!fileName && !isServerRunning
                                 ? 'bg-slate-800/50 text-slate-600 cursor-not-allowed'
                                 : isServerRunning
-                                    ? 'bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-lg shadow-red-500/30 hover:scale-[1.02]'
-                                    : 'bg-gradient-to-r from-emerald-700 to-emerald-800 text-white shadow-lg shadow-emerald-500/30 hover:scale-[1.02]'
+                                    ? 'bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-lg shadow-red-500/30'
+                                    : 'bg-gradient-to-r from-emerald-700 to-emerald-800 text-white shadow-lg shadow-emerald-500/30'
                             }
                         `}
                     >

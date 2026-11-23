@@ -129,7 +129,7 @@ export const CustomFilters = memo(function CustomFilters({
                     disabled={!newFilterField.trim()}
                     className={`
                         px-5 py-3.5 rounded-xl font-bold transition-all duration-300
-                        flex items-center gap-2 hover:scale-105
+                        flex items-center gap-2
                         ${!newFilterField.trim()
                             ? 'bg-slate-700/50 text-slate-600 cursor-not-allowed'
                             : 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg shadow-blue-500/30 hover:shadow-blue-500/50'
@@ -197,7 +197,7 @@ export const CustomFilters = memo(function CustomFilters({
                                             onClick={() => toggleRegexMode && toggleRegexMode(filter.field)}
                                             className={`
                                                 text-xs px-3 py-1.5 rounded-lg font-semibold transition-all duration-300
-                                                flex items-center gap-1.5 hover:scale-105
+                                                flex items-center gap-1.5
                                                 ${filter.isRegex
                                                     ? 'bg-gradient-to-r from-indigo-500 to-blue-500 text-white shadow-lg shadow-indigo-500/30'
                                                     : isDark
@@ -215,7 +215,7 @@ export const CustomFilters = memo(function CustomFilters({
                                                 onClick={() => onClearFilterValues(filter.field)}
                                                 className={`
                                                     text-xs px-3 py-1.5 rounded-lg font-semibold transition-all duration-300
-                                                    hover:scale-105
+                                                   
                                                     flex items-center gap-1
                                                     ${isDark
                                                         ? 'bg-slate-700 hover:bg-slate-600 text-slate-300'
@@ -233,7 +233,7 @@ export const CustomFilters = memo(function CustomFilters({
                                             aria-label={`Remove filter ${filter.field}`}
                                             className={`
                                                 text-xs px-3 py-1.5 rounded-lg font-semibold transition-all duration-300
-                                                hover:scale-105
+                                               
                                                 ${isDark
                                                     ? 'bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30'
                                                     : 'bg-red-50 hover:bg-red-100 text-red-600 border border-red-200'
@@ -289,7 +289,7 @@ export const CustomFilters = memo(function CustomFilters({
                                                     onClick={() => onToggleFilterValue(filter.field, value)}
                                                     className={`
                                                         px-3 py-1.5 text-xs font-semibold rounded-lg transition-all duration-300
-                                                        hover:scale-105
+                                                       
                                                         ${filter.activeValues.has(value)
                                                             ? 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg shadow-blue-500/30'
                                                             : isDark
