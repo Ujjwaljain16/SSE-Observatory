@@ -3,7 +3,7 @@ import type { AddressInfo } from 'node:net'
 import { test, expect, type Page } from '@playwright/test'
 import { startFixtureServer, type FixtureServer } from '../src/fixtures/server'
 import { ARTIFACTS } from '../src/doctor/artifacts'
-import { connectDirect, openDoctor } from './support/doctorKit'
+import { activate, connectDirect, openDoctor } from './support/doctorKit'
 import { Audit, COMBOS, comboName, contrastOf, motionProblems, prepare, resizeProblems, settle, tabWalk, type Combo } from './support/a11yKit'
 
 // The accessibility audit: a walk through every screen and state of the app, in the light and the dark theme, at a desktop width (1360 px)
@@ -294,7 +294,7 @@ for (const combo of COMBOS) {
             await connectDirect(page, `${base}/bad`, { waitConnected: false })
             await expect(page.getByTestId('connection-status')).toContainText('Retrying in', { timeout: 20_000 })
             await audit.state('retrying after an HTTP 502 (status, the retry countdown)', { motion: true })
-            await page.getByTestId('connect-button').click() // Stop
+            await activate(page.getByTestId('connect-button')) // Stop
             await audit.finish(info)
         })
     })
@@ -428,7 +428,7 @@ test.describe('Reduced motion', () => {
         await connectDirect(page, `${base}/bad`, { waitConnected: false })
         await expect(page.getByTestId('connection-status')).toContainText('Retrying in', { timeout: 20_000 })
         await check('retrying (spinner)')
-        await page.getByTestId('connect-button').click()
+        await activate(page.getByTestId('connect-button'))
         await connectDirect(page, `${base}/steady`)
         await expect(page.getByTestId('event-row').first()).toBeVisible()
         await check('connected (pulsing status dot, new rows)')
@@ -531,13 +531,13 @@ test.describe('Live regions and status contrast', () => {
             for (const dt of await strip.locator('dt').all()) await ratio(`health strip label "${(await dt.innerText()).trim()}"`, dt)
             await ratio('finding severity and title', page.locator(`${STALL} button span.font-semibold`).first())
             await ratio('doctor summary', page.getByTestId('doctor-summary'))
-            await page.getByTestId('connect-button').click() // Stop
+            await activate(page.getByTestId('connect-button')) // Stop
             await ratio('"Disconnected" after Stop', status)
 
             await connectDirect(page, `${base}/bad`, { waitConnected: false })
             await expect(status).toContainText('Retrying in', { timeout: 20_000 })
             await ratio('"Retrying ..." status (red)', status)
-            await page.getByTestId('connect-button').click()
+            await activate(page.getByTestId('connect-button'))
             await connectDirect(page, `${base}/forbidden`, { waitConnected: false })
             const alert = page.getByTestId('connection-error')
             await expect(alert).toBeVisible({ timeout: 15_000 })

@@ -1,5 +1,6 @@
 import AxeBuilder from '@axe-core/playwright'
 import { test, expect, type Page } from '@playwright/test'
+import { activate } from './support/doctorKit'
 
 // The failure lab, against the captures that ship in public/lab. No stream is connected: the Doctor reads recordings of the built-in
 // faulty and healthy streams.
@@ -37,7 +38,7 @@ test.describe('Failure lab', () => {
     async function toLab(page: Page) {
         await page.goto('/')
         await page.getByTestId('url-input').fill('http://127.0.0.1:1/never')
-        await page.getByTestId('connect-button').click()
+        await activate(page.getByTestId('connect-button'))
         await page.getByTestId('doctor-toggle').click()
         await page.getByTestId('doctor-tab-captures').click()
         await page.getByText('Failure lab').click()

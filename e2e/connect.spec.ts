@@ -1,11 +1,12 @@
 import { test, expect } from '@playwright/test';
+import { activate } from './support/doctorKit'
 
 test.describe('SSE Observatory E2E', () => {
     test('connects to SSE stream and receives events', async ({ page }) => {
         await page.goto('/');
 
         await page.getByTestId('url-input').fill('http://localhost:4000/chaos-stream');
-        await page.getByTestId('connect-button').click();
+        await activate(page.getByTestId('connect-button'));
 
         await expect(page.locator('text=Connected').first()).toBeVisible({ timeout: 10000 });
         await expect(page.locator('text=Event Stream')).toBeVisible({ timeout: 10000 });
@@ -22,7 +23,7 @@ test.describe('SSE Observatory E2E', () => {
         await page.getByTestId('url-input').fill('http://localhost:4000/chaos-stream');
         await page.getByTestId('token-input').fill('Bearer TEST123');
 
-        await page.getByTestId('connect-button').click();
+        await activate(page.getByTestId('connect-button'));
 
         await expect(page.locator('text=Connected').first()).toBeVisible({ timeout: 10000 });
     });
@@ -31,7 +32,7 @@ test.describe('SSE Observatory E2E', () => {
         await page.goto('/');
 
         await page.getByTestId('url-input').fill('http://localhost:4000/chaos-stream');
-        await page.getByTestId('connect-button').click();
+        await activate(page.getByTestId('connect-button'));
         await expect(page.locator('text=Connected').first()).toBeVisible({ timeout: 10000 });
 
         await page.waitForTimeout(1000);
@@ -50,7 +51,7 @@ test.describe('SSE Observatory E2E', () => {
         await page.goto('/');
 
         await page.getByTestId('url-input').fill('http://localhost:4000/load-stream');
-        await page.getByTestId('connect-button').click();
+        await activate(page.getByTestId('connect-button'));
 
         await expect(page.locator('text=Connected').first()).toBeVisible({ timeout: 10000 });
 
@@ -65,7 +66,7 @@ test.describe('SSE Observatory E2E', () => {
         await page.goto('/');
 
         await page.getByTestId('url-input').fill('http://localhost:4000/massive-payload');
-        await page.getByTestId('connect-button').click();
+        await activate(page.getByTestId('connect-button'));
 
         await expect(page.getByTestId('connection-status')).toContainText('Connected', { timeout: 15000 });
         await page.waitForTimeout(2000);
@@ -96,7 +97,7 @@ test.describe('SSE Observatory E2E', () => {
         await page.waitForTimeout(2000);
 
         await page.getByTestId('url-input').fill('http://localhost:4000/api/stream?freq=2000');
-        await page.getByTestId('connect-button').click();
+        await activate(page.getByTestId('connect-button'));
         await expect(page.getByTestId('connection-status')).toContainText('Connected', { timeout: 15000 });
 
         await page.waitForTimeout(2000);
@@ -121,7 +122,7 @@ test.describe('SSE Observatory E2E', () => {
         await page.goto('/');
 
         await page.getByTestId('url-input').fill('http://localhost:4000/chaos-stream');
-        await page.getByTestId('connect-button').click();
+        await activate(page.getByTestId('connect-button'));
         await expect(page.locator('text=Connected').first()).toBeVisible({ timeout: 10000 });
 
         await expect(page.getByTestId('event-row').first()).toBeVisible({ timeout: 10000 });

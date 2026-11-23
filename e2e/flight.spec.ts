@@ -2,6 +2,7 @@ import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import AxeBuilder from '@axe-core/playwright'
 import { test, expect, type Page } from '@playwright/test'
+import { activate } from './support/doctorKit'
 
 // The flight recorder: with the person's say-so, a copy of the recording is kept when the Doctor first reports an error, and at a bookmark.
 
@@ -24,9 +25,9 @@ test.beforeAll(async () => {
 test.afterAll(() => { server.closeAllConnections(); server.close() })
 
 async function connectDirect(page: Page, path: string) {
-    await page.getByRole('switch', { name: 'Use server proxy' }).click() // direct, so the stream's own content type reaches the client
+    await activate(page.getByRole('switch', { name: 'Use server proxy' })) // direct, so the stream's own content type reaches the client
     await page.getByTestId('url-input').fill(`${base}${path}`)
-    await page.getByTestId('connect-button').click()
+    await activate(page.getByTestId('connect-button'))
 }
 const captures = async (page: Page) => {
     await page.getByTestId('doctor-toggle').click()

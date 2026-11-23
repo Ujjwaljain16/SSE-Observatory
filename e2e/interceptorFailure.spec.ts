@@ -1,9 +1,10 @@
 import { test, expect, type Page } from '@playwright/test'
+import { activate } from './support/doctorKit'
 
 async function connectAndOpenInterceptors(page: Page) {
     await page.goto('/')
     await page.getByTestId('url-input').fill('http://localhost:4000/api/stream?freq=5')
-    await page.getByTestId('connect-button').click()
+    await activate(page.getByTestId('connect-button'))
     await expect(page.locator('text=Connected').first()).toBeVisible({ timeout: 10000 })
     await expect(page.getByTestId('event-row').first()).toBeVisible({ timeout: 10000 })
 

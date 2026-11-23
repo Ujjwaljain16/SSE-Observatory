@@ -3,6 +3,7 @@ import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import AxeBuilder from '@axe-core/playwright'
 import { test, expect, type Page } from '@playwright/test'
+import { activate } from './support/doctorKit'
 
 // Your own redaction rules in the export dialog. The stream puts internal references into comment lines: text no built-in rule
 // recognises, which is exactly what a person's own rule is for.
@@ -35,7 +36,7 @@ const RULES = JSON.stringify({ version: 1, extraPatterns: [{ name: 'ticket', pat
 async function openExport(page: Page) {
     await page.goto('/')
     await page.getByTestId('url-input').fill(`${base}/notes`)
-    await page.getByTestId('connect-button').click()
+    await activate(page.getByTestId('connect-button'))
     await expect(page.locator('text=Connected').first()).toBeVisible({ timeout: 10_000 })
     await expect(page.getByTestId('event-row')).toHaveCount(4, { timeout: 10_000 })
     await page.getByTestId('doctor-toggle').click()
@@ -129,7 +130,7 @@ test.describe('Privacy and retention', () => {
     async function openCaptures(page: Page) {
         await page.goto('/')
         await page.getByTestId('url-input').fill(`${base}/notes`)
-        await page.getByTestId('connect-button').click()
+        await activate(page.getByTestId('connect-button'))
         await expect(page.locator('text=Connected').first()).toBeVisible({ timeout: 10_000 })
         await expect(page.getByTestId('event-row')).toHaveCount(4, { timeout: 10_000 })
         await page.getByTestId('doctor-toggle').click()
@@ -164,7 +165,7 @@ test.describe('Privacy and retention', () => {
         await page.getByTestId('privacy-recording').uncheck()
         await page.reload()
         await page.getByTestId('url-input').fill(`${base}/notes`)
-        await page.getByTestId('connect-button').click()
+        await activate(page.getByTestId('connect-button'))
         await expect(page.locator('text=Connected').first()).toBeVisible({ timeout: 10_000 })
         await expect(page.getByTestId('event-row')).toHaveCount(4, { timeout: 10_000 }) // the viewer works as before
         await page.getByTestId('doctor-toggle').click()

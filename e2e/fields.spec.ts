@@ -2,6 +2,7 @@ import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import AxeBuilder from '@axe-core/playwright'
 import { test, expect, type Page } from '@playwright/test'
+import { activate } from './support/doctorKit'
 
 // A stream in a format of its own (chat-style chunks): the profile's display mapping puts it into the common view, and a pinned field is
 // followed across the events in the Stats panel.
@@ -30,7 +31,7 @@ test.afterAll(() => { server.closeAllConnections(); server.close() })
 async function start(page: Page) {
     await page.goto('/')
     await page.getByTestId('url-input').fill(`${base}/chat`)
-    await page.getByTestId('connect-button').click()
+    await activate(page.getByTestId('connect-button'))
     await expect(page.locator('text=Connected').first()).toBeVisible({ timeout: 10_000 })
     await expect(page.getByTestId('event-row')).toHaveCount(6, { timeout: 10_000 })
 }

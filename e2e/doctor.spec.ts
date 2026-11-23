@@ -3,7 +3,7 @@ import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import AxeBuilder from '@axe-core/playwright'
 import { test, expect, type Locator, type Page } from '@playwright/test'
-import { eventCountOf, healthStrip } from './support/doctorKit'
+import { activate, eventCountOf, healthStrip } from './support/doctorKit'
 
 // The Stream Doctor panel against streams that behave in known ways. The servers are local and start with the test, so
 // nothing here depends on the repository's other test servers.
@@ -63,7 +63,7 @@ test.afterAll(() => { server.closeAllConnections(); server.close() })
 
 async function connect(page: Page, path: string) {
     await page.getByTestId('url-input').fill(`${base}${path}`)
-    await page.getByTestId('connect-button').click()
+    await activate(page.getByTestId('connect-button'))
     await expect(page.locator('text=Connected').first()).toBeVisible({ timeout: 10_000 })
 }
 
@@ -312,7 +312,7 @@ test.describe('Stream Doctor', () => {
     test.describe('profile and sequence', () => {
         async function startSeq(page: Page, run: string) {
             await page.getByTestId('url-input').fill(`${base}/seq?run=${run}`)
-            await page.getByTestId('connect-button').click()
+            await activate(page.getByTestId('connect-button'))
             await expect(page.locator('text=Connected').first()).toBeVisible({ timeout: 10_000 })
         }
 
@@ -505,7 +505,7 @@ test.describe('Stream Doctor', () => {
 
             await page.reload()
             await page.getByTestId('url-input').fill(`${base}/steady`)
-            await page.getByTestId('connect-button').click()
+            await activate(page.getByTestId('connect-button'))
             await openDoctor(page)
             await page.getByTestId('doctor-tab-captures').click()
             await expect(page.getByTestId('capture-list')).toContainText('steady one')
@@ -524,7 +524,7 @@ test.describe('Stream Doctor', () => {
             await page.addInitScript((profile) => localStorage.setItem('sse.doctor.profile', profile), PROFILE)
             await page.goto('/')
             await page.getByTestId('url-input').fill(`${base}/seq?run=2`)
-            await page.getByTestId('connect-button').click()
+            await activate(page.getByTestId('connect-button'))
             await expect(page.locator('text=Connected').first()).toBeVisible({ timeout: 10_000 })
             await openDoctor(page)
             const gap = page.locator('[data-testid="doctor-finding"][data-finding-key="seq.integrity:gap"]')
