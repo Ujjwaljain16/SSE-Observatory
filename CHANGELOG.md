@@ -4,6 +4,15 @@ All notable changes are written here. The format follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Fixed
+
+- Controls no longer grow or tilt on hover. The 300 ms hover scale kept a control's box changing, so in Playwright's WebKit a click (which hovers first) never landed on it, and most WebKit browser tests timed out (issue 107). Colour changes on hover stay. Four WebKit tests still fail.
+- A 90-minute soak with the event-list memory fix is flat (slope 0.016 MB/min, held heap 10.2 to 19.6 MB), so the docs no longer say the long run was not repeated.
+
+### Changed
+
+- CI: Firefox, WebKit and phone emulation run as five parallel parts, so each finishes and reports (as one job it hit its time limit every time). The accessibility audit and the soak run in Chromium only.
+
 ## [2.1.0] - 2026-11-23
 
 ### Added
