@@ -97,7 +97,7 @@ describe('the engine with any threshold value', () => {
         }
         expect(runs).toBeGreaterThan(1000)
         expect([...broken]).toEqual([])
-    })
+    }, 60_000) // over a thousand engine runs: 5.2 s on the Windows runner, past the 5 s default
 })
 
 describe('what is done with a threshold that cannot be used', () => {
