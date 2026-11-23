@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import { startFixtureServer, type FixtureServer } from '../src/fixtures/server'
-import { connectDirect, startPlainServer, STREAM_HEAD, type PlainServer } from './support/doctorKit'
+import { startPlainServer, STREAM_HEAD, type PlainServer } from './support/doctorKit'
 
 // Mobile device emulation: the iPhone 14 profile on Playwright's WebKit and the Pixel 7 profile on Chromium (see playwright.config.ts:
 // the projects mobile-iphone and mobile-pixel, opt in with E2E_BROWSERS=mobile). This is a phone-sized viewport, a mobile user agent and
@@ -19,6 +19,19 @@ test.beforeAll(async () => {
     })
 })
 test.afterAll(async () => { await fx.close(); await plain.close() })
+
+/**
+ * Connect straight to `url` (the proxy switched off) by tapping. The shared connectDirect clicks, and in Playwright's WebKit on Linux the iPhone
+ * profile never saw the proxy switch hold still for a click (a click hovers first); a tap is also what a phone does.
+ */
+async function connectByTap(page: Page, url: string): Promise<void> {
+    const proxy = page.getByRole('switch', { name: 'Use server proxy' })
+    if ((await proxy.getAttribute('aria-checked')) === 'true') await proxy.tap()
+    await expect(proxy).toHaveAttribute('aria-checked', 'false')
+    await page.getByTestId('url-input').fill(url)
+    await page.getByTestId('connect-button').tap()
+    await expect(page.getByTestId('connection-status')).toContainText('Connected', { timeout: 15_000 })
+}
 
 /** Nothing wider than the screen: the page itself must not scroll sideways. */
 async function expectNoHorizontalScroll(page: Page, where: string): Promise<void> {
@@ -65,7 +78,7 @@ test.describe('phone: the whole path with taps', () => {
     test('opens the Doctor and every tab by tapping, and no tab makes the page scroll sideways', async ({ page }) => {
         test.setTimeout(90_000)
         await page.goto('/')
-        await connectDirect(page, fx.urlFor('h01', { scale: 0.25, n: 4000 }))
+        await connectByTap(page, fx.urlFor('h01', { scale: 0.25, n: 4000 }))
         await page.getByTestId('doctor-toggle').tap()
         await expect(page.getByTestId('doctor-panel').first()).toBeVisible()
         await expectNoHorizontalScroll(page, 'the Doctor, first tab')
@@ -99,7 +112,7 @@ test.describe('phone: the whole path with taps', () => {
     test('the export dialog opens by tap, fits the screen, and closes', async ({ page }) => {
         test.setTimeout(60_000)
         await page.goto('/')
-        await connectDirect(page, fx.urlFor('h01', { scale: 0.25, n: 4000 }))
+        await connectByTap(page, fx.urlFor('h01', { scale: 0.25, n: 4000 }))
         await page.getByTestId('doctor-toggle').tap()
         await expect(page.getByTestId('doctor-panel').first()).toBeVisible()
         await page.getByTestId('doctor-export').tap()
@@ -120,7 +133,7 @@ test.describe('phone: the whole path with taps', () => {
         // Chromium asks for permission to write the clipboard; WebKit allows it inside a tap.
         if (browserName === 'chromium') await context.grantPermissions(['clipboard-read', 'clipboard-write'])
         await page.goto('/')
-        await connectDirect(page, `${plain.url}/stream`)
+        await connectByTap(page, `${plain.url}/stream`)
         const row = page.getByTestId('event-row').first()
         await expect(row).toBeVisible({ timeout: 15_000 })
         const copy = row.getByRole('button', { name: 'Copy', exact: true })

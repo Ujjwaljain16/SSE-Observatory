@@ -147,7 +147,7 @@ test.describe.serial('I1: the journey of a stalled stream', () => {
     })
 
     // -------------------------------------------------------------------------------------------------------- 2 and 3
-    test('2. the stall: the finding appears no earlier than the rule says, its evidence is the record the server wrote last; 3. it reads as observation, then deduction', async ({ page }) => {
+    test('2. the stall: the finding appears no earlier than the rule says, its evidence is the record the server wrote last; 3. it reads as observation, then deduction', async ({ page, browserName }) => {
         test.setTimeout(90_000)
         const { conn, seenAt } = await stallOnPage(page)
         expect(framesOf(conn), 'the server wrote its 12 events').toBe(12)
@@ -236,7 +236,10 @@ test.describe.serial('I1: the journey of a stalled stream', () => {
             const pageSpan = recordAtEvidence!.t - firstChunk.t
             const serverSpan = lastWrite - conn.writes[0]!.epochMs
             test.info().annotations.push({ type: 'evidence', description: `record #${recordAtEvidence!.seq} (${recordAtEvidence!.kind}) is ${pageSpan.toFixed(1)} ms after the first byte on the page; the server's last write was ${serverSpan.toFixed(1)} ms after its first (difference ${(pageSpan - serverSpan).toFixed(1)} ms)` })
-            expect(Math.abs(pageSpan - serverSpan), `last byte after first byte: page ${pageSpan} ms, server log ${serverSpan} ms`).toBeLessThanOrEqual(100 + 50)
+            // Playwright's WebKit on Linux holds the first bytes of a streamed body before handing them to the page (the first chunk came 206 to 261 ms
+            // late against the server's log in CI, while the last byte lined up), so the anchor, not the evidence, is off there by up to about 300 ms.
+            const slackMs = browserName === 'webkit' ? 350 : 100 + 50
+            expect(Math.abs(pageSpan - serverSpan), `last byte after first byte: page ${pageSpan} ms, server log ${serverSpan} ms`).toBeLessThanOrEqual(slackMs)
         })
     })
 
