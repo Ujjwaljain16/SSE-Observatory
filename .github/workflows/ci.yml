@@ -101,7 +101,7 @@ jobs:
   e2e-other-browsers:
     name: Playwright (${{ matrix.part.name }})
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 60
     # Informational for now: Firefox and WebKit run the whole behavioural suite, and two phone-emulation projects (iPhone 14 on WebKit, Pixel 7 on
     # Chromium) run e2e/mobile.spec.ts. Playwright's WebKit is not Safari, and emulation is not a phone.
     # Split in parts: as one job (one worker, two retries per failure) it never finished inside its 30 minutes, so it gave no result at all.

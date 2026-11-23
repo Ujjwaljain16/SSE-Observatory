@@ -28,6 +28,8 @@ const OPAQUE = 'q7Zr4KpX9vLm2NcB8wTy5HsJ3dFg6A1e'
 
 let fx: FixtureServer
 let server: http.Server
+// In Firefox and WebKit every test is skipped and beforeAll never runs, so afterAll closes only what was started.
+let started = false
 let base = ''
 test.beforeAll(async () => {
     fx = await startFixtureServer({ port: 0 })
@@ -50,8 +52,9 @@ test.beforeAll(async () => {
     })
     await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()))
     base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
+    started = true
 })
-test.afterAll(async () => { server.closeAllConnections(); server.close(); await fx.close() })
+test.afterAll(async () => { if (!started) return; server.closeAllConnections(); server.close(); await fx.close() })
 
 const STALL = '[data-testid="doctor-finding"][data-finding-key^="stall"]'
 const dialogFocus = (page: Page, selector: string) => page.evaluate((s) => document.querySelector(s)?.contains(document.activeElement) ?? false, selector)
