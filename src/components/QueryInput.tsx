@@ -55,7 +55,7 @@ export const QueryInput = ({ theme, query, onQueryChange, error }: QueryInputPro
                     onClick={() => setShowExamples(!showExamples)}
                     className={`
                         text-xs px-3 py-1.5 rounded-lg font-semibold transition-all duration-300
-                        flex items-center gap-1.5 hover:scale-105
+                        flex items-center gap-1.5
                         ${showExamples
                             ? 'bg-gradient-to-r from-sky-500 to-blue-500 text-white shadow-lg shadow-blue-500/30'
                             : isDark
@@ -94,7 +94,7 @@ export const QueryInput = ({ theme, query, onQueryChange, error }: QueryInputPro
                                 }}
                                 className={`
                                     text-left p-3 rounded-xl border transition-all duration-300
-                                    hover:scale-[1.02] group
+                                    group
                                     ${isDark
                                         ? 'bg-slate-700/50 border-slate-600/50 hover:border-sky-500/50 hover:bg-slate-700'
                                         : 'bg-white border-slate-200 hover:border-sky-300 hover:shadow-md'
