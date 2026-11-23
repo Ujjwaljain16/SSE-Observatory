@@ -29,7 +29,8 @@ async function expectNoHorizontalScroll(page: Page, where: string): Promise<void
 test.describe('phone: the whole path with taps', () => {
     test('a touch device is what runs this: a phone-sized screen, touch input and no hover', async ({ page, browserName }) => {
         await page.goto('/')
-        const device = await page.evaluate(() => ({ w: window.innerWidth, touch: navigator.maxTouchPoints, coarse: matchMedia('(pointer: coarse)').matches }))
+        // Playwright's WebKit delivers touch events but reports navigator.maxTouchPoints as 0, so either signal counts as a touch screen.
+        const device = await page.evaluate(() => ({ w: window.innerWidth, touch: navigator.maxTouchPoints > 0 || 'ontouchstart' in window ? 1 : 0, coarse: matchMedia('(pointer: coarse)').matches }))
         expect(device.w).toBeLessThan(500)
         expect(device.touch).toBeGreaterThan(0)
         // Playwright's mobile WebKit and Chromium both report a coarse primary pointer when hasTouch and isMobile are set.

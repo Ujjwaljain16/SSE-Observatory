@@ -99,12 +99,22 @@ jobs:
           retention-days: 7
 
   e2e-other-browsers:
-    name: Playwright (Firefox, WebKit)
+    name: Playwright (${{ matrix.part.name }})
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     # Informational for now: Firefox and WebKit run the whole behavioural suite, and two phone-emulation projects (iPhone 14 on WebKit, Pixel 7 on
     # Chromium) run e2e/mobile.spec.ts. Playwright's WebKit is not Safari, and emulation is not a phone.
+    # Split in parts: as one job (one worker, two retries per failure) it never finished inside its 30 minutes, so it gave no result at all.
     continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        part:
+          - { name: 'Firefox 1/2', key: firefox-1, install: firefox, args: '--project=firefox --shard=1/2' }
+          - { name: 'Firefox 2/2', key: firefox-2, install: firefox, args: '--project=firefox --shard=2/2' }
+          - { name: 'WebKit 1/2', key: webkit-1, install: webkit, args: '--project=webkit --shard=1/2' }
+          - { name: 'WebKit 2/2', key: webkit-2, install: webkit, args: '--project=webkit --shard=2/2' }
+          - { name: 'phone emulation', key: mobile, install: 'webkit chromium', args: '--project=mobile-iphone --project=mobile-pixel' }
     env:
       E2E_BROWSERS: firefox,webkit,mobile
     steps:
@@ -114,12 +124,12 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps firefox webkit chromium
+      - run: npx playwright install --with-deps ${{ matrix.part.install }}
       - run: npm run build:cli
-      - run: npx playwright test --project=firefox --project=webkit --project=mobile-iphone --project=mobile-pixel
+      - run: npx playwright test ${{ matrix.part.args }} --retries=1
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: playwright-report-other-browsers
+          name: playwright-report-${{ matrix.part.key }}
           path: playwright-report/
           retention-days: 7
