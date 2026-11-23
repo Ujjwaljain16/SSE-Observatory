@@ -1,6 +1,6 @@
-import { test, expect, type Page } from '@playwright/test'
+import { test, expect, type Locator, type Page } from '@playwright/test'
 import { startFixtureServer, type FixtureServer } from '../src/fixtures/server'
-import { startPlainServer, STREAM_HEAD, type PlainServer } from './support/doctorKit'
+import { isWebkit, startPlainServer, STREAM_HEAD, type PlainServer } from './support/doctorKit'
 
 // Mobile device emulation: the iPhone 14 profile on Playwright's WebKit and the Pixel 7 profile on Chromium (see playwright.config.ts:
 // the projects mobile-iphone and mobile-pixel, opt in with E2E_BROWSERS=mobile). This is a phone-sized viewport, a mobile user agent and
@@ -26,11 +26,19 @@ test.afterAll(async () => { await fx.close(); await plain.close() })
  */
 async function connectByTap(page: Page, url: string): Promise<void> {
     const proxy = page.getByRole('switch', { name: 'Use server proxy' })
-    if ((await proxy.getAttribute('aria-checked')) === 'true') await proxy.tap()
+    if ((await proxy.getAttribute('aria-checked')) === 'true') await tap(proxy)
     await expect(proxy).toHaveAttribute('aria-checked', 'false')
     await page.getByTestId('url-input').fill(url)
-    await page.getByTestId('connect-button').tap()
+    await tap(page.getByTestId('connect-button'))
     await expect(page.getByTestId('connection-status')).toContainText('Connected', { timeout: 15_000 })
+}
+
+/**
+ * Tap a control. In Playwright's WebKit on Linux the wait for the control to be "stable" sometimes never ended, for taps as for clicks (#107),
+ * though the page itself was fine; there the tap is made without that wait (force). Every tap here is followed by a check of what it did.
+ */
+async function tap(target: Locator): Promise<void> {
+    await target.tap(isWebkit(target.page()) ? { force: true } : {})
 }
 
 /** Nothing wider than the screen: the page itself must not scroll sideways. */
@@ -58,7 +66,7 @@ test.describe('phone: the whole path with taps', () => {
         // the proxy switch is a tap target too
         const proxy = page.getByRole('switch', { name: 'Use server proxy' })
         const before = await proxy.getAttribute('aria-checked')
-        await proxy.tap()
+        await tap(proxy)
         await expect(proxy).not.toHaveAttribute('aria-checked', before ?? '')
     })
 
@@ -66,10 +74,10 @@ test.describe('phone: the whole path with taps', () => {
         test.setTimeout(60_000)
         await page.goto('/')
         const proxy = page.getByRole('switch', { name: 'Use server proxy' })
-        if ((await proxy.getAttribute('aria-checked')) === 'true') await proxy.tap()
+        if ((await proxy.getAttribute('aria-checked')) === 'true') await tap(proxy)
         await expect(proxy).toHaveAttribute('aria-checked', 'false')
         await page.getByTestId('url-input').fill(fx.urlFor('h01', { scale: 0.25, n: 4000 }))
-        await page.getByTestId('connect-button').tap()
+        await tap(page.getByTestId('connect-button'))
         await expect(page.getByTestId('connection-status')).toContainText('Connected', { timeout: 15_000 })
         await expect(page.getByTestId('event-row').first()).toBeVisible({ timeout: 15_000 })
         await expectNoHorizontalScroll(page, 'with a stream connected')
@@ -79,14 +87,14 @@ test.describe('phone: the whole path with taps', () => {
         test.setTimeout(90_000)
         await page.goto('/')
         await connectByTap(page, fx.urlFor('h01', { scale: 0.25, n: 4000 }))
-        await page.getByTestId('doctor-toggle').tap()
+        await tap(page.getByTestId('doctor-toggle'))
         await expect(page.getByTestId('doctor-panel').first()).toBeVisible()
         await expectNoHorizontalScroll(page, 'the Doctor, first tab')
         const ids = await page.getByRole('tab').evaluateAll((els) => els.map((e) => (e.getAttribute('data-testid') ?? '').replace('doctor-tab-', '')))
         expect(ids, 'the Doctor tabs').toEqual(expect.arrayContaining(['findings', 'request', 'flow', 'timeline', 'sequence', 'captures', 'profile']))
         for (const id of ids) {
             const tab = page.getByTestId(`doctor-tab-${id}`)
-            await tab.tap()
+            await tap(tab)
             await expect(tab, `the ${id} tab`).toHaveAttribute('aria-selected', 'true')
             await expectNoHorizontalScroll(page, `the ${id} tab`)
         }
@@ -95,14 +103,14 @@ test.describe('phone: the whole path with taps', () => {
     test('the failure lab opens by tap and runs an entry', async ({ page }) => {
         test.setTimeout(60_000)
         await page.goto('/')
-        await page.getByTestId('doctor-toggle').tap()
+        await tap(page.getByTestId('doctor-toggle'))
         await expect(page.getByTestId('doctor-empty')).toContainText('Connect to a stream')
-        await page.getByTestId('doctor-try-lab').tap()
+        await tap(page.getByTestId('doctor-try-lab'))
         await expect(page.getByTestId('lab-entry').first()).toBeVisible({ timeout: 10_000 })
         await expectNoHorizontalScroll(page, 'the failure lab')
         const run = page.getByRole('button', { name: 'Run the Doctor on f04-silent' })
         await run.scrollIntoViewIfNeeded()
-        await run.tap()
+        await tap(run)
         const result = page.getByTestId('lab-result')
         await expect(result.getByTestId('lab-verdict')).toContainText('found what this stream was built to show')
         await expect(result.locator('[data-testid="doctor-finding"][data-finding-key^="stall.silent"]')).toBeVisible()
@@ -113,9 +121,9 @@ test.describe('phone: the whole path with taps', () => {
         test.setTimeout(60_000)
         await page.goto('/')
         await connectByTap(page, fx.urlFor('h01', { scale: 0.25, n: 4000 }))
-        await page.getByTestId('doctor-toggle').tap()
+        await tap(page.getByTestId('doctor-toggle'))
         await expect(page.getByTestId('doctor-panel').first()).toBeVisible()
-        await page.getByTestId('doctor-export').tap()
+        await tap(page.getByTestId('doctor-export'))
         const dialog = page.getByTestId('export-dialog')
         await expect(dialog).toBeVisible()
         await expect(page.getByTestId('export-download')).toBeVisible()
@@ -137,7 +145,7 @@ test.describe('phone: the whole path with taps', () => {
         const row = page.getByTestId('event-row').first()
         await expect(row).toBeVisible({ timeout: 15_000 })
         const copy = row.getByRole('button', { name: 'Copy', exact: true })
-        await copy.tap()
+        await tap(copy)
         const dialog = page.getByRole('alertdialog', { name: 'Copy a raw value?' })
         await expect(dialog).toBeVisible()
         await expect(dialog).toContainText('may contain secrets')
@@ -145,13 +153,13 @@ test.describe('phone: the whole path with taps', () => {
         const box = await dialog.boundingBox()
         expect(box!.x + box!.width, 'the warning fits the screen').toBeLessThanOrEqual(page.viewportSize()!.width)
 
-        await dialog.getByRole('button', { name: 'Cancel' }).tap()
+        await tap(dialog.getByRole('button', { name: 'Cancel' }))
         await expect(dialog).toBeHidden()
         await expect(row.getByRole('button', { name: 'Copied!' })).toHaveCount(0)
 
-        await copy.tap()
+        await tap(copy)
         await expect(dialog).toBeVisible()
-        await dialog.getByRole('button', { name: 'Copy anyway' }).tap()
+        await tap(dialog.getByRole('button', { name: 'Copy anyway' }))
         await expect(dialog).toBeHidden()
         await expect(row.getByRole('button', { name: 'Copied!' })).toBeVisible()
         if (browserName === 'chromium') expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('{"seq":1,"token":"mobile-copy-check"}')
