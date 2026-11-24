@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { test, expect, type Page } from '@playwright/test'
+import { activate } from './support/doctorKit'
 
 // The Export dialog's "For an issue or pull request": a short body to paste into a ticket, made from the redacted copy.
 
@@ -33,7 +34,7 @@ test.afterAll(() => { server.closeAllConnections(); server.close() })
 async function openExport(page: Page) {
     await page.goto('/')
     await page.getByTestId('url-input').fill(`${base}/notes`)
-    await page.getByTestId('connect-button').click()
+    await activate(page.getByTestId('connect-button'))
     await expect(page.locator('text=Connected').first()).toBeVisible({ timeout: 10_000 })
     await expect(page.getByTestId('event-row')).toHaveCount(4, { timeout: 10_000 })
     await page.getByTestId('doctor-toggle').click()

@@ -2,6 +2,7 @@ import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import AxeBuilder from '@axe-core/playwright'
 import { test, expect, type Page } from '@playwright/test'
+import { activate } from './support/doctorKit'
 
 // How events are shown: highlighted JSON, the tree, the raw lines, repeats folded into one row, the event rate, the type chart, and the
 // Doctor's request inspector. Local servers that start with the test.
@@ -37,7 +38,7 @@ test.afterAll(() => { server.closeAllConnections(); server.close() })
 
 async function connect(page: Page, path: string) {
     await page.getByTestId('url-input').fill(`${base}${path}`)
-    await page.getByTestId('connect-button').click()
+    await activate(page.getByTestId('connect-button'))
     await expect(page.locator('text=Connected').first()).toBeVisible({ timeout: 10_000 })
     await expect(page.getByTestId('event-row').first()).toBeVisible({ timeout: 10_000 })
 }
@@ -166,7 +167,7 @@ test.describe('Request inspector', () => {
 
     test('direct to the stream it shows the stream URL, the kept headers and the time to each stage', async ({ page }) => {
         await page.goto('/')
-        await page.getByRole('switch', { name: 'Use server proxy' }).click()
+        await activate(page.getByRole('switch', { name: 'Use server proxy' }))
         await connect(page, '/steady')
         await openRequestTab(page)
         const panel = page.getByTestId('doctor-request')

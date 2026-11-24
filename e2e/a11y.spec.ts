@@ -2,7 +2,7 @@ import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import AxeBuilder from '@axe-core/playwright'
 import { test, expect, type Page } from '@playwright/test'
-import { connectDirect } from './support/doctorKit'
+import { activate, connectDirect } from './support/doctorKit'
 
 // Automated accessibility checks (axe-core, WCAG 2.0/2.1 A and AA) on the main states of the app, plus keyboard checks.
 // A screen reader is not run here: this finds what can be found by rules (names, roles, contrast, structure) and by keyboard.
@@ -16,7 +16,7 @@ async function violations(page: Page, label: string) {
 
 async function connect(page: Page) {
     await page.getByTestId('url-input').fill('http://localhost:4000/api/stream?freq=1')
-    await page.getByTestId('connect-button').click()
+    await activate(page.getByTestId('connect-button'))
     await expect(page.locator('text=Connected').first()).toBeVisible({ timeout: 10000 })
     await expect(page.getByTestId('event-row').first()).toBeVisible({ timeout: 10000 })
     // a new row fades in; measure colours once it has settled (one event a second leaves time between rows)

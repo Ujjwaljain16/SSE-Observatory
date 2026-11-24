@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import http from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { expect, type Page } from '@playwright/test'
+import { expect, type Page, type Locator } from '@playwright/test'
 import { frameLog, type LoggedConnection } from '../../src/fixtures/groundTruth'
 
 // Shared by the Stream Doctor end-to-end specs of slice G (doctor.fixtures, doctor.parity, doctor.lifecycle, doctor.canary).
@@ -12,11 +12,11 @@ import { frameLog, type LoggedConnection } from '../../src/fixtures/groundTruth'
 /** The page is connected straight to the target: the server proxy writes its own comment before the first byte, which would hide a stream that sends nothing. */
 export async function connectDirect(page: Page, url: string, options: { token?: string; waitConnected?: boolean } = {}): Promise<void> {
     const proxy = page.getByRole('switch', { name: 'Use server proxy' })
-    if ((await proxy.getAttribute('aria-checked')) === 'true') await proxy.click()
+    if ((await proxy.getAttribute('aria-checked')) === 'true') await activate(proxy)
     await expect(proxy).toHaveAttribute('aria-checked', 'false')
     await page.getByTestId('url-input').fill(url)
     if (options.token) await page.getByTestId('token-input').fill(options.token)
-    await page.getByTestId('connect-button').click()
+    await activate(page.getByTestId('connect-button'))
     if (options.waitConnected !== false) await expect(page.getByTestId('connection-status')).toContainText('Connected', { timeout: 15_000 })
 }
 
@@ -165,3 +165,17 @@ export async function startPlainServer(handler: (req: http.IncomingMessage, res:
 
 /** What a well-behaved stream's response headers say, so the checks on headers have nothing to report. */
 export const STREAM_HEAD = { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no' }
+
+/**
+ * Press a button. In Playwright's WebKit on Linux a mouse click on the connection controls sometimes waited for ever for the button to be
+ * "stable" (#107), though a tap and a real click work; there the button is focused and pressed with Enter, the way a keyboard user does.
+ * The caller still checks what the press did.
+ */
+export async function activate(target: Locator): Promise<void> {
+    if (isWebkit(target.page())) {
+        await target.focus()
+        await target.press('Enter')
+        return
+    }
+    await target.click()
+}

@@ -1,6 +1,7 @@
 import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { test, expect, type Locator, type Page } from '@playwright/test'
+import { activate } from './support/doctorKit'
 
 // First-use polish (issue 81): the URL field survives a reload, the event list header says what the cap hides, and the floating
 // playback bar does not sit on top of the toolbar. A small local server that starts with the test.
@@ -33,7 +34,7 @@ test.afterAll(() => { server.closeAllConnections(); server.close() })
 
 async function connect(page: Page, url: string) {
     await page.getByTestId('url-input').fill(url)
-    await page.getByTestId('connect-button').click()
+    await activate(page.getByTestId('connect-button'))
     await expect(page.getByTestId('connection-status')).toContainText('Connected', { timeout: 10_000 })
 }
 

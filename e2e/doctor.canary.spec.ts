@@ -2,7 +2,7 @@ import { test, expect, type Page } from '@playwright/test'
 import { startFixtureServer, type FixtureServer } from '../src/fixtures/server'
 import { ARTIFACTS, type ArtifactKind } from '../src/doctor/artifacts'
 import { canaries, survivors, type Canary } from '../src/core/testing/canaries'
-import { connectDirect, download, findingKeys, framesOf, healthStrip, isChromium, openDoctor, readClipboard, startPlainServer, STREAM_HEAD, trackClipboard, type PlainServer } from './support/doctorKit'
+import { activate, connectDirect, download, findingKeys, framesOf, healthStrip, isChromium, openDoctor, readClipboard, startPlainServer, STREAM_HEAD, trackClipboard, type PlainServer } from './support/doctorKit'
 
 // G6 / E1 (the browser half): planted secrets (src/core/testing/canaries.ts) go in through the app's real inputs (the URL box, the bearer token box)
 // and through what a server sends (comments, ids, a Set-Cookie header), the Doctor is opened, every artifact is exported, and the file, the dialog's
@@ -74,7 +74,7 @@ const SCENARIOS: Scenario[] = [
             await page.goto('/')
             await page.getByTestId('url-input').fill(fx.urlFor('f08-echo', urlSecrets()))
             await page.getByTestId('token-input').fill(bearer())
-            await page.getByTestId('connect-button').click()
+            await activate(page.getByTestId('connect-button'))
             await expect.poll(() => fx.groundTruth.of('f08-echo')[before]?.endedBy, { timeout: 15_000 }).toBe('server-end')
         },
         must: R(['authorization', 'urlToken', 'urlApiKey', 'setCookie', 'jwtInId']), flagged: [], limit: [], idsShownAsRecorded: true,

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { activate } from './support/doctorKit'
 
 const EVENTS = 40
 const recording = {
@@ -32,7 +33,7 @@ test.describe('Mock Server / Replay E2E', () => {
         // Replay it in Monitor Mode
         await page.getByRole('button', { name: 'Monitor Mode', exact: true }).click()
         await page.getByTestId('url-input').fill(streamUrl)
-        await page.getByTestId('connect-button').click()
+        await activate(page.getByTestId('connect-button'))
 
         // 40 events plus the closing `end` message, then it stops by itself
         await expect(page.getByTestId('event-count')).toContainText(`${EVENTS + 1} events`, { timeout: 15000 })

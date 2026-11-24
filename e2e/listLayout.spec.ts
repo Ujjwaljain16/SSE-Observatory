@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { activate } from './support/doctorKit'
 
 // Regression for two visual bugs that counting rows in the DOM cannot see:
 //  - rows were positioned with other rows' cached heights, so they overlapped
@@ -8,7 +9,7 @@ test.describe('Event list layout under a live stream', () => {
         test.setTimeout(40000)
         await page.goto('/')
         await page.getByTestId('url-input').fill('http://localhost:4000/api/stream?freq=15')
-        await page.getByTestId('connect-button').click()
+        await activate(page.getByTestId('connect-button'))
         await expect(page.getByTestId('event-row').first()).toBeVisible({ timeout: 10000 })
 
         // sample the layout several times while events keep arriving

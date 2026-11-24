@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { activate } from './support/doctorKit'
 
 test.describe('Basic SSE Workflow', () => {
     test('Connects to stream, filters events, and disconnects', async ({ page }) => {
@@ -7,7 +8,7 @@ test.describe('Basic SSE Workflow', () => {
 
         // Connect using the correct placeholder
         await page.getByTestId('url-input').fill('http://localhost:4000/api/stream?freq=100')
-        await page.getByTestId('connect-button').click()
+        await activate(page.getByTestId('connect-button'))
 
         // Wait for connection indicator
         await expect(page.locator('text=Connected').first()).toBeVisible({ timeout: 10000 })
@@ -23,7 +24,7 @@ test.describe('Basic SSE Workflow', () => {
         await page.getByTestId('search-input').fill('')
 
         // Disconnect
-        await page.getByTestId('connect-button').click()
+        await activate(page.getByTestId('connect-button'))
 
         // After disconnect the Connect button should come back and show "Connect"
         await expect(page.getByTestId('connect-button')).toContainText('Connect', { timeout: 5000 })

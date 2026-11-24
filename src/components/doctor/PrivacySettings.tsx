@@ -20,7 +20,8 @@ export default function PrivacySettings({ theme, count, onChanged }: Props) {
     const dark = theme === 'dark'
     const muted = dark ? 'text-slate-300' : 'text-slate-700'
     const strong = dark ? 'text-white' : 'text-slate-900'
-    const button = `px-3 py-1.5 rounded-lg text-sm font-medium disabled:opacity-50 ${dark ? 'bg-slate-700 text-slate-100 hover:bg-slate-600' : 'bg-slate-200 text-slate-900 hover:bg-slate-300'}`
+    // A disabled button is shown with solid colours that still read at 4.5:1, not with opacity: half opacity took the text to about 3.5:1.
+    const button = `px-3 py-1.5 rounded-lg text-sm font-medium disabled:cursor-not-allowed ${dark ? 'bg-slate-700 text-slate-100 hover:bg-slate-600 disabled:bg-slate-800 disabled:text-slate-400' : 'bg-slate-200 text-slate-900 hover:bg-slate-300 disabled:bg-slate-100 disabled:text-slate-600'}`
     const field = `rounded-lg border px-2 py-1 text-sm ${dark ? 'bg-slate-800 border-slate-600 text-white' : 'bg-white border-slate-300 text-slate-900'}`
 
     const [recording, setRecording] = useState(recordingEnabled)

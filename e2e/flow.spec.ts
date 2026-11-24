@@ -2,6 +2,7 @@ import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import AxeBuilder from '@axe-core/playwright'
 import { test, expect, type Page } from '@playwright/test'
+import { activate } from './support/doctorKit'
 
 // The Doctor's Flow tab: events arriving, the page processing them, and where the connection was made again.
 
@@ -34,7 +35,7 @@ test.afterAll(() => { server.closeAllConnections(); server.close() })
 async function openFlow(page: Page, path: string) {
     await page.goto('/')
     await page.getByTestId('url-input').fill(`${base}${path}`)
-    await page.getByTestId('connect-button').click()
+    await activate(page.getByTestId('connect-button'))
     await expect(page.locator('text=Connected').first()).toBeVisible({ timeout: 10_000 })
     await page.getByTestId('doctor-toggle').click()
     await page.getByTestId('doctor-tab-flow').click()

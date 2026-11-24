@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { activate } from './support/doctorKit'
 
 test.describe('Worker Death Spiral', () => {
     test('a killed SharedWorker is noticed and the stream carries on in the page', async ({ page, browserName }) => {
@@ -7,7 +8,7 @@ test.describe('Worker Death Spiral', () => {
 
         await page.goto('/')
         await page.getByTestId('url-input').fill('http://localhost:4000/api/stream?freq=20')
-        await page.getByTestId('connect-button').click()
+        await activate(page.getByTestId('connect-button'))
         await expect(page.getByTestId('event-row').first()).toBeVisible({ timeout: 10000 })
 
         const count = async () => Number((await page.getByTestId('event-count').innerText()).match(/\d[\d,]*/)![0].replace(/,/g, ''))
