@@ -26,7 +26,7 @@ jobs:
           - os: ubuntu-latest
             node: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
@@ -58,7 +58,7 @@ jobs:
     name: Dependency audit (runtime, high+)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -68,7 +68,7 @@ jobs:
     name: Docker image builds and starts
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: docker build -t sse-observatory .
       - name: Smoke test
         run: |
@@ -82,7 +82,7 @@ jobs:
     # Blocking. It was informational while the suite flaked on cold runners; it has since passed on every run of the last
     # 14 pull requests (the flaky specs were fixed at the cause), with two retries per test as a safety net.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: 22
